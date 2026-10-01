@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Medichain"
+description = "A secure medical records platform where patients control doctor access, doctors manage care records and emergency information, and administrators approve clinicians."
+version = "1.0.0"
+id = "artifacts/medichain"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21196
+
+[services.development]
+run = "pnpm --filter @workspace/medichain run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/medichain", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/medichain/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21196"
+BASE_PATH = "/"

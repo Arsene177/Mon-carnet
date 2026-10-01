@@ -3,20 +3,25 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Medichain secure medical records API
 servers:
   - url: /api
     description: Base API path
+security:
+  - bearerAuth: []
 tags:
   - name: health
-    description: Health operations
+  - name: auth
+  - name: patient
+  - name: doctor
+  - name: admin
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
+      security: []
       responses:
         "200":
           description: Healthy
@@ -24,13 +29,537 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationInput"
+      responses:
+        "201":
+          description: Account created or doctor registration submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "400":
+          description: Invalid registration details
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: Invalid credentials
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      responses:
+        "200":
+          description: Current account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /patient/profile:
+    get:
+      operationId: getPatientProfile
+      tags: [patient]
+      responses:
+        "200":
+          description: Patient profile and overview counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientProfile"
+  /patient/emergency-info:
+    put:
+      operationId: updateEmergencyInfo
+      tags: [patient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmergencyInfoInput"
+      responses:
+        "200":
+          description: Saved emergency information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmergencyInfo"
+  /patient/records:
+    get:
+      operationId: getPatientRecords
+      tags: [patient]
+      responses:
+        "200":
+          description: Patient's own medical records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MedicalRecord"
+  /patient/permissions:
+    get:
+      operationId: getPatientPermissions
+      tags: [patient]
+      responses:
+        "200":
+          description: Patient-controlled doctor permissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccessPermission"
+    post:
+      operationId: grantPatientPermission
+      tags: [patient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PermissionGrantInput"
+      responses:
+        "201":
+          description: Doctor access granted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessPermission"
+  /patient/permissions/{doctorId}:
+    delete:
+      operationId: revokePatientPermission
+      tags: [patient]
+      parameters:
+        - name: doctorId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Access revoked
+  /patient/pending-requests:
+    get:
+      operationId: getPatientPendingRequests
+      tags: [patient]
+      responses:
+        "200":
+          description: Recent doctor searches for this patient
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PatientSearchRequest"
+  /doctor/profile:
+    get:
+      operationId: getDoctorProfile
+      tags: [doctor]
+      responses:
+        "200":
+          description: Doctor profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /doctor/search-patient:
+    get:
+      operationId: searchPatients
+      tags: [doctor]
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        "200":
+          description: Matching patients and current access state
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PatientSearchResult"
+  /doctor/patient/{patientId}/emergency:
+    get:
+      operationId: getPatientEmergency
+      tags: [doctor]
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Emergency information available to active doctors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmergencyInfo"
+  /doctor/patient/{patientId}/records:
+    get:
+      operationId: getDoctorPatientRecords
+      tags: [doctor]
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Patient records when access is active
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MedicalRecord"
+    post:
+      operationId: addDoctorPatientRecord
+      tags: [doctor]
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedicalRecordInput"
+      responses:
+        "201":
+          description: Medical record added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedicalRecord"
+  /doctor/stats:
+    get:
+      operationId: getDoctorStats
+      tags: [doctor]
+      responses:
+        "200":
+          description: Doctor activity summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DoctorStats"
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      responses:
+        "200":
+          description: System-wide aggregate statistics without patient records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+  /admin/analytics:
+    get:
+      operationId: getAdminAnalytics
+      tags: [admin]
+      responses:
+        "200":
+          description: Aggregate system health and activity data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnalytics"
+  /admin/pending-doctors:
+    get:
+      operationId: getPendingDoctors
+      tags: [admin]
+      responses:
+        "200":
+          description: Doctor registrations awaiting approval
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+  /admin/doctors/{doctorId}/approve:
+    post:
+      operationId: approveDoctor
+      tags: [admin]
+      parameters:
+        - name: doctorId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Doctor approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /admin/doctors/{doctorId}/revoke:
+    post:
+      operationId: revokeDoctor
+      tags: [admin]
+      parameters:
+        - name: doctorId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Doctor access deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /admin/search-user:
+    get:
+      operationId: searchUsers
+      tags: [admin]
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        "200":
+          description: Matching account summaries without medical records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
-
+      required: [status]
+    Role:
+      type: string
+      enum: [PATIENT, PENDING_DOCTOR, DOCTOR, ADMIN]
+    AccountStatus:
+      type: string
+      enum: [PENDING, ACTIVE, INACTIVE]
+    User:
+      type: object
+      required: [id, email, name, role, status, isActive, createdAt]
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        status: { $ref: "#/components/schemas/AccountStatus" }
+        dateOfBirth: { type: ["string", "null"], format: date }
+        contactInfo: { type: ["string", "null"] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    AuthSession:
+      type: object
+      required: [token, user]
+      properties:
+        token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+    RegistrationInput:
+      type: object
+      required: [name, email, password, role]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        role: { type: string, enum: [PATIENT, DOCTOR] }
+        dateOfBirth: { type: string, format: date }
+        contactInfo: { type: string, maxLength: 300 }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1, maxLength: 128 }
+    EmergencyInfo:
+      type: object
+      required: [patientId, patientName, bloodGroup, weightKg, heightCm, allergies, emergencyContact, updatedAt]
+      properties:
+        patientId: { type: integer }
+        patientName: { type: string }
+        bloodGroup: { type: string }
+        weightKg: { type: number }
+        heightCm: { type: number }
+        allergies: { type: string }
+        emergencyContact: { type: string }
+        updatedAt: { type: string, format: date-time }
+    EmergencyInfoInput:
+      type: object
+      required: [bloodGroup, weightKg, heightCm, allergies, emergencyContact]
+      properties:
+        bloodGroup: { type: string, enum: [A+, A-, B+, B-, AB+, AB-, O+, O-, Unknown] }
+        weightKg: { type: number, minimum: 1, maximum: 500 }
+        heightCm: { type: number, minimum: 30, maximum: 260 }
+        allergies: { type: string, maxLength: 2000 }
+        emergencyContact: { type: string, maxLength: 300 }
+    PatientProfile:
+      type: object
+      required: [user, emergencyInfo, recordCount, permissionsCount]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        emergencyInfo: { oneOf: [{ $ref: "#/components/schemas/EmergencyInfo" }, { type: "null" }] }
+        recordCount: { type: integer }
+        permissionsCount: { type: integer }
+    MedicalRecord:
+      type: object
+      required: [id, patientId, doctorId, doctorName, recordType, diagnosis, treatment, medications, notes, vitals, createdAt]
+      properties:
+        id: { type: integer }
+        patientId: { type: integer }
+        doctorId: { type: integer }
+        doctorName: { type: string }
+        recordType:
+          type: string
+          enum: [Consultation, Diagnosis, Treatment, Lab Results, Prescription, Surgery, Emergency, Follow-up, Other]
+        diagnosis: { type: string }
+        treatment: { type: string }
+        medications:
+          type: array
+          items: { type: string }
+        notes: { type: string }
+        vitals:
+          type: object
+          properties:
+            bloodPressure: { type: ["string", "null"] }
+            heartRate: { type: ["number", "null"] }
+            temperature: { type: ["number", "null"] }
+            weightKg: { type: ["number", "null"] }
+        createdAt: { type: string, format: date-time }
+    MedicalRecordInput:
+      type: object
+      required: [recordType, diagnosis, treatment, medications, notes, vitals]
+      properties:
+        recordType:
+          type: string
+          enum: [Consultation, Diagnosis, Treatment, Lab Results, Prescription, Surgery, Emergency, Follow-up, Other]
+        diagnosis: { type: string, maxLength: 5000 }
+        treatment: { type: string, maxLength: 5000 }
+        medications:
+          type: array
+          items: { type: string, maxLength: 200 }
+        notes: { type: string, maxLength: 10000 }
+        vitals:
+          type: object
+          properties:
+            bloodPressure: { type: ["string", "null"], maxLength: 30 }
+            heartRate: { type: ["number", "null"], minimum: 30, maximum: 200 }
+            temperature: { type: ["number", "null"], minimum: 30, maximum: 45 }
+            weightKg: { type: ["number", "null"], minimum: 1, maximum: 500 }
+    AccessPermission:
+      type: object
+      required: [id, doctorId, doctorName, doctorEmail, granted, grantedAt, expiresAt]
+      properties:
+        id: { type: integer }
+        doctorId: { type: integer }
+        doctorName: { type: string }
+        doctorEmail: { type: string, format: email }
+        granted: { type: boolean }
+        grantedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    PermissionGrantInput:
+      type: object
+      required: [doctorEmail, durationDays]
+      properties:
+        doctorEmail: { type: string, format: email }
+        durationDays: { type: integer, minimum: 1, maximum: 365 }
+    PatientSearchRequest:
+      type: object
+      required: [doctorId, doctorName, doctorEmail, searchedAt]
+      properties:
+        doctorId: { type: integer }
+        doctorName: { type: string }
+        doctorEmail: { type: string, format: email }
+        searchedAt: { type: string, format: date-time }
+    PatientSearchResult:
+      type: object
+      required: [user, emergencyInfo, hasAccess, expiresAt]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        emergencyInfo: { oneOf: [{ $ref: "#/components/schemas/EmergencyInfo" }, { type: "null" }] }
+        hasAccess: { type: boolean }
+        expiresAt: { type: ["string", "null"], format: date-time }
+    DoctorStats:
+      type: object
+      required: [patientsTreated, recordsAdded, recordsThisMonth]
+      properties:
+        patientsTreated: { type: integer }
+        recordsAdded: { type: integer }
+        recordsThisMonth: { type: integer }
+    AdminStats:
+      type: object
+      required: [totalPatients, activeDoctors, pendingDoctors, totalConsultations, activePermissions]
+      properties:
+        totalPatients: { type: integer }
+        activeDoctors: { type: integer }
+        pendingDoctors: { type: integer }
+        totalConsultations: { type: integer }
+        activePermissions: { type: integer }
+    AdminAnalytics:
+      type: object
+      required: [stats, monthlyRecords, systemStatus]
+      properties:
+        stats: { $ref: "#/components/schemas/AdminStats" }
+        monthlyRecords:
+          type: array
+          items:
+            type: object
+            required: [month, count]
+            properties:
+              month: { type: string }
+              count: { type: integer }
+        systemStatus:
+          type: array
+          items:
+            type: object
+            required: [name, status]
+            properties:
+              name: { type: string }
+              status: { type: string, enum: [Operational, Attention] }

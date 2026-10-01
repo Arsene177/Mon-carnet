@@ -1,21 +1,24 @@
-# [Project name]
+# Medichain
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Medichain lets patients manage emergency information and control which approved doctors can view their medical records.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/medichain run dev` — run the Medichain web app
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
+- `pnpm --filter @workspace/api-server run seed` — seed development demo accounts and sample records
 - Required env: `DATABASE_URL` — Postgres connection string
+- Authentication uses `JWT_SECRET` or the existing `SESSION_SECRET` secret.
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
-- DB: PostgreSQL + Drizzle ORM
+- DB: PostgreSQL + Drizzle ORM (the shared database layer provided by this workspace)
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
@@ -26,7 +29,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The shared Drizzle layer is used rather than adding a separate Prisma client, to keep one database access stack in this workspace.
 
 ## Product
 

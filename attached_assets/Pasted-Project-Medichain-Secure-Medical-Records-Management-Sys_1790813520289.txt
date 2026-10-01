@@ -1,0 +1,214 @@
+Project: Medichain — Secure Medical Records Management System (No Blockchain)
+Build a full-stack web application called "Medichain" that manages medical records with role-based access control. This is a reimplementation of an existing blockchain-based app, but without any blockchain, crypto wallets, smart contracts, IPFS, or Web3 dependencies. Replace all blockchain functionality with a traditional database-backed architecture while preserving every security feature.
+
+Tech Stack
+Frontend: React 18 + TypeScript + Tailwind CSS + Vite
+Backend: Node.js + Express + TypeScript
+Database: PostgreSQL with Prisma ORM
+Authentication: JWT-based with email/password (replace MetaMask wallet auth)
+Icons: lucide-react
+PDF generation: jspdf + html2canvas
+State management: React Context API
+Application Overview
+Medichain is a medical records platform with three user roles: Patient, Doctor, and Admin. Patients control who can access their medical records. Doctors can search for patients, view emergency information, and add medical records (if granted access). Admins manage doctor approvals and monitor system statistics.
+
+User Roles & Permissions (Security-Critical)
+Patient:
+
+Registers with name, date of birth, and contact info
+Creates and updates emergency medical info (blood group, weight, height, allergies, emergency contact)
+Grants or revokes access to specific doctors (with optional time-limited expiry in days, max 365)
+Views their own medical records
+Downloads a PDF medical booklet containing their profile, emergency info, and all records
+Sees pending access requests from doctors
+Doctor:
+
+Requests registration (name, contact info) — requires Admin approval before becoming active
+Searches for patients by name or email (replacing wallet address search)
+Views patient emergency info always (this is always accessible regardless of permissions — it's emergency data)
+Views full medical records only if the patient has granted access and it hasn't expired
+Adds medical records to a patient's file (only if patient has granted access)
+Medical records include: record type (Consultation, Diagnosis, Treatment, Lab Results, Prescription, Surgery, Emergency, Follow-up, Other), diagnosis, treatment, medications (comma-separated list), vital signs (blood pressure, heart rate, temperature, weight — all optional), and notes
+Views their own doctor profile and dashboard stats
+Admin:
+
+Sees system statistics: total patients, total doctors, total consultations
+Approves pending doctor registrations
+Revokes doctor access (deactivates a doctor)
+Searches for any user by name or email
+Views system analytics dashboard (metrics, system health indicators)
+Admin account is created via a seed script or environment-configured admin email
+Security Requirements (Must Preserve All of These)
+Role-based access control: Every API endpoint must verify the user's role. Only patients can grant/revoke access. Only doctors can add records. Only admin can approve/revoke doctors.
+
+Patient-controlled permissions: A doctor can only view a patient's full medical records if the patient has explicitly granted access AND the access hasn't expired. Implement an access permissions table with: patient_id, doctor_id, granted (boolean), granted_at (timestamp), expires_at (timestamp). Check expiry on every record access.
+
+Emergency info is always accessible: Emergency medical info (blood group, weight, height, allergies, emergency contact) must be viewable by any authenticated doctor regardless of permission status. This is by design for emergency medical situations.
+
+Only the patient can see their own records without permission: Patients always see their own records. Doctors need permission. Admins can view stats but not individual patient records (privacy).
+
+Doctor registration requires admin approval: Doctors cannot function until an admin approves them. Pending doctors have a "pending" status. After approval, their status becomes "active". Admins can revoke (deactivate) doctors at any time.
+
+JWT authentication: All API requests require a valid JWT token. Tokens contain user ID, role, and status. Middleware checks token validity and role authorization on every protected route.
+
+Input validation: Validate all inputs server-side — non-empty names, valid dates, valid email formats, numeric ranges for vitals (heart rate 30-200, temperature 30-45, weight 1-500), permission duration 1-365 days.
+
+Generic error messages: Don't leak whether an email is registered vs. wrong password. Use generic "Invalid credentials" messages.
+
+Database Schema (Prisma)
+
+model User {
+  id              Int           @id @default(autoincrement())
+  email           String        @unique
+  passwordHash    String
+  role            Role          @default(PENDING_DOCTOR)
+  name            String
+  dateOfBirth     DateTime?
+  contactInfo     String?
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  emergencyInfo   EmergencyInfo?
+  recordsAdded    MedicalRecord[]  @relation("DoctorRecords")
+  patientRecords  MedicalRecord[]  @relation("PatientRecords")
+  grantedAccess   AccessPermission[] @relation("PatientPermissions")
+  receivedAccess  AccessPermission[] @relation("DoctorPermissions")
+}
+
+model EmergencyInfo {
+  id              Int      @id @default(autoincrement())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          Int      @unique
+  bloodGroup      String
+  weightKg        Float
+  heightCm        Float
+  allergies       String   @default("")
+  emergencyContact String  @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model MedicalRecord {
+  id          Int      @id @default(autoincrement())
+  patient     User     @relation("PatientRecords", fields: [patientId], references: [id])
+  patientId   Int
+  doctor      User     @relation("DoctorRecords", fields: [doctorId], references: [id])
+  doctorId    Int
+  recordType  String
+  diagnosis   String   @default("")
+  treatment   String   @default("")
+  medications String   @default("[]")  // JSON array stored as string
+  notes       String   @default("")
+  vitals      String   @default("{}")  // JSON object stored as string
+  createdAt   DateTime @default(now())
+}
+
+model AccessPermission {
+  id         Int       @id @default(autoincrement())
+  patient    User      @relation("PatientPermissions", fields: [patientId], references: [id])
+  patientId  Int
+  doctor     User      @relation("DoctorPermissions", fields: [doctorId], references: [id])
+  doctorId   Int
+  granted    Boolean   @default(true)
+  grantedAt  DateTime  @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  
+  @@unique([patientId, doctorId])
+}
+
+enum Role {
+  PATIENT
+  PENDING_DOCTOR
+  DOCTOR
+  ADMIN
+}
+API Endpoints
+Auth:
+
+POST /api/auth/register — Register as patient (email, password, name, dateOfBirth, contactInfo) or as doctor (email, password, name, contactInfo) → doctor gets PENDING_DOCTOR status
+POST /api/auth/login — Login with email/password → returns JWT
+GET /api/auth/me — Get current user profile
+Patient:
+
+GET /api/patient/profile — Get own profile
+PUT /api/patient/emergency-info — Create/update emergency info
+GET /api/patient/records — Get own medical records
+GET /api/patient/permissions — List all granted permissions
+POST /api/patient/permissions — Grant access to a doctor (doctorEmail, durationDays)
+DELETE /api/patient/permissions/:doctorId — Revoke access from a doctor
+GET /api/patient/pending-requests — Get doctors who have searched for them (access requests)
+Doctor:
+
+GET /api/doctor/profile — Get doctor profile
+GET /api/doctor/search-patient?query=nameOrEmail — Search for patients
+GET /api/doctor/patient/:patientId/emergency — Get patient emergency info (always allowed for active doctors)
+GET /api/doctor/patient/:patientId/records — Get patient records (only if access granted and not expired)
+POST /api/doctor/patient/:patientId/records — Add medical record (only if access granted and not expired)
+GET /api/doctor/stats — Doctor dashboard stats
+Admin:
+
+GET /api/admin/stats — System statistics
+GET /admin/pending-doctors — List pending doctor registrations
+POST /api/admin/doctors/:doctorId/approve — Approve a pending doctor
+POST /api/admin/doctors/:doctorId/revoke — Revoke/deactivate a doctor
+GET /api/admin/search-user?query=nameOrEmail — Search any user
+Frontend Pages
+Login/Signup Page:
+
+Tabbed interface for login vs. registration
+Registration has role selection (Patient or Doctor) with visual cards
+Patient registration: name, email, password, date of birth, contact info
+Doctor registration: name, email, password, contact info → shows message "Approval required, please wait for admin"
+Clean centered card design with blue accent colors
+Patient Dashboard (tabbed interface):
+
+Dashboard tab: Welcome banner, pending access request notifications, profile info card, quick stats card (total records, emergency info status, account status, registration date), action buttons (download PDF booklet, update emergency info), features info panel
+My Records tab: List of medical records showing type badge, date, doctor name, diagnosis summary, with refresh button and empty state
+Access Control tab: List of current permissions with doctor name, granted date, expiry date, revoke button. Form to grant new access by entering doctor email and duration in days. Pending access requests section.
+Emergency Info tab: Form with blood group (dropdown), weight, height, allergies, emergency contact — save/update
+Doctor Dashboard (tabbed interface):
+
+Patient Search tab: Search bar (by name or email), patient info card, emergency info card (always visible with red alert icon), medical records section (shows "Access Required" message if no permission, or records list if granted)
+Add Record tab: Form to add a medical record — record type dropdown, diagnosis textarea, treatment textarea, medications input (comma-separated), vitals section (blood pressure, heart rate, temperature, weight — all optional), notes textarea. Only enabled when a patient is selected and access is granted.
+Dashboard tab: Stats cards (patients treated, records added, this month), doctor profile card
+Profile tab: Doctor profile details
+Admin Dashboard (tabbed interface):
+
+Dashboard tab: System overview cards (total patients, active doctors, total consultations), admin profile card, quick action buttons
+Doctor Management tab: List of pending doctors with approve buttons, list of active doctors with revoke buttons, search by name/email
+User Search tab: Search any user by name or email, display user details with role badge and status
+Analytics tab: Key metrics cards, system health indicators, usage trends placeholder
+Design Requirements
+Use a medical/professional color palette: blues, greens, clean whites, gray neutrals
+Cards with rounded corners, subtle shadows, hover effects
+Tab navigation with icons and active underline indicators
+Loading spinners for async operations
+Error messages (red) and success messages (green) with dismiss buttons
+Responsive design for mobile and desktop
+Badge/pill components for record types, role indicators, and status indicators
+Forms with proper labels, placeholders, and focus states (blue ring)
+Empty states with large gray icons and helpful text
+Gradient welcome banners (blue to indigo)
+Seed Data
+Create a seed script that:
+
+Creates an admin user (admin@medichain.com / admin123)
+Creates 2-3 sample patients with emergency info
+Creates 1-2 approved doctors
+Creates some sample medical records and permissions
+Environment Variables
+
+DATABASE_URL=postgresql://...
+JWT_SECRET=your-secret-key
+ADMIN_EMAIL=admin@medichain.com
+PORT=3000
+Important Notes
+Do NOT use any blockchain, Web3, ethers.js, MetaMask, or IPFS dependencies
+Replace wallet addresses with email-based user IDs throughout
+Replace IPFS storage with direct database storage of medical record content
+Replace smart contract access modifiers with JWT middleware + role checks
+Replace blockchain transactions with database operations
+Keep the same UI/UX flow and feature set — just powered by a traditional backend
+All medical record data (diagnosis, treatment, medications, vitals, notes) is stored directly in the database, not in IPFS
+The PDF booklet generation should work the same way, pulling data from the API instead of blockchain
