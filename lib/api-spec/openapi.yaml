@@ -450,7 +450,7 @@ components:
         permissionsCount: { type: integer }
     MedicalRecord:
       type: object
-      required: [id, patientId, doctorId, doctorName, recordType, diagnosis, treatment, medications, notes, vitals, createdAt]
+      required: [id, patientId, doctorId, doctorName, recordType, diagnosis, treatment, medications, notes, vitals, followUpToRecordId, createdAt]
       properties:
         id: { type: integer }
         patientId: { type: integer }
@@ -465,6 +465,7 @@ components:
           type: array
           items: { type: string }
         notes: { type: string }
+        followUpToRecordId: { type: ["integer", "null"] }
         vitals:
           type: object
           properties:
@@ -475,7 +476,7 @@ components:
         createdAt: { type: string, format: date-time }
     MedicalRecordInput:
       type: object
-      required: [recordType, diagnosis, treatment, medications, notes, vitals]
+      required: [recordType, diagnosis, treatment, medications, notes, vitals, followUpToRecordId]
       properties:
         recordType:
           type: string
@@ -486,6 +487,7 @@ components:
           type: array
           items: { type: string, maxLength: 200 }
         notes: { type: string, maxLength: 10000 }
+        followUpToRecordId: { type: ["integer", "null"] }
         vitals:
           type: object
           properties:

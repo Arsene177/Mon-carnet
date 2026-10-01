@@ -18,5 +18,7 @@ export interface MedicalRecordInput {
   medications: string[];
   /** @maxLength 10000 */
   notes: string;
+  /** @nullable */
+  followUpToRecordId: number | null;
   vitals: MedicalRecordInputVitals;
 }

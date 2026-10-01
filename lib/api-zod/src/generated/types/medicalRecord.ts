@@ -18,6 +18,8 @@ export interface MedicalRecord {
   treatment: string;
   medications: string[];
   notes: string;
+  /** @nullable */
+  followUpToRecordId: number | null;
   vitals: MedicalRecordVitals;
   createdAt: Date;
 }

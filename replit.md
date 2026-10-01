@@ -30,6 +30,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 ## Architecture decisions
 
 - The shared Drizzle layer is used rather than adding a separate Prisma client, to keep one database access stack in this workspace.
+- Saved medical records are immutable; a Follow-up must reference an existing record for the same patient.
 
 ## Product
 

@@ -1,0 +1,428 @@
+Add a new **Epidemic & Pandemic Disease Coding and Outbreak Tracking module** to the existing MediChain medical-record system.
+
+### 1. Objective
+
+Extend MediChain so that infectious diseases can be identified using **standardized international medical codes**, while allowing authorized healthcare professionals and administrators to track potential outbreaks.
+
+Use **ICD-10/ICD-11-compatible disease codes** rather than creating arbitrary disease codes.
+
+The feature must integrate with the existing MediChain architecture without breaking existing patient, doctor, authentication, medical-record, RBAC, and audit-log functionality.
+
+---
+
+### 2. Disease Coding
+
+Create a standardized disease-code structure containing:
+
+* `id`
+* `code`
+* `coding_system` — e.g. `ICD-10`, `ICD-11`
+* `disease_name`
+* `description`
+* `infectious` — boolean
+* `epidemic_relevant` — boolean
+* `pandemic_relevant` — boolean
+* `status` — active/inactive
+
+Examples for initial seed data:
+
+* COVID-19 → ICD-10 `U07.1`
+* Cholera → ICD-10 `A00`
+* Ebola virus disease → ICD-10 `A98.4`
+* Measles → ICD-10 `B05`
+* Dengue → ICD-10 `A90`
+* Mpox → ICD-10 `B04`
+
+Do not hard-code these values throughout the application. Store them in a database table so that additional diseases and future ICD versions can be added.
+
+---
+
+### 3. Patient Diagnosis
+
+Modify the existing medical-record/diagnosis functionality so that a doctor can associate a diagnosis with a standardized disease code.
+
+A diagnosis should contain:
+
+* Patient ID
+* Doctor ID
+* Disease-code ID
+* Diagnosis status:
+
+  * suspected
+  * probable
+  * confirmed
+  * ruled_out
+* Date of diagnosis
+* Date of onset, if known
+* Notes
+* Supporting laboratory/test reference, if available
+
+The system must distinguish between a **confirmed diagnosis** and a suspected/probable case.
+
+---
+
+### 4. Exposure Tracking
+
+Add an optional exposure record containing:
+
+* Patient ID
+* Disease-code ID
+* Exposure date
+* Exposure location
+* Exposure status:
+
+  * suspected
+  * confirmed
+  * unknown
+* Source/contact information where legally appropriate
+* Notes
+
+Do not expose sensitive information to users who do not have the required permissions.
+
+---
+
+### 5. Outbreak Management
+
+Create an `outbreaks` entity.
+
+Fields should include:
+
+* `id`
+* `outbreak_name`
+* `disease_code_id`
+* `start_date`
+* `end_date`
+* `geographic_area`
+* `status`
+
+  * suspected
+  * active
+  * contained
+  * ended
+* `description`
+* `created_by`
+* `created_at`
+* `updated_at`
+
+Allow authorized administrators/public-health personnel to associate confirmed or suspected cases with an outbreak.
+
+Do NOT automatically declare that an outbreak exists simply because several patients have the same diagnosis. The system should flag unusual clusters for review instead.
+
+---
+
+### 6. Outbreak Detection / Alerts
+
+Add a basic surveillance mechanism.
+
+The system should be able to identify patterns such as:
+
+> Multiple cases of the same infectious disease within a defined geographic area and time period.
+
+For example:
+
+* Disease: Cholera
+* Area: Douala
+* Period: 7 days
+* Confirmed cases: 12
+
+The system can generate:
+
+**"Potential disease cluster detected — requires review."**
+
+This must be treated as a **surveillance alert**, NOT as an automatic declaration of an epidemic or pandemic.
+
+Allow administrators to configure:
+
+* minimum number of cases
+* observation period
+* geographic area
+
+Example:
+
+```text
+Disease: Cholera
+Minimum cases: 5
+Observation period: 7 days
+Area: Douala
+→ Generate surveillance alert
+```
+
+---
+
+### 7. Pandemic/Epidemic Dashboard
+
+Create a dashboard accessible only to authorized roles.
+
+Display:
+
+* Total suspected cases
+* Total confirmed cases
+* Active outbreaks
+* Diseases currently being monitored
+* Cases by geographic area
+* Cases over time
+* Confirmed vs suspected cases
+* Recent surveillance alerts
+
+Use charts and tables where appropriate.
+
+Avoid exposing identifiable patient information in aggregate dashboards.
+
+---
+
+### 8. Role-Based Access Control
+
+Integrate this feature with MediChain's existing RBAC.
+
+Suggested permissions:
+
+**Doctor**
+
+* View disease codes
+* Add diagnoses
+* Add exposure records
+* View relevant patient infectious-disease information
+
+**Administrator**
+
+* Manage disease codes
+* Manage outbreaks
+* View surveillance statistics
+* Review alerts
+
+**Public-health/authorized surveillance role**
+
+* View aggregated outbreak information
+* Review surveillance alerts
+* Access only the patient information permitted by the system's privacy rules
+
+**Patient**
+
+* View their own diagnoses and relevant medical information
+* Cannot access other patients' information
+* Cannot access internal surveillance data
+
+Every sensitive operation must be recorded in the existing audit-log system.
+
+---
+
+### 9. Privacy & Security
+
+Because infectious-disease information is highly sensitive:
+
+* Apply the existing RBAC system.
+* Follow the principle of least privilege.
+* Never expose patient names in public/aggregate dashboards.
+* Log access to infectious-disease records.
+* Log creation, modification, and deletion of diagnoses and outbreak records.
+* Validate all API requests server-side.
+* Prevent unauthorized access through direct API calls.
+* Do not expose sensitive information through frontend state, URLs, or error messages.
+* Preserve existing authentication and authorization mechanisms.
+
+---
+
+### 10. Database Design
+
+Create appropriate relational tables, for example:
+
+```text
+disease_codes
+    id
+    code
+    coding_system
+    disease_name
+    description
+    infectious
+    epidemic_relevant
+    pandemic_relevant
+    status
+
+diagnoses
+    id
+    patient_id
+    doctor_id
+    disease_code_id
+    diagnosis_status
+    diagnosis_date
+    onset_date
+    notes
+
+exposures
+    id
+    patient_id
+    disease_code_id
+    exposure_date
+    location
+    exposure_status
+    notes
+
+outbreaks
+    id
+    outbreak_name
+    disease_code_id
+    start_date
+    end_date
+    geographic_area
+    status
+    description
+    created_by
+
+outbreak_cases
+    id
+    outbreak_id
+    diagnosis_id
+    case_classification
+```
+
+Adapt the schema to MediChain's existing database instead of creating duplicate patient/doctor tables.
+
+---
+
+### 11. API
+
+Create secure API endpoints following the existing MediChain API architecture.
+
+Examples:
+
+```text
+GET    /api/disease-codes
+POST   /api/disease-codes
+
+GET    /api/patients/:id/diagnoses
+POST   /api/patients/:id/diagnoses
+
+GET    /api/patients/:id/exposures
+POST   /api/patients/:id/exposures
+
+GET    /api/outbreaks
+POST   /api/outbreaks
+GET    /api/outbreaks/:id
+PATCH  /api/outbreaks/:id
+
+GET    /api/surveillance/alerts
+GET    /api/surveillance/statistics
+```
+
+Use the project's existing authentication, authorization, validation, error-handling, and API conventions.
+
+---
+
+### 12. Frontend
+
+Add:
+
+**Disease Code Management**
+
+* Search disease
+* Search by ICD code
+* View disease information
+
+**Doctor Diagnosis Form**
+
+* Disease search/autocomplete
+* ICD code displayed automatically
+* Diagnosis status
+* Date
+* Notes
+* Confirmation/test information
+
+Example:
+
+```text
+Disease:
+[ Cholera                         ]
+
+ICD-10:
+[ A00 ]
+
+Status:
+[ Confirmed ▼ ]
+
+Diagnosis date:
+[ 01/10/2026 ]
+
+Notes:
+[.................................]
+
+[Save Diagnosis]
+```
+
+**Surveillance Dashboard**
+
+Create a clean dashboard showing:
+
+```text
+INFECTIOUS DISEASE SURVEILLANCE
+
+Confirmed Cases        124
+Suspected Cases         37
+Active Outbreaks         3
+Alerts                   8
+
+--------------------------------
+Cases by Disease
+--------------------------------
+Cholera                 42
+Measles                 31
+Dengue                  28
+Other                   23
+
+--------------------------------
+Recent Surveillance Alerts
+--------------------------------
+Potential Cholera Cluster
+Douala • 12 cases • Review required
+```
+
+---
+
+### 13. Important Medical-Safety Rule
+
+This system is a **medical information and surveillance tool**, not an autonomous diagnostic system.
+
+It must never:
+
+* diagnose a patient automatically;
+* declare an epidemic automatically;
+* declare a pandemic automatically;
+* replace a doctor's clinical judgment;
+* generate treatment recommendations solely from an ICD code.
+
+Automated mechanisms may only **identify patterns and generate alerts for authorized human review**.
+
+---
+
+### 14. Implementation Requirements
+
+Before modifying the code:
+
+1. Inspect the existing MediChain architecture.
+2. Identify the existing patient, doctor, medical-record, authentication, RBAC, and audit-log implementations.
+3. Reuse existing components wherever possible.
+4. Do not duplicate existing functionality.
+5. Create database migrations.
+6. Add seed data for the initial disease codes.
+7. Implement backend APIs.
+8. Implement frontend interfaces.
+9. Integrate RBAC.
+10. Integrate audit logging.
+11. Add validation and error handling.
+12. Test all new endpoints.
+13. Test unauthorized-access scenarios.
+14. Test diagnosis creation and retrieval.
+15. Test outbreak creation and case association.
+16. Test surveillance-alert generation.
+17. Ensure existing MediChain functionality continues to work.
+
+At the end, provide:
+
+* files created/modified;
+* database changes;
+* API endpoints added;
+* RBAC changes;
+* frontend pages/components added;
+* test results;
+* any configuration/environment variables required.
+
+Do not rewrite unrelated parts of the application.

@@ -1,6 +1,7 @@
 import {
   boolean,
   date,
+  type AnyPgColumn,
   index,
   integer,
   jsonb,
@@ -84,6 +85,10 @@ export const medicalRecordsTable = pgTable(
     treatment: text("treatment").notNull().default(""),
     medications: text("medications").array().notNull().default([]),
     notes: text("notes").notNull().default(""),
+    followUpToRecordId: integer("follow_up_to_record_id").references(
+      (): AnyPgColumn => medicalRecordsTable.id,
+      { onDelete: "set null" },
+    ),
     vitals: jsonb("vitals")
       .$type<MedicalVitals>()
       .notNull()
@@ -95,6 +100,7 @@ export const medicalRecordsTable = pgTable(
   (table) => [
     index("medichain_records_patient_index").on(table.patientId),
     index("medichain_records_doctor_index").on(table.doctorId),
+    index("medichain_records_followup_index").on(table.followUpToRecordId),
     index("medichain_records_created_index").on(table.createdAt),
   ],
 );

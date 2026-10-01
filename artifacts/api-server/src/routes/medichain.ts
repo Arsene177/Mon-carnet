@@ -67,6 +67,7 @@ function recordResponse(record: typeof medicalRecordsTable.$inferSelect, doctorN
     treatment: record.treatment,
     medications: record.medications,
     notes: record.notes,
+    followUpToRecordId: record.followUpToRecordId ?? null,
     vitals: record.vitals ?? {},
     createdAt: record.createdAt.toISOString(),
   };
@@ -505,6 +506,15 @@ router.post(
       return;
     }
     const patientId = params.data.patientId;
+    const followUpToRecordId = body.data.followUpToRecordId;
+    const isFollowUp = body.data.recordType === "Follow-up";
+    if (isFollowUp !== (followUpToRecordId !== null)) {
+      invalidBody(
+        res,
+        "Follow-up records must link to an existing record for this patient.",
+      );
+      return;
+    }
     const [patient] = await db
       .select({ id: usersTable.id })
       .from(usersTable)
@@ -518,6 +528,22 @@ router.post(
       res.status(403).json({ error: "Patient access is not currently granted or has expired." });
       return;
     }
+    if (followUpToRecordId !== null) {
+      const [parentRecord] = await db
+        .select({ id: medicalRecordsTable.id })
+        .from(medicalRecordsTable)
+        .where(
+          and(
+            eq(medicalRecordsTable.id, followUpToRecordId),
+            eq(medicalRecordsTable.patientId, patientId),
+          ),
+        )
+        .limit(1);
+      if (!parentRecord) {
+        res.status(404).json({ error: "The record to follow up on was not found for this patient." });
+        return;
+      }
+    }
     const [record] = await db
       .insert(medicalRecordsTable)
       .values({
@@ -528,6 +554,7 @@ router.post(
         treatment: body.data.treatment,
         medications: body.data.medications,
         notes: body.data.notes,
+        followUpToRecordId,
         vitals: body.data.vitals,
       })
       .returning();

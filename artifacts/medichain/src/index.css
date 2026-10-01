@@ -108,6 +108,7 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
 .record-main { flex:1; min-width:0; }
 .record-main strong { color:#304e4d; font-size:12px; display:block; }
 .record-summary { display:block; margin-top:4px; color:#84908c; font-size:11px; line-height:1.5; }
+.record-followup-label { display:block; margin-top:4px; color:#558477; font-size:10px; font-weight:700; }
 .record-meta { flex:none; font-size:10px; color:#97a29e; text-align:right; white-space:nowrap; }
 .record-open-label { display:flex; flex:none; align-items:center; gap:2px; color:#38776c; font-size:10px; font-weight:700; white-space:nowrap; }
 .record-detail-byline { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 16px; color:#87928f; font-size:10px; }
@@ -115,11 +116,17 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
 .record-detail-section { margin-top:15px; padding-top:14px; border-top:1px solid #f0ede6; }
 .record-detail-section h3 { margin:0; color:#647572; font-size:11px; font-weight:700; }
 .record-detail-section p { margin:6px 0 0; color:#455b56; font-size:12px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
+.record-related-link { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:8px; padding:10px 12px; border:1px solid #e7e1d7; border-radius:9px; background:#fbfaf6; color:#344b49; text-align:left; cursor:pointer; }
+.record-related-link:hover { background:#eef5f0; }
+.record-related-link>span { display:grid; gap:4px; min-width:0; }
+.record-related-link strong { overflow:hidden; text-overflow:ellipsis; font-size:11px; white-space:nowrap; }
+.record-related-link small { color:#87928f; font-size:10px; }
 .record-vitals { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; margin-top:9px; }
 .record-vitals>div { display:grid; gap:4px; padding:10px; border:1px solid #ece9e1; border-radius:9px; }
 .record-vitals span { color:#87928f; font-size:10px; }
 .record-vitals strong { color:#344b49; font-size:11px; }
 .record-create-note { display:block; margin:0 0 13px; line-height:1.5; }
+.record-source-callout { margin-bottom:16px; }
 .callout { padding:19px; background:#eef5f0; border:1px solid #dce9df; border-radius:13px; }
 .callout-head { display:flex; align-items:center; gap:9px; color:#376d62; font-size:12px; font-weight:700; margin-bottom:12px; }
 .callout p { color:#758780; font-size:11px; line-height:1.55; margin-bottom:14px; }

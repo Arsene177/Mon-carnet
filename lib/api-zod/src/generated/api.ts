@@ -159,6 +159,7 @@ export const GetPatientRecordsResponseItem = zod.object({
   "treatment": zod.string(),
   "medications": zod.array(zod.string()),
   "notes": zod.string(),
+  "followUpToRecordId": zod.number().int().nullable(),
   "vitals": zod.object({
   "bloodPressure": zod.string().nullish(),
   "heartRate": zod.number().nullish(),
@@ -297,6 +298,7 @@ export const GetDoctorPatientRecordsResponseItem = zod.object({
   "treatment": zod.string(),
   "medications": zod.array(zod.string()),
   "notes": zod.string(),
+  "followUpToRecordId": zod.number().int().nullable(),
   "vitals": zod.object({
   "bloodPressure": zod.string().nullish(),
   "heartRate": zod.number().nullish(),
@@ -338,6 +340,7 @@ export const AddDoctorPatientRecordBody = zod.object({
   "treatment": zod.string().max(addDoctorPatientRecordBodyTreatmentMax),
   "medications": zod.array(zod.string().max(addDoctorPatientRecordBodyMedicationsItemMax)),
   "notes": zod.string().max(addDoctorPatientRecordBodyNotesMax),
+  "followUpToRecordId": zod.number().int().nullable(),
   "vitals": zod.object({
   "bloodPressure": zod.string().max(addDoctorPatientRecordBodyVitalsBloodPressureMax).nullish(),
   "heartRate": zod.number().min(addDoctorPatientRecordBodyVitalsHeartRateMin).max(addDoctorPatientRecordBodyVitalsHeartRateMax).nullish(),
@@ -356,6 +359,7 @@ export const AddDoctorPatientRecordResponse = zod.object({
   "treatment": zod.string(),
   "medications": zod.array(zod.string()),
   "notes": zod.string(),
+  "followUpToRecordId": zod.number().int().nullable(),
   "vitals": zod.object({
   "bloodPressure": zod.string().nullish(),
   "heartRate": zod.number().nullish(),

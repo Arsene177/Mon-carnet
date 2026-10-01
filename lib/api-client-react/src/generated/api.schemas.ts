@@ -170,6 +170,8 @@ export interface MedicalRecord {
   treatment: string;
   medications: string[];
   notes: string;
+  /** @nullable */
+  followUpToRecordId: number | null;
   vitals: MedicalRecordVitals;
   createdAt: string;
 }
@@ -225,6 +227,8 @@ export interface MedicalRecordInput {
   medications: string[];
   /** @maxLength 10000 */
   notes: string;
+  /** @nullable */
+  followUpToRecordId: number | null;
   vitals: MedicalRecordInputVitals;
 }
 
