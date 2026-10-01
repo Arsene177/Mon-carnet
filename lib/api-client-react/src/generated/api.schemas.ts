@@ -160,6 +160,51 @@ export type MedicalRecordVitals = {
   weightKg?: number | null;
 };
 
+export type DiseaseCodeStatus = typeof DiseaseCodeStatus[keyof typeof DiseaseCodeStatus];
+
+
+export const DiseaseCodeStatus = {
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+} as const;
+
+export interface DiseaseCode {
+  id: number;
+  code: string;
+  codingSystem: string;
+  release: string;
+  diseaseName: string;
+  description: string;
+  infectious: boolean;
+  epidemicRelevant: boolean;
+  pandemicRelevant: boolean;
+  status: DiseaseCodeStatus;
+  source: string;
+}
+
+export type MedicalDiagnosisStatus = typeof MedicalDiagnosisStatus[keyof typeof MedicalDiagnosisStatus];
+
+
+export const MedicalDiagnosisStatus = {
+  suspected: 'suspected',
+  probable: 'probable',
+  confirmed: 'confirmed',
+  ruled_out: 'ruled_out',
+} as const;
+
+export interface CodedDiagnosis {
+  id: number;
+  diseaseCode: DiseaseCode;
+  status: MedicalDiagnosisStatus;
+  diagnosisDate: string;
+  /** @nullable */
+  onsetDate: string | null;
+  notes: string;
+  /** @nullable */
+  supportingRecordId: number | null;
+  createdAt: string;
+}
+
 export interface MedicalRecord {
   id: number;
   patientId: number;
@@ -172,6 +217,7 @@ export interface MedicalRecord {
   notes: string;
   /** @nullable */
   followUpToRecordId: number | null;
+  codedDiagnoses: CodedDiagnosis[];
   vitals: MedicalRecordVitals;
   createdAt: string;
 }
@@ -217,6 +263,18 @@ export type MedicalRecordInputVitals = {
   weightKg?: number | null;
 };
 
+export interface CodedDiagnosisInput {
+  diseaseCodeId: number;
+  status: MedicalDiagnosisStatus;
+  diagnosisDate: string;
+  /** @nullable */
+  onsetDate: string | null;
+  /** @maxLength 10000 */
+  notes: string;
+  /** @nullable */
+  supportingRecordId: number | null;
+}
+
 export interface MedicalRecordInput {
   recordType: MedicalRecordInputRecordType;
   /** @maxLength 5000 */
@@ -229,6 +287,8 @@ export interface MedicalRecordInput {
   notes: string;
   /** @nullable */
   followUpToRecordId: number | null;
+  /** @maxItems 10 */
+  codedDiagnoses?: CodedDiagnosisInput[];
   vitals: MedicalRecordInputVitals;
 }
 
@@ -305,6 +365,13 @@ export interface AdminAnalytics {
 }
 
 export type SearchPatientsParams = {
+/**
+ * @minLength 2
+ */
+query: string;
+};
+
+export type SearchDiseaseCodesParams = {
 /**
  * @minLength 2
  */

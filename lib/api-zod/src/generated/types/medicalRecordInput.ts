@@ -5,6 +5,7 @@
  * Medichain secure medical records API
  * OpenAPI spec version: 0.1.0
  */
+import type { CodedDiagnosisInput } from './codedDiagnosisInput';
 import type { MedicalRecordInputRecordType } from './medicalRecordInputRecordType';
 import type { MedicalRecordInputVitals } from './medicalRecordInputVitals';
 
@@ -20,5 +21,7 @@ export interface MedicalRecordInput {
   notes: string;
   /** @nullable */
   followUpToRecordId: number | null;
+  /** @maxItems 10 */
+  codedDiagnoses?: CodedDiagnosisInput[];
   vitals: MedicalRecordInputVitals;
 }

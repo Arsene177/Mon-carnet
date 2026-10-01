@@ -18,3 +18,6 @@
 //   export type Post = typeof postsTable.$inferSelect;
 
 export * from "./medichain";
+export * from "./disease-codes";
+export * from "./medical-diagnoses";
+export * from "./audit-events";

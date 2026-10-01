@@ -160,6 +160,28 @@ export const GetPatientRecordsResponseItem = zod.object({
   "medications": zod.array(zod.string()),
   "notes": zod.string(),
   "followUpToRecordId": zod.number().int().nullable(),
+  "codedDiagnoses": zod.array(zod.object({
+  "id": zod.number().int(),
+  "diseaseCode": zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "codingSystem": zod.string(),
+  "release": zod.string(),
+  "diseaseName": zod.string(),
+  "description": zod.string(),
+  "infectious": zod.boolean(),
+  "epidemicRelevant": zod.boolean(),
+  "pandemicRelevant": zod.boolean(),
+  "status": zod.enum(['ACTIVE', 'INACTIVE']),
+  "source": zod.string()
+}),
+  "status": zod.enum(['suspected', 'probable', 'confirmed', 'ruled_out']),
+  "diagnosisDate": zod.coerce.date(),
+  "onsetDate": zod.coerce.date().nullable(),
+  "notes": zod.string(),
+  "supportingRecordId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date()
+})),
   "vitals": zod.object({
   "bloodPressure": zod.string().nullish(),
   "heartRate": zod.number().nullish(),
@@ -268,6 +290,30 @@ export const SearchPatientsResponseItem = zod.object({
 export const SearchPatientsResponse = zod.array(SearchPatientsResponseItem)
 
 
+export const searchDiseaseCodesQueryQueryMin = 2;
+
+
+
+export const SearchDiseaseCodesQueryParams = zod.object({
+  "query": zod.coerce.string().min(searchDiseaseCodesQueryQueryMin)
+})
+
+export const SearchDiseaseCodesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "codingSystem": zod.string(),
+  "release": zod.string(),
+  "diseaseName": zod.string(),
+  "description": zod.string(),
+  "infectious": zod.boolean(),
+  "epidemicRelevant": zod.boolean(),
+  "pandemicRelevant": zod.boolean(),
+  "status": zod.enum(['ACTIVE', 'INACTIVE']),
+  "source": zod.string()
+})
+export const SearchDiseaseCodesResponse = zod.array(SearchDiseaseCodesResponseItem)
+
+
 export const GetPatientEmergencyParams = zod.object({
   "patientId": zod.coerce.number().int()
 })
@@ -299,6 +345,28 @@ export const GetDoctorPatientRecordsResponseItem = zod.object({
   "medications": zod.array(zod.string()),
   "notes": zod.string(),
   "followUpToRecordId": zod.number().int().nullable(),
+  "codedDiagnoses": zod.array(zod.object({
+  "id": zod.number().int(),
+  "diseaseCode": zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "codingSystem": zod.string(),
+  "release": zod.string(),
+  "diseaseName": zod.string(),
+  "description": zod.string(),
+  "infectious": zod.boolean(),
+  "epidemicRelevant": zod.boolean(),
+  "pandemicRelevant": zod.boolean(),
+  "status": zod.enum(['ACTIVE', 'INACTIVE']),
+  "source": zod.string()
+}),
+  "status": zod.enum(['suspected', 'probable', 'confirmed', 'ruled_out']),
+  "diagnosisDate": zod.coerce.date(),
+  "onsetDate": zod.coerce.date().nullable(),
+  "notes": zod.string(),
+  "supportingRecordId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date()
+})),
   "vitals": zod.object({
   "bloodPressure": zod.string().nullish(),
   "heartRate": zod.number().nullish(),
@@ -322,6 +390,10 @@ export const addDoctorPatientRecordBodyMedicationsItemMax = 200;
 
 export const addDoctorPatientRecordBodyNotesMax = 10000;
 
+export const addDoctorPatientRecordBodyCodedDiagnosesItemNotesMax = 10000;
+
+export const addDoctorPatientRecordBodyCodedDiagnosesMax = 10;
+
 export const addDoctorPatientRecordBodyVitalsBloodPressureMax = 30;
 
 export const addDoctorPatientRecordBodyVitalsHeartRateMin = 30;
@@ -341,6 +413,14 @@ export const AddDoctorPatientRecordBody = zod.object({
   "medications": zod.array(zod.string().max(addDoctorPatientRecordBodyMedicationsItemMax)),
   "notes": zod.string().max(addDoctorPatientRecordBodyNotesMax),
   "followUpToRecordId": zod.number().int().nullable(),
+  "codedDiagnoses": zod.array(zod.object({
+  "diseaseCodeId": zod.number().int(),
+  "status": zod.enum(['suspected', 'probable', 'confirmed', 'ruled_out']),
+  "diagnosisDate": zod.coerce.date(),
+  "onsetDate": zod.coerce.date().nullable(),
+  "notes": zod.string().max(addDoctorPatientRecordBodyCodedDiagnosesItemNotesMax),
+  "supportingRecordId": zod.number().int().nullable()
+})).max(addDoctorPatientRecordBodyCodedDiagnosesMax).optional(),
   "vitals": zod.object({
   "bloodPressure": zod.string().max(addDoctorPatientRecordBodyVitalsBloodPressureMax).nullish(),
   "heartRate": zod.number().min(addDoctorPatientRecordBodyVitalsHeartRateMin).max(addDoctorPatientRecordBodyVitalsHeartRateMax).nullish(),
@@ -360,6 +440,28 @@ export const AddDoctorPatientRecordResponse = zod.object({
   "medications": zod.array(zod.string()),
   "notes": zod.string(),
   "followUpToRecordId": zod.number().int().nullable(),
+  "codedDiagnoses": zod.array(zod.object({
+  "id": zod.number().int(),
+  "diseaseCode": zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "codingSystem": zod.string(),
+  "release": zod.string(),
+  "diseaseName": zod.string(),
+  "description": zod.string(),
+  "infectious": zod.boolean(),
+  "epidemicRelevant": zod.boolean(),
+  "pandemicRelevant": zod.boolean(),
+  "status": zod.enum(['ACTIVE', 'INACTIVE']),
+  "source": zod.string()
+}),
+  "status": zod.enum(['suspected', 'probable', 'confirmed', 'ruled_out']),
+  "diagnosisDate": zod.coerce.date(),
+  "onsetDate": zod.coerce.date().nullable(),
+  "notes": zod.string(),
+  "supportingRecordId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date()
+})),
   "vitals": zod.object({
   "bloodPressure": zod.string().nullish(),
   "heartRate": zod.number().nullish(),

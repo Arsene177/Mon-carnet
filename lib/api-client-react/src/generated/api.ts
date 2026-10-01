@@ -24,6 +24,7 @@ import type {
   AdminAnalytics,
   AdminStats,
   AuthSession,
+  DiseaseCode,
   DoctorStats,
   EmergencyInfo,
   EmergencyInfoInput,
@@ -36,6 +37,7 @@ import type {
   PatientSearchResult,
   PermissionGrantInput,
   RegistrationInput,
+  SearchDiseaseCodesParams,
   SearchPatientsParams,
   SearchUsersParams,
   User
@@ -1033,6 +1035,84 @@ export function useSearchPatients<TData = Awaited<ReturnType<typeof searchPatien
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchPatientsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSearchDiseaseCodesUrl = (params: SearchDiseaseCodesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/disease-codes?${stringifiedParams}` : `/api/disease-codes`
+}
+
+export const searchDiseaseCodes = async (params: SearchDiseaseCodesParams, options?: Parameters<typeof customFetch>[1]): Promise<DiseaseCode[]> => {
+
+  return customFetch<DiseaseCode[]>(getSearchDiseaseCodesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchDiseaseCodesQueryKey = (params?: SearchDiseaseCodesParams,) => {
+    return [
+    `/api/disease-codes`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchDiseaseCodesQueryOptions = <TData = Awaited<ReturnType<typeof searchDiseaseCodes>>, TError = ErrorType<unknown>>(params: SearchDiseaseCodesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchDiseaseCodes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchDiseaseCodesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchDiseaseCodes>>> = ({ signal }) => searchDiseaseCodes(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchDiseaseCodes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchDiseaseCodesQueryResult = NonNullable<Awaited<ReturnType<typeof searchDiseaseCodes>>>
+export type SearchDiseaseCodesQueryError = ErrorType<unknown>
+
+
+
+export function useSearchDiseaseCodes<TData = Awaited<ReturnType<typeof searchDiseaseCodes>>, TError = ErrorType<unknown>>(
+ params: SearchDiseaseCodesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchDiseaseCodes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchDiseaseCodesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

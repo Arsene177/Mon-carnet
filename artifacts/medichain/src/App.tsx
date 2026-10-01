@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { useFieldArray, useForm } from 'react-hook-form';
 import {
   Activity, AlertCircle, ArrowRight, BadgeCheck, BookOpen, CalendarDays, Check,
   ChevronRight, ClipboardList, Clock3, FileHeart, FilePlus2, HeartPulse, KeyRound,
@@ -12,17 +13,18 @@ import {
   getGetPatientPendingRequestsQueryKey, getGetPatientPermissionsQueryKey,
   getGetPatientProfileQueryKey, getGetPatientRecordsQueryKey, getGetPendingDoctorsQueryKey,
   getGetDoctorPatientRecordsQueryKey, getGetDoctorStatsQueryKey, getGetPatientEmergencyQueryKey,
-  getSearchPatientsQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
+  getSearchDiseaseCodesQueryKey, getSearchPatientsQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
   useAddDoctorPatientRecord, useApproveDoctor, useGetAdminAnalytics, useGetAdminStats,
   useGetDoctorPatientRecords, useGetDoctorProfile, useGetDoctorStats, useGetMe,
   useGetPatientEmergency, useGetPatientPendingRequests, useGetPatientPermissions,
   useGetPatientProfile, useGetPatientRecords, useGetPendingDoctors, useGrantPatientPermission,
   useLogin, useRegister, useRevokeDoctor, useRevokePatientPermission, useSearchPatients,
-  useSearchUsers, useUpdateEmergencyInfo,
+  useSearchDiseaseCodes, useSearchUsers, useUpdateEmergencyInfo,
 } from '@workspace/api-client-react';
 import type {
-  EmergencyInfoInput, MedicalRecord, MedicalRecordInput, MedicalRecordRecordType, User,
+  DiseaseCode, EmergencyInfoInput, MedicalRecord, MedicalRecordInput, MedicalRecordRecordType, User,
 } from '@workspace/api-client-react';
+import { Form } from '@/components/ui/form';
 import { useLocation } from 'wouter';
 
 const queryClient = new QueryClient();
@@ -35,6 +37,48 @@ const adminTabs: Tab[] = ['System overview', 'Doctor approvals', 'User search', 
 const dateLabel = (date?: string | null) => date ? new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not provided';
 const initials = (name?: string) => (name || 'MC').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
 const errText = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+
+type CodedDiagnosisStatus = 'suspected' | 'probable' | 'confirmed' | 'ruled_out';
+type CodedDiagnosisDraft = {
+  diseaseCodeId: number | null;
+  status: CodedDiagnosisStatus;
+  diagnosisDate: string;
+  onsetDate: string;
+  notes: string;
+  supportingRecordId: number | null;
+};
+type DoctorRecordFormValues = {
+  recordType: MedicalRecordRecordType;
+  diagnosis: string;
+  treatment: string;
+  medications: string;
+  notes: string;
+  bloodPressure: string;
+  heartRate: string;
+  temperature: string;
+  weightKg: string;
+  codedDiagnoses: CodedDiagnosisDraft[];
+};
+
+function localDateInputValue() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+function defaultDoctorRecordForm(recordType: MedicalRecordRecordType = 'Consultation'): DoctorRecordFormValues {
+  return {
+    recordType,
+    diagnosis: '',
+    treatment: '',
+    medications: '',
+    notes: '',
+    bloodPressure: '',
+    heartRate: '',
+    temperature: '',
+    weightKg: '',
+    codedDiagnoses: [],
+  };
+}
 
 function App() {
   return <QueryClientProvider client={queryClient}><Router /></QueryClientProvider>;
@@ -254,6 +298,20 @@ function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFo
       {record.followUpToRecordId !== null && <section className="record-detail-section"><h3>Follows up on</h3>{parentRecord ? <button type="button" className="record-related-link" onClick={() => onOpenRecord(parentRecord)}><span><strong>{parentRecord.recordType}: {parentRecord.diagnosis || 'Care note'}</strong><small>By {parentRecord.doctorName} · {dateLabel(parentRecord.createdAt)}</small></span><ChevronRight size={15}/></button> : <p>Original record #{record.followUpToRecordId}</p>}</section>}
       {followUps.length > 0 && <section className="record-detail-section"><h3>Linked follow-ups</h3>{followUps.map((followUp) => <button type="button" className="record-related-link" key={followUp.id} onClick={() => onOpenRecord(followUp)}><span><strong>{followUp.diagnosis || 'Follow-up note'}</strong><small>By {followUp.doctorName} · {dateLabel(followUp.createdAt)}</small></span><ChevronRight size={15}/></button>)}</section>}
       <section className="record-detail-section"><h3>Diagnosis</h3><p>{record.diagnosis || 'No diagnosis documented.'}</p></section>
+       {record.codedDiagnoses.length > 0 && <section className="record-detail-section"><h3>Structured disease diagnoses</h3>{record.codedDiagnoses.map((diagnosis) => {
+         const supportingRecord = records.find((item) => item.id === diagnosis.supportingRecordId);
+         return <article key={diagnosis.id} className="callout" data-testid={`coded-diagnosis-${diagnosis.id}`} style={{marginBottom:10}}>
+           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
+             <strong>{diagnosis.diseaseCode.diseaseName}</strong>
+             <span className="tag">{diagnosis.status.replace('_', ' ')}</span>
+           </div>
+           <p style={{margin:'7px 0 4px'}}>{diagnosis.diseaseCode.code} · {diagnosis.diseaseCode.codingSystem} {diagnosis.diseaseCode.release}</p>
+           <small>Diagnosis date {dateLabel(diagnosis.diagnosisDate)} · Onset {dateLabel(diagnosis.onsetDate)}</small>
+           {diagnosis.notes && <p style={{marginBottom:0}}>{diagnosis.notes}</p>}
+           {supportingRecord && <button type="button" className="record-related-link" style={{marginTop:10}} onClick={() => onOpenRecord(supportingRecord)}><span><strong>Supporting record #{supportingRecord.id}</strong><small>{supportingRecord.recordType} · {dateLabel(supportingRecord.createdAt)}</small></span><ChevronRight size={15}/></button>}
+           {!supportingRecord && diagnosis.supportingRecordId !== null && <p style={{marginBottom:0}}>Supporting record #{diagnosis.supportingRecordId}</p>}
+         </article>;
+       })}</section>}
       <section className="record-detail-section"><h3>Treatment / plan</h3><p>{record.treatment || 'No treatment or plan documented.'}</p></section>
       <section className="record-detail-section"><h3>Medications</h3><p>{record.medications.length ? record.medications.join(', ') : 'No medications documented.'}</p></section>
       <section className="record-detail-section"><h3>Clinical notes</h3><p>{record.notes || 'No additional notes.'}</p></section>
@@ -276,51 +334,116 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
 function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const [search, setSearch] = useState('');
+  const [codeSearch, setCodeSearch] = useState('');
+  const [activeCodeRow, setActiveCodeRow] = useState<number | null>(null);
+  const [selectedDiseaseCodes, setSelectedDiseaseCodes] = useState<Array<DiseaseCode | null>>([]);
   const [patientId, setPatientId] = useState<number | null>(null);
   const [entryOpen, setEntryOpen] = useState(false);
   const [viewingRecord, setViewingRecord] = useState<MedicalRecord | null>(null);
   const [followUpSource, setFollowUpSource] = useState<MedicalRecord | null>(null);
   const [toast, setToast] = useState('');
+  const recordForm = useForm<DoctorRecordFormValues>({
+    defaultValues: defaultDoctorRecordForm(),
+  });
+  const codedDiagnosisFields = useFieldArray({
+    control: recordForm.control,
+    name: 'codedDiagnoses',
+  });
   const activeDoctor = user.role === 'DOCTOR';
   const profile = useGetDoctorProfile({ query: { enabled: activeDoctor, queryKey: getGetDoctorProfileQueryKey() } });
   const stats = useGetDoctorStats({ query: { enabled: activeDoctor, queryKey: getGetDoctorStatsQueryKey() } });
   const params = useMemo(() => ({ query: search.trim().length >= 2 ? search.trim() : '__' }), [search]);
+  const codeSearchParams = useMemo(() => ({ query: codeSearch.trim().length >= 2 ? codeSearch.trim() : '__' }), [codeSearch]);
   const searchResults = useSearchPatients(params, { query: { enabled: search.trim().length >= 2, queryKey: getSearchPatientsQueryKey(params), retry: false } });
+  const diseaseCodeSearch = useSearchDiseaseCodes(codeSearchParams, { query: { enabled: activeDoctor && entryOpen && activeCodeRow !== null && codeSearch.trim().length >= 2, queryKey: getSearchDiseaseCodesQueryKey(codeSearchParams), retry: false } });
   const emergency = useGetPatientEmergency(patientId ?? 0, { query: { enabled: patientId !== null, queryKey: getGetPatientEmergencyQueryKey(patientId ?? 0), retry: false } });
   const patientRecords = useGetDoctorPatientRecords(patientId ?? 0, { query: { enabled: patientId !== null, queryKey: getGetDoctorPatientRecordsQueryKey(patientId ?? 0), retry: false } });
   const addRecord = useAddDoctorPatientRecord();
   const qc = useQueryClient();
   const selected = searchResults.data?.find((result) => result.user.id === patientId);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
+  useEffect(() => {
+    if (!entryOpen) return;
+    recordForm.reset(defaultDoctorRecordForm(followUpSource ? 'Follow-up' : 'Consultation'));
+    setSelectedDiseaseCodes([]);
+    setActiveCodeRow(null);
+    setCodeSearch('');
+  }, [entryOpen, followUpSource?.id]);
   const startFollowUp = (source: MedicalRecord) => {
     setViewingRecord(null);
     setFollowUpSource(source);
+    setSelectedDiseaseCodes([]);
+    setActiveCodeRow(null);
+    setCodeSearch('');
+    recordForm.reset(defaultDoctorRecordForm('Follow-up'));
     setEntryOpen(true);
   };
-  const submitRecord = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitRecord = (values: DoctorRecordFormValues) => {
     if (patientId === null) return;
-    const form = new FormData(event.currentTarget);
-    const numOrNull = (key: string) => String(form.get(key) || '').trim() ? Number(form.get(key)) : null;
+    if (values.codedDiagnoses.some((diagnosis) => diagnosis.diseaseCodeId === null)) {
+      notify('Choose a disease code for every structured diagnosis, or remove the empty row.');
+      return;
+    }
+    const numOrNull = (value: string) => value.trim() ? Number(value) : null;
     const payload: MedicalRecordInput = {
-      recordType: String(form.get('recordType')) as MedicalRecordRecordType,
-      diagnosis: String(form.get('diagnosis') || ''),
-      treatment: String(form.get('treatment') || ''),
-      medications: String(form.get('medications') || '').split(',').map((item) => item.trim()).filter(Boolean),
-      notes: String(form.get('notes') || ''),
+      recordType: values.recordType,
+      diagnosis: values.diagnosis,
+      treatment: values.treatment,
+      medications: values.medications.split(',').map((item) => item.trim()).filter(Boolean),
+      notes: values.notes,
       followUpToRecordId: followUpSource?.id ?? null,
+      codedDiagnoses: values.codedDiagnoses.map((diagnosis) => ({
+        diseaseCodeId: diagnosis.diseaseCodeId!,
+        status: diagnosis.status,
+        diagnosisDate: diagnosis.diagnosisDate,
+        onsetDate: diagnosis.onsetDate || null,
+        notes: diagnosis.notes,
+        supportingRecordId: diagnosis.supportingRecordId,
+      })),
       vitals: {
-        bloodPressure: String(form.get('bloodPressure') || '').trim() || null,
-        heartRate: numOrNull('heartRate'), temperature: numOrNull('temperature'), weightKg: numOrNull('weightKg'),
+        bloodPressure: values.bloodPressure.trim() || null,
+        heartRate: numOrNull(values.heartRate),
+        temperature: numOrNull(values.temperature),
+        weightKg: numOrNull(values.weightKg),
       },
     };
     addRecord.mutate({ patientId, data: payload }, { onSuccess: (record) => {
       qc.invalidateQueries({ queryKey: getGetDoctorPatientRecordsQueryKey(patientId) });
       qc.invalidateQueries({ queryKey: getGetDoctorStatsQueryKey() });
-      setEntryOpen(false); setFollowUpSource(null); setViewingRecord(record); notify('Record added to the patient file.');
+      setEntryOpen(false); setFollowUpSource(null); setSelectedDiseaseCodes([]); setActiveCodeRow(null); setViewingRecord(record); notify('Record added to the patient file.');
     }, onError: (error) => notify(errText(error)) });
   };
-  const choosePatient = (id: number) => { setPatientId(id); setEntryOpen(false); setViewingRecord(null); setFollowUpSource(null); };
+  const choosePatient = (id: number) => { setPatientId(id); setEntryOpen(false); setViewingRecord(null); setFollowUpSource(null); setSelectedDiseaseCodes([]); setActiveCodeRow(null); setCodeSearch(''); };
+  const addCodedDiagnosis = () => {
+    const nextIndex = codedDiagnosisFields.fields.length;
+    codedDiagnosisFields.append({
+      diseaseCodeId: null,
+      status: 'suspected',
+      diagnosisDate: localDateInputValue(),
+      onsetDate: '',
+      notes: '',
+      supportingRecordId: null,
+    });
+    setSelectedDiseaseCodes((current) => [...current, null]);
+    setActiveCodeRow(nextIndex);
+    setCodeSearch('');
+  };
+  const chooseDiseaseCode = (index: number, code: DiseaseCode) => {
+    setSelectedDiseaseCodes((current) => {
+      const next = [...current];
+      next[index] = code;
+      return next;
+    });
+    recordForm.setValue(`codedDiagnoses.${index}.diseaseCodeId`, code.id, { shouldDirty: true, shouldValidate: true });
+    setActiveCodeRow(null);
+    setCodeSearch('');
+  };
+  const removeCodedDiagnosis = (index: number) => {
+    codedDiagnosisFields.remove(index);
+    setSelectedDiseaseCodes((current) => current.filter((_, row) => row !== index));
+    setActiveCodeRow(null);
+    setCodeSearch('');
+  };
   if (user.role === 'PENDING_DOCTOR') return <><Heading eyebrow="Clinician access" title={`Welcome, Dr. ${user.name}.`} subtitle="Your account is under review. Once approved, you can search for patients and contribute to their records."/><div className="security-banner"><div><h3>Verification in progress</h3><p>Our administrative team is reviewing your account details. You’ll be able to use the clinical workspace after approval.</p></div><Clock3 size={33} className="security-symbol"/></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Account profile</h2><p className="panel-caption">Information submitted with your registration</p></div><span className="tag warning">Pending review</span></div><div className="panel-body"><div className="data-row"><span className="data-key">Name</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">Email</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">Submitted</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section></>;
   return <>
     {tab === 'Patients' && <>
@@ -333,22 +456,75 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         {emergency.isLoading ? <div className="skeleton"/> : emergency.error ? <ErrorState error={emergency.error} retry={()=>emergency.refetch()}/> : emergency.data ? <div className="callout" style={{marginBottom:15}}><div className="callout-head"><HeartPulse size={16}/> Emergency information</div><div className="data-row"><span className="data-key">Blood group</span><span className="data-value">{emergency.data.bloodGroup}</span></div><div className="data-row"><span className="data-key">Allergies</span><span className="data-value">{emergency.data.allergies || 'None listed'}</span></div><div className="data-row"><span className="data-key">Emergency contact</span><span className="data-value">{emergency.data.emergencyContact || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Updated</span><span className="data-value">{dateLabel(emergency.data.updatedAt)}</span></div></div> : <EmptyState icon={HeartPulse} title="Emergency information unavailable" children="This patient has not added emergency details yet."/>}
         {selected.hasAccess ? <><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',margin:'20px 0 10px'}}><div><h3 className="panel-title">Shared medical records</h3><p className="panel-caption">Access expires {dateLabel(selected.expiresAt)} · Existing entries are read-only</p></div><button className="btn small" onClick={()=>{setFollowUpSource(null);setEntryOpen(true);}} data-testid="button-add-record"><Plus size={14}/> Add record</button></div>{patientRecords.isLoading ? <div className="skeleton"/> : patientRecords.error ? <ErrorState error={patientRecords.error} retry={()=>patientRecords.refetch()}/> : patientRecords.data?.length ? patientRecords.data.map(r=><RecordRow key={r.id} record={r} records={patientRecords.data ?? []} onOpen={setViewingRecord}/>) : <EmptyState icon={FileHeart} title="No shared records yet" children="Add a consultation or other record to begin this patient’s shared timeline."/>}</> : <div className="notice" style={{marginTop:18}}>Full medical records are private until this patient grants you access. You can view only emergency information for now.</div>}
       </div></section>}
-      {entryOpen && selected?.hasAccess && <Modal title={followUpSource ? `Follow-up to ${followUpSource.recordType}` : `Add a record for ${selected.user.name}`} onClose={()=>{setEntryOpen(false);setFollowUpSource(null);}}>
+      {entryOpen && selected?.hasAccess && <Modal title={followUpSource ? `Follow-up to ${followUpSource.recordType}` : `Add a record for ${selected.user.name}`} onClose={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>
         {followUpSource ? <div className="callout record-source-callout"><div className="callout-head"><FileHeart size={16}/> This entry will be linked to</div><p><strong>{followUpSource.recordType}: {followUpSource.diagnosis || 'Care note'}</strong><br/>By {followUpSource.doctorName} · {dateLabel(followUpSource.createdAt)}</p></div> : <p className="field-note record-create-note">Saved records are permanent. To correct or add details to an existing entry, open it and choose “Add linked follow-up.”</p>}
-        <form key={followUpSource?.id ?? 'new-record'} onSubmit={submitRecord}>
+        <Form {...recordForm}>
+        <form key={followUpSource?.id ?? 'new-record'} onSubmit={recordForm.handleSubmit(submitRecord)}>
           <div className="form-grid">
-            <div className="field"><label htmlFor="record-type">Record type</label><select id="record-type" name="recordType" defaultValue={followUpSource ? 'Follow-up' : 'Consultation'} data-testid="select-record-type">{followUpSource ? <option value="Follow-up">Follow-up</option> : ['Consultation','Diagnosis','Treatment','Lab Results','Prescription','Surgery','Emergency','Other'].map((type)=><option key={type}>{type}</option>)}</select></div>
-            <div className="field"><label htmlFor="record-diagnosis">Diagnosis</label><input id="record-diagnosis" name="diagnosis" required maxLength={5000} data-testid="input-diagnosis"/></div>
-            <div className="field full"><label htmlFor="record-treatment">Treatment / plan</label><textarea id="record-treatment" name="treatment" maxLength={5000} data-testid="input-treatment"/></div>
-            <div className="field full"><label htmlFor="record-meds">Medications</label><input id="record-meds" name="medications" placeholder="Separate medications with commas" data-testid="input-medications"/></div>
-            <div className="field"><label htmlFor="record-bp">Blood pressure</label><input id="record-bp" name="bloodPressure" placeholder="120/80" data-testid="input-vital-bp"/></div>
-            <div className="field"><label htmlFor="record-hr">Heart rate (bpm)</label><input id="record-hr" name="heartRate" type="number" min="30" max="200" data-testid="input-vital-heart-rate"/></div>
-            <div className="field"><label htmlFor="record-temp">Temperature (°C)</label><input id="record-temp" name="temperature" type="number" step=".1" min="30" max="45" data-testid="input-vital-temp"/></div>
-            <div className="field"><label htmlFor="record-weight">Weight (kg)</label><input id="record-weight" name="weightKg" type="number" step=".1" min="1" max="500" data-testid="input-vital-weight"/></div>
-            <div className="field full"><label htmlFor="record-notes">Clinical notes</label><textarea id="record-notes" name="notes" maxLength={10000} data-testid="input-record-notes"/></div>
+            <div className="field"><label htmlFor="record-type">Record type</label><select id="record-type" {...recordForm.register('recordType')} data-testid="select-record-type">{followUpSource ? <option value="Follow-up">Follow-up</option> : ['Consultation','Diagnosis','Treatment','Lab Results','Prescription','Surgery','Emergency','Other'].map((type)=><option key={type}>{type}</option>)}</select></div>
+            <div className="field"><label htmlFor="record-diagnosis">Diagnosis</label><input id="record-diagnosis" {...recordForm.register('diagnosis')} required maxLength={5000} data-testid="input-diagnosis"/></div>
+            <div className="field full" style={{position:'relative'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+                <label>Structured disease diagnoses <span style={{fontWeight:400,color:'#81908b'}}>(optional)</span></label>
+                <button type="button" className="btn small secondary" onClick={addCodedDiagnosis} data-testid="button-add-coded-diagnosis"><Plus size={13}/> Add code</button>
+              </div>
+              <p className="field-note">Search the versioned WHO ICD-10 catalogue. This supplements, and does not replace, the free-text diagnosis above.</p>
+              {codedDiagnosisFields.fields.map((field, index) => {
+                const selectedCode = selectedDiseaseCodes[index];
+                const searchIsActive = activeCodeRow === index;
+                return <div className="callout" key={field.id} style={{marginBottom:12}}>
+                  <div className="field" style={{position:'relative'}}>
+                    <label htmlFor={`coded-diagnosis-code-${index}`}>Disease or code</label>
+                    <input
+                      id={`coded-diagnosis-code-${index}`}
+                      type="search"
+                      autoComplete="off"
+                      value={searchIsActive ? codeSearch : selectedCode?.diseaseName ?? ''}
+                      placeholder="Search by disease name or code"
+                      onFocus={() => { setActiveCodeRow(index); setCodeSearch(selectedCode?.diseaseName ?? ''); }}
+                      onChange={(event) => {
+                        setActiveCodeRow(index);
+                        setCodeSearch(event.target.value);
+                        if (selectedCode) {
+                          setSelectedDiseaseCodes((current) => {
+                            const next = [...current];
+                            next[index] = null;
+                            return next;
+                          });
+                          recordForm.setValue(`codedDiagnoses.${index}.diseaseCodeId`, null, { shouldDirty: true });
+                        }
+                      }}
+                      aria-expanded={searchIsActive && codeSearch.trim().length >= 2}
+                      aria-controls={`disease-code-results-${index}`}
+                      data-testid={`input-coded-diagnosis-search-${index}`}
+                    />
+                    {selectedCode && !searchIsActive && <small>{selectedCode.code} · {selectedCode.codingSystem} {selectedCode.release}</small>}
+                    {searchIsActive && codeSearch.trim().length >= 2 && <div id={`disease-code-results-${index}`} role="listbox" style={{position:'absolute',top:'100%',left:0,right:0,zIndex:20,maxHeight:230,overflowY:'auto',background:'#fff',border:'1px solid #d7e3df',borderRadius:10,boxShadow:'0 12px 28px #17343520',padding:6}}>
+                      {diseaseCodeSearch.isLoading ? <p className="field-note" style={{padding:8}}>Searching catalogue…</p> : diseaseCodeSearch.error ? <div style={{padding:8}}><ErrorState error={diseaseCodeSearch.error} retry={()=>diseaseCodeSearch.refetch()}/></div> : diseaseCodeSearch.data?.length ? diseaseCodeSearch.data.map((code) => <button key={code.id} type="button" role="option" aria-selected={selectedCode?.id === code.id} className="record-related-link" style={{width:'100%',border:0,textAlign:'left'}} onMouseDown={(event)=>event.preventDefault()} onClick={()=>chooseDiseaseCode(index,code)} data-testid={`button-select-disease-code-${code.id}`}><span><strong>{code.diseaseName}</strong><small>{code.code} · {code.codingSystem} {code.release}</small></span><ChevronRight size={14}/></button>) : <p className="field-note" style={{padding:8}}>No active codes match that search.</p>}
+                    </div>}
+                  </div>
+                  <div className="form-grid" style={{marginTop:12}}>
+                    <div className="field"><label htmlFor={`coded-diagnosis-status-${index}`}>Status</label><select id={`coded-diagnosis-status-${index}`} {...recordForm.register(`codedDiagnoses.${index}.status` as const)} data-testid={`select-coded-diagnosis-status-${index}`}><option value="suspected">Suspected</option><option value="probable">Probable</option><option value="confirmed">Confirmed</option><option value="ruled_out">Ruled out</option></select></div>
+                    <div className="field"><label htmlFor={`coded-diagnosis-date-${index}`}>Diagnosis date</label><input id={`coded-diagnosis-date-${index}`} type="date" required {...recordForm.register(`codedDiagnoses.${index}.diagnosisDate` as const)} data-testid={`input-coded-diagnosis-date-${index}`}/></div>
+                    <div className="field"><label htmlFor={`coded-diagnosis-onset-${index}`}>Onset date</label><input id={`coded-diagnosis-onset-${index}`} type="date" {...recordForm.register(`codedDiagnoses.${index}.onsetDate` as const)} data-testid={`input-coded-diagnosis-onset-${index}`}/></div>
+                    <div className="field"><label htmlFor={`coded-diagnosis-support-${index}`}>Supporting record</label><select id={`coded-diagnosis-support-${index}`} {...recordForm.register(`codedDiagnoses.${index}.supportingRecordId` as const, {setValueAs:(value)=>value === '' ? null : Number(value)})} data-testid={`select-coded-diagnosis-support-${index}`}><option value="">None</option>{patientRecords.data?.map((item)=><option key={item.id} value={item.id}>#{item.id} · {item.recordType} · {dateLabel(item.createdAt)}</option>)}</select></div>
+                    <div className="field full"><label htmlFor={`coded-diagnosis-notes-${index}`}>Structured diagnosis notes</label><textarea id={`coded-diagnosis-notes-${index}`} maxLength={10000} {...recordForm.register(`codedDiagnoses.${index}.notes` as const)} data-testid={`input-coded-diagnosis-notes-${index}`}/></div>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}><button type="button" className="btn small ghost" onClick={()=>removeCodedDiagnosis(index)} aria-label={`Remove coded diagnosis ${index + 1}`} data-testid={`button-remove-coded-diagnosis-${index}`}><Trash2 size={13}/> Remove</button></div>
+                </div>;
+              })}
+            </div>
+            <div className="field full"><label htmlFor="record-treatment">Treatment / plan</label><textarea id="record-treatment" {...recordForm.register('treatment')} maxLength={5000} data-testid="input-treatment"/></div>
+            <div className="field full"><label htmlFor="record-meds">Medications</label><input id="record-meds" {...recordForm.register('medications')} placeholder="Separate medications with commas" data-testid="input-medications"/></div>
+            <div className="field"><label htmlFor="record-bp">Blood pressure</label><input id="record-bp" {...recordForm.register('bloodPressure')} placeholder="120/80" data-testid="input-vital-bp"/></div>
+            <div className="field"><label htmlFor="record-hr">Heart rate (bpm)</label><input id="record-hr" {...recordForm.register('heartRate')} type="number" min="30" max="200" data-testid="input-vital-heart-rate"/></div>
+            <div className="field"><label htmlFor="record-temp">Temperature (°C)</label><input id="record-temp" {...recordForm.register('temperature')} type="number" step=".1" min="30" max="45" data-testid="input-vital-temp"/></div>
+            <div className="field"><label htmlFor="record-weight">Weight (kg)</label><input id="record-weight" {...recordForm.register('weightKg')} type="number" step=".1" min="1" max="500" data-testid="input-vital-weight"/></div>
+            <div className="field full"><label htmlFor="record-notes">Clinical notes</label><textarea id="record-notes" {...recordForm.register('notes')} maxLength={10000} data-testid="input-record-notes"/></div>
           </div>
-          <div className="form-actions"><button className="btn ghost" type="button" onClick={()=>{setEntryOpen(false);setFollowUpSource(null);}}>Cancel</button><button className="btn" type="submit" disabled={addRecord.isPending} data-testid="button-save-record">{addRecord.isPending?'Saving…':'Save record'}</button></div>
+          <div className="form-actions"><button className="btn ghost" type="button" onClick={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>Cancel</button><button className="btn" type="submit" disabled={addRecord.isPending} data-testid="button-save-record">{addRecord.isPending?'Saving…':'Save record'}</button></div>
         </form>
+        </Form>
       </Modal>}
       {viewingRecord && selected?.hasAccess && <RecordDetailsModal record={viewingRecord} records={patientRecords.data ?? [viewingRecord]} onClose={()=>setViewingRecord(null)} onOpenRecord={setViewingRecord} onCreateFollowUp={startFollowUp}/>}
     </>}

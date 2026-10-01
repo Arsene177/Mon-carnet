@@ -1,11 +1,13 @@
 import { Router, type IRouter, type Response } from "express";
 import {
   and,
+  asc,
   count,
   countDistinct,
   desc,
   eq,
   gte,
+  inArray,
   ilike,
   or,
   sql,
@@ -42,12 +44,24 @@ import {
   RevokePatientPermissionResponse,
   SearchPatientsQueryParams,
   SearchPatientsResponse,
+  SearchDiseaseCodesQueryParams,
+  SearchDiseaseCodesResponse,
   SearchUsersQueryParams,
   SearchUsersResponse,
   UpdateEmergencyInfoBody,
   UpdateEmergencyInfoResponse,
 } from "@workspace/api-zod";
-import { db, usersTable, emergencyInfoTable, medicalRecordsTable, accessPermissionsTable, patientSearchesTable } from "@workspace/db";
+import {
+  auditEventsTable,
+  db,
+  diseaseCodesTable,
+  usersTable,
+  emergencyInfoTable,
+  medicalDiagnosesTable,
+  medicalRecordsTable,
+  accessPermissionsTable,
+  patientSearchesTable,
+} from "@workspace/db";
 import { createAccessToken, hashPassword, publicUser, requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
 
 const router: IRouter = Router();
@@ -56,7 +70,77 @@ function invalidBody(res: Response, message: string) {
   res.status(400).json({ error: message });
 }
 
-function recordResponse(record: typeof medicalRecordsTable.$inferSelect, doctorName: string) {
+function diseaseCodeResponse(code: typeof diseaseCodesTable.$inferSelect) {
+  return {
+    id: code.id,
+    code: code.code,
+    codingSystem: code.codingSystem,
+    release: code.release,
+    diseaseName: code.diseaseName,
+    description: code.description,
+    infectious: code.infectious,
+    epidemicRelevant: code.epidemicRelevant,
+    pandemicRelevant: code.pandemicRelevant,
+    status: code.status,
+    source: code.source,
+  };
+}
+
+function codedDiagnosisResponse(row: {
+  diagnosis: typeof medicalDiagnosesTable.$inferSelect;
+  diseaseCode: typeof diseaseCodesTable.$inferSelect;
+}) {
+  return {
+    id: row.diagnosis.id,
+    diseaseCode: diseaseCodeResponse(row.diseaseCode),
+    status: row.diagnosis.status,
+    diagnosisDate: row.diagnosis.diagnosisDate,
+    onsetDate: row.diagnosis.onsetDate,
+    notes: row.diagnosis.notes,
+    supportingRecordId: row.diagnosis.supportingRecordId,
+    createdAt: row.diagnosis.createdAt.toISOString(),
+  };
+}
+
+async function codedDiagnosesByRecordId(recordIds: number[]) {
+  const grouped = new Map<
+    number,
+    ReturnType<typeof codedDiagnosisResponse>[]
+  >();
+  if (recordIds.length === 0) return grouped;
+
+  const rows = await db
+    .select({ diagnosis: medicalDiagnosesTable, diseaseCode: diseaseCodesTable })
+    .from(medicalDiagnosesTable)
+    .innerJoin(diseaseCodesTable, eq(medicalDiagnosesTable.diseaseCodeId, diseaseCodesTable.id))
+    .where(inArray(medicalDiagnosesTable.recordId, recordIds))
+    .orderBy(asc(medicalDiagnosesTable.createdAt), asc(medicalDiagnosesTable.id));
+
+  for (const row of rows) {
+    const diagnoses = grouped.get(row.diagnosis.recordId) ?? [];
+    diagnoses.push(codedDiagnosisResponse(row));
+    grouped.set(row.diagnosis.recordId, diagnoses);
+  }
+  return grouped;
+}
+
+async function recordsResponse(
+  rows: Array<{
+    record: typeof medicalRecordsTable.$inferSelect;
+    doctorName: string;
+  }>,
+) {
+  const diagnoses = await codedDiagnosesByRecordId(rows.map(({ record }) => record.id));
+  return rows.map(({ record, doctorName }) =>
+    recordResponse(record, doctorName, diagnoses.get(record.id) ?? []),
+  );
+}
+
+function recordResponse(
+  record: typeof medicalRecordsTable.$inferSelect,
+  doctorName: string,
+  codedDiagnoses: ReturnType<typeof codedDiagnosisResponse>[] = [],
+) {
   return {
     id: record.id,
     patientId: record.patientId,
@@ -68,6 +152,7 @@ function recordResponse(record: typeof medicalRecordsTable.$inferSelect, doctorN
     medications: record.medications,
     notes: record.notes,
     followUpToRecordId: record.followUpToRecordId ?? null,
+    codedDiagnoses,
     vitals: record.vitals ?? {},
     createdAt: record.createdAt.toISOString(),
   };
@@ -279,9 +364,15 @@ router.get("/patient/records", requireAuth("PATIENT"), async (req, res): Promise
     .innerJoin(usersTable, eq(medicalRecordsTable.doctorId, usersTable.id))
     .where(eq(medicalRecordsTable.patientId, req.currentUser!.id))
     .orderBy(desc(medicalRecordsTable.createdAt));
+  await db.insert(auditEventsTable).values({
+    actorUserId: req.currentUser!.id,
+    patientId: req.currentUser!.id,
+    action: "MEDICAL_RECORDS_VIEWED",
+    entityType: "medical_record_collection",
+  });
   res.json(
     GetPatientRecordsResponse.parse(
-      rows.map((row) => recordResponse(row.record, row.doctorName)),
+      await recordsResponse(rows),
     ),
   );
 });
@@ -428,6 +519,37 @@ router.get("/doctor/search-patient", requireAuth("DOCTOR"), async (req, res): Pr
 });
 
 router.get(
+  "/disease-codes",
+  requireAuth("PATIENT", "PENDING_DOCTOR", "DOCTOR", "ADMIN"),
+  async (req, res): Promise<void> => {
+    const parsed = SearchDiseaseCodesQueryParams.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Enter at least two characters to search." });
+      return;
+    }
+    const pattern = `%${parsed.data.query.trim()}%`;
+    const rows = await db
+      .select()
+      .from(diseaseCodesTable)
+      .where(
+        and(
+          eq(diseaseCodesTable.status, "ACTIVE"),
+          or(
+            ilike(diseaseCodesTable.code, pattern),
+            ilike(diseaseCodesTable.diseaseName, pattern),
+            ilike(diseaseCodesTable.description, pattern),
+            ilike(diseaseCodesTable.codingSystem, pattern),
+            ilike(diseaseCodesTable.release, pattern),
+          ),
+        ),
+      )
+      .orderBy(asc(diseaseCodesTable.diseaseName), asc(diseaseCodesTable.code))
+      .limit(50);
+    res.json(SearchDiseaseCodesResponse.parse(rows.map(diseaseCodeResponse)));
+  },
+);
+
+router.get(
   "/doctor/patient/:patientId/emergency",
   requireAuth("DOCTOR"),
   async (req, res): Promise<void> => {
@@ -487,9 +609,15 @@ router.get(
       .innerJoin(usersTable, eq(medicalRecordsTable.doctorId, usersTable.id))
       .where(eq(medicalRecordsTable.patientId, patientId))
       .orderBy(desc(medicalRecordsTable.createdAt));
+    await db.insert(auditEventsTable).values({
+      actorUserId: req.currentUser!.id,
+      patientId,
+      action: "MEDICAL_RECORDS_VIEWED",
+      entityType: "medical_record_collection",
+    });
     res.json(
       GetDoctorPatientRecordsResponse.parse(
-        rows.map((row) => recordResponse(row.record, row.doctorName)),
+        await recordsResponse(rows),
       ),
     );
   },
@@ -507,6 +635,7 @@ router.post(
     }
     const patientId = params.data.patientId;
     const followUpToRecordId = body.data.followUpToRecordId;
+    const codedDiagnoses = body.data.codedDiagnoses ?? [];
     const isFollowUp = body.data.recordType === "Follow-up";
     if (isFollowUp !== (followUpToRecordId !== null)) {
       invalidBody(
@@ -528,6 +657,48 @@ router.post(
       res.status(403).json({ error: "Patient access is not currently granted or has expired." });
       return;
     }
+    const diseaseCodeIds = codedDiagnoses.map((diagnosis) => diagnosis.diseaseCodeId);
+    if (new Set(diseaseCodeIds).size !== diseaseCodeIds.length) {
+      invalidBody(res, "A disease code can only be attached once to a record.");
+      return;
+    }
+    if (diseaseCodeIds.length > 0) {
+      const activeCodes = await db
+        .select({ id: diseaseCodesTable.id })
+        .from(diseaseCodesTable)
+        .where(
+          and(
+            inArray(diseaseCodesTable.id, diseaseCodeIds),
+            eq(diseaseCodesTable.status, "ACTIVE"),
+          ),
+        );
+      if (activeCodes.length !== diseaseCodeIds.length) {
+        invalidBody(res, "One or more selected disease codes are unavailable.");
+        return;
+      }
+    }
+    const supportingRecordIds = [
+      ...new Set(
+        codedDiagnoses.flatMap((diagnosis) =>
+          diagnosis.supportingRecordId === null ? [] : [diagnosis.supportingRecordId],
+        ),
+      ),
+    ];
+    if (supportingRecordIds.length > 0) {
+      const supportingRecords = await db
+        .select({ id: medicalRecordsTable.id })
+        .from(medicalRecordsTable)
+        .where(
+          and(
+            eq(medicalRecordsTable.patientId, patientId),
+            inArray(medicalRecordsTable.id, supportingRecordIds),
+          ),
+        );
+      if (supportingRecords.length !== supportingRecordIds.length) {
+        invalidBody(res, "Supporting records must belong to this patient.");
+        return;
+      }
+    }
     if (followUpToRecordId !== null) {
       const [parentRecord] = await db
         .select({ id: medicalRecordsTable.id })
@@ -544,23 +715,68 @@ router.post(
         return;
       }
     }
-    const [record] = await db
-      .insert(medicalRecordsTable)
-      .values({
-        patientId,
-        doctorId: req.currentUser!.id,
-        recordType: body.data.recordType,
-        diagnosis: body.data.diagnosis,
-        treatment: body.data.treatment,
-        medications: body.data.medications,
-        notes: body.data.notes,
-        followUpToRecordId,
-        vitals: body.data.vitals,
-      })
-      .returning();
+    const record = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(medicalRecordsTable)
+        .values({
+          patientId,
+          doctorId: req.currentUser!.id,
+          recordType: body.data.recordType,
+          diagnosis: body.data.diagnosis,
+          treatment: body.data.treatment,
+          medications: body.data.medications,
+          notes: body.data.notes,
+          followUpToRecordId,
+          vitals: body.data.vitals,
+        })
+        .returning();
+      if (!created) throw new Error("Medical record insert returned no row");
+
+      const diagnoses =
+        codedDiagnoses.length > 0
+          ? await tx
+              .insert(medicalDiagnosesTable)
+              .values(
+                codedDiagnoses.map((diagnosis) => ({
+                  recordId: created.id,
+                  diseaseCodeId: diagnosis.diseaseCodeId,
+                  status: diagnosis.status,
+                  diagnosisDate: diagnosis.diagnosisDate.toISOString().slice(0, 10),
+                  onsetDate:
+                    diagnosis.onsetDate?.toISOString().slice(0, 10) ?? null,
+                  notes: diagnosis.notes,
+                  supportingRecordId: diagnosis.supportingRecordId,
+                })),
+              )
+              .returning()
+          : [];
+
+      await tx.insert(auditEventsTable).values([
+        {
+          actorUserId: req.currentUser!.id,
+          patientId,
+          action: "MEDICAL_RECORD_CREATED",
+          entityType: "medical_record",
+          entityId: created.id,
+        },
+        ...diagnoses.map((diagnosis) => ({
+          actorUserId: req.currentUser!.id,
+          patientId,
+          action: "CODED_DIAGNOSIS_CREATED",
+          entityType: "coded_diagnosis",
+          entityId: diagnosis.id,
+        })),
+      ]);
+      return created;
+    });
+    const diagnosesByRecord = await codedDiagnosesByRecordId([record.id]);
     res.status(201).json(
       AddDoctorPatientRecordResponse.parse(
-        recordResponse(record, req.currentUser!.name),
+        recordResponse(
+          record,
+          req.currentUser!.name,
+          diagnosesByRecord.get(record.id) ?? [],
+        ),
       ),
     );
   },
