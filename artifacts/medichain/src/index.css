@@ -209,3 +209,44 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
 }
 @media (max-width:430px) { .stats-grid{grid-template-columns:1fr 1fr}.searchbox{min-width:0;width:100%}.form-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.topbar{margin-bottom:20px}.panel-head{padding:17px 16px 13px}.panel-body{padding:0 16px 17px}.security-banner{align-items:flex-start;padding:16px} }
 @media print { .sidebar,.topbar,.no-print,.btn{display:none!important}.app-shell{display:block}.main-area{padding:0}.panel{box-shadow:none;break-inside:avoid} }
+
+.guide-trigger { padding:8px 12px; white-space:nowrap; }
+.guide-dialog-backdrop { position:fixed; inset:0; z-index:110; display:grid; place-items:center; padding:16px; background:rgba(20,43,43,.52); }
+.guide-dialog { width:min(100%,460px); max-height:min(760px,calc(100dvh - 32px)); overflow:auto; padding:22px; box-shadow:0 22px 70px #17343540; }
+.guide-dialog-wide { width:min(100%,640px); }
+.guide-dialog-header { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:12px; }
+.guide-dialog-header .eyebrow { margin-bottom:6px; }
+.guide-dialog-header h2 { margin:0; color:#203c3d; font:700 23px/1.2 var(--app-font-serif); }
+.guide-dialog-body { min-width:0; }
+.guide-intro { margin:0 0 18px; }
+.guide-choice { width:100%; display:flex; align-items:center; gap:12px; margin-top:10px; padding:14px; border:1px solid #e4e5dc; border-radius:12px; background:#fffefa; color:#344b49; text-align:left; }
+.guide-choice:hover { background:#f2f7f2; border-color:#c7ded4; }
+.guide-choice>span:nth-child(2) { flex:1; display:grid; gap:5px; }
+.guide-choice strong { font-size:12px; }
+.guide-choice small { color:#87928f; font-size:11px; line-height:1.45; }
+.guide-choice-icon { width:36px; height:36px; display:grid; place-items:center; flex:none; border-radius:10px; color:#32655f; background:#e7f0eb; }
+.written-guide-list { list-style:none; display:grid; gap:14px; margin:8px 0 0; padding:0; }
+.written-guide-item { display:grid; grid-template-columns:30px minmax(0,1fr); gap:12px; padding:13px; border:1px solid #e9e6dd; border-radius:12px; background:#fffefa; }
+.written-guide-number { width:28px; height:28px; display:grid; place-items:center; border-radius:50%; color:#285f57; background:#e6f1eb; font-size:12px; font-weight:800; }
+.written-guide-copy h3 { margin:1px 0 5px; color:#294747; font:700 14px var(--app-font-serif); }
+.written-guide-copy p { margin:0 0 9px; color:#788683; font-size:11px; line-height:1.55; }
+.guide-dialog .form-actions { position:sticky; bottom:-22px; padding:14px 0 0; background:#fffefa; }
+.tour-layer { position:fixed; inset:0; z-index:100; }
+.tour-scrim { position:absolute; inset:0; background:rgba(17,38,39,.64); }
+.tour-spotlight { position:fixed; z-index:101; border:2px solid #a7ddcd; border-radius:13px; pointer-events:none; box-shadow:0 0 0 5px rgba(148,207,192,.18),0 0 0 9999px rgba(17,38,39,.64); transition:top .18s ease,left .18s ease,width .18s ease,height .18s ease; }
+.tour-card { position:fixed; z-index:102; padding:19px; border:1px solid #dce6dd; border-radius:14px; background:#fffefa; color:#344b49; box-shadow:0 22px 64px rgba(10,28,29,.3); }
+.tour-card-centered { top:50%; left:50%; width:min(360px,calc(100vw - 32px)); transform:translate(-50%,-50%); }
+.tour-progress { display:flex; justify-content:space-between; gap:12px; margin-bottom:11px; color:#788683; font-size:10px; font-weight:700; }
+.tour-progress span:first-child { color:#96704f; letter-spacing:.8px; text-transform:uppercase; }
+.tour-card h2 { margin:0; color:#203c3d; font:700 21px/1.25 var(--app-font-serif); }
+.tour-card>p { margin:9px 0 17px; color:#788683; font-size:12px; line-height:1.6; }
+.tour-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.tour-actions>div { display:flex; gap:7px; }
+.record-detail-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; }
+.record-detail-actions time { white-space:nowrap; }
+@media (max-width:760px) {
+  .guide-trigger { padding:8px 10px; font-size:11px; }
+  .guide-dialog { padding:18px; }
+  .tour-card { padding:16px; }
+  .tour-actions { align-items:flex-end; }
+}

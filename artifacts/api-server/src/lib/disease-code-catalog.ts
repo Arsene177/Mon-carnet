@@ -64,7 +64,7 @@ const diseaseCodeSeed: InsertDiseaseCode[] = [
   {
     code: "U07.1",
     codingSystem: "ICD-10",
-    release: "WHO COVID-19 update (2021)",
+    release: "WHO COVID-19 update (2020)",
     diseaseName: "COVID-19",
     description: "COVID-19, virus identified",
     infectious: true,
@@ -72,7 +72,7 @@ const diseaseCodeSeed: InsertDiseaseCode[] = [
     pandemicRelevant: true,
     status: "ACTIVE",
     source:
-      "https://www.who.int/standards/classifications/classification-of-diseases/emergency-use-icd-codes-for-covid-19-disease-outbreak",
+      "https://www.who.int/docs/default-source/classification/icd/covid-19/guidelines-cause-of-death-covid-19-20200420-en.pdf",
   },
 ];
 

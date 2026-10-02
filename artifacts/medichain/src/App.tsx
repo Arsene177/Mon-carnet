@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import { useFieldArray, useForm } from 'react-hook-form';
 import {
   Activity, AlertCircle, ArrowRight, BadgeCheck, BookOpen, CalendarDays, Check,
-  ChevronRight, ClipboardList, Clock3, FileHeart, FilePlus2, HeartPulse, KeyRound,
+  ChevronRight, ClipboardList, Clock3, Download, FileHeart, FilePlus2, HeartPulse, KeyRound,
   LockKeyhole, LogOut, Plus, Printer,
   Search, Shield, ShieldCheck, Stethoscope, Trash2, UserRound, Users, X,
 } from 'lucide-react';
@@ -26,11 +26,14 @@ import type {
 } from '@workspace/api-client-react';
 import { Form } from '@/components/ui/form';
 import { useLocation } from 'wouter';
+import { OnboardingGuide } from '@/components/onboarding-guide';
+import { downloadMedicalRecord } from '@/lib/download-medical-record';
+import type { WorkspaceTab } from '@/lib/navigation';
 
 const queryClient = new QueryClient();
 setAuthTokenGetter(() => typeof localStorage === 'undefined' ? null : localStorage.getItem('medichain_token'));
 
-type Tab = 'Overview' | 'Records' | 'Access control' | 'Emergency info' | 'Patients' | 'Record entry' | 'Profile' | 'System overview' | 'Doctor approvals' | 'User search' | 'Analytics';
+type Tab = WorkspaceTab;
 const patientTabs: Tab[] = ['Overview', 'Records', 'Access control', 'Emergency info'];
 const doctorTabs: Tab[] = ['Patients', 'Record entry', 'Profile'];
 const adminTabs: Tab[] = ['System overview', 'Doctor approvals', 'User search', 'Analytics'];
@@ -188,18 +191,18 @@ function Workspace({ user, onSignOut }: { user: User; onSignOut: () => void }) {
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><HeartPulse size={19}/></span>medichain</div>
       <div className="nav-label">Workspace</div>
-      <nav className="nav-list" aria-label="Main navigation">{tabs.map((item) => { const Icon = iconFor[item]; return <button key={item} className={`nav-item ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)} data-testid={`nav-${item.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{item}</span></button>; })}</nav>
+      <nav className="nav-list" aria-label="Main navigation" data-tour="workspace-navigation">{tabs.map((item) => { const Icon = iconFor[item]; return <button key={item} className={`nav-item ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)} data-tour={`nav-${item.toLowerCase().replaceAll(' ', '-')}`} data-testid={`nav-${item.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{item}</span></button>; })}</nav>
       <div className="sidebar-bottom"><div className="privacy-note"><b><ShieldCheck size={14} style={{verticalAlign:'-3px',marginRight:6}}/>Your care stays yours</b>Access is granted by you and can be changed at any time.</div><div className="profile-mini"><div className="avatar">{initials(user.name)}</div><div style={{flex:1,minWidth:0}}><strong>{user.name}</strong><span>{user.role === 'PENDING_DOCTOR' ? 'Doctor · pending review' : user.role.toLowerCase()}</span></div><button className="icon-button" onClick={onSignOut} aria-label="Sign out" data-testid="button-signout"><LogOut size={15}/></button></div></div>
     </aside>
     <main className="main-area">
-      <header className="topbar"><div className="crumb"><span>Medichain</span><ChevronRight size={13}/><strong>{tab}</strong></div><div className="top-actions"><span className="status-pill"><i className="status-dot"/> Secure workspace</span><button className="icon-button" aria-label="Sign out" onClick={onSignOut} data-testid="button-signout-top"><LogOut size={15}/></button></div></header>
+      <header className="topbar"><div className="crumb"><span>Medichain</span><ChevronRight size={13}/><strong>{tab}</strong></div><div className="top-actions"><span className="status-pill"><i className="status-dot"/> Secure workspace</span><OnboardingGuide user={user} activeTab={tab} onTabChange={setTab}/><button className="icon-button" aria-label="Sign out" onClick={onSignOut} data-testid="button-signout-top"><LogOut size={15}/></button></div></header>
       {user.role === 'ADMIN' ? <AdminView user={user} tab={tab} onTab={setTab}/> : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? <DoctorView user={user} tab={tab}/> : <PatientView user={user} tab={tab} onTab={setTab}/>}
     </main>
   </div>;
 }
 
 function Heading({ eyebrow, title, subtitle, action }: { eyebrow: string; title: string; subtitle: string; action?: ReactNode }) {
-  return <div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="subhead">{subtitle}</p></div>{action}</div>;
+  return <div className="page-heading" data-tour="section-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="subhead">{subtitle}</p></div>{action}</div>;
 }
 function ErrorState({ error, retry }: { error: unknown; retry?: () => void }) {
   return <div className="error-state" role="alert"><span>{errText(error)}</span>{retry && <button className="btn small ghost" onClick={retry}>Try again</button>}</div>;
@@ -258,7 +261,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
           <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Care essentials</h2><p className="panel-caption">Useful in a moment that matters</p></div><Shield size={17} color="#69a293"/></div><div className="panel-body"><div className="callout"><div className="callout-head"><HeartPulse size={16}/> Emergency summary</div><p>{emergency ? `${emergency.bloodGroup} blood group · ${emergency.allergies ? `Allergies: ${emergency.allergies}` : 'No allergies listed'}` : 'Add your blood group, allergies and an emergency contact.'}</p><button className="btn small secondary" onClick={()=>onTab('Emergency info')} data-testid="button-update-emergency">Review details <ArrowRight size={13}/></button></div><div style={{height:15}}/><div className="data-row"><span className="data-key">Contact</span><span className="data-value">{user.contactInfo || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Pending requests</span><span className="data-value">{requests.data?.length ?? '—'}</span></div></div></section></div>
       </>}
     </>}
-    {tab === 'Records' && <><Heading eyebrow="Your health history" title="Medical records" subtitle="Visits, diagnoses, prescriptions and test results shared with your care team." action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-records"><Printer size={15}/> Print booklet</button>}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your record timeline</h2><p className="panel-caption">Newest records appear first. Open a record to see its full details. Use Print booklet to save a PDF.</p></div><span className="tag">{records.data?.length ?? 0} records</span></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={()=>records.refetch()}/> : records.data?.length ? records.data.map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []}/>) : <EmptyState icon={FileHeart} title="No records yet" children="Your medical records will appear here when a clinician adds them to your care history."/>}</div></section></>}
+    {tab === 'Records' && <><Heading eyebrow="Your health history" title="Medical records" subtitle="Visits, diagnoses, prescriptions and test results shared with your care team." action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-records"><Printer size={15}/> Print booklet</button>}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your record timeline</h2><p className="panel-caption">Newest records appear first. Open a record to review or download its full details. Use Print booklet to save a PDF.</p></div><span className="tag">{records.data?.length ?? 0} records</span></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={()=>records.refetch()}/> : records.data?.length ? records.data.map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []}/>) : <EmptyState icon={FileHeart} title="No records yet" children="Your medical records will appear here when a clinician adds them to your care history."/>}</div></section></>}
     {tab === 'Access control' && <><Heading eyebrow="Your permissions" title="Who can see your records?" subtitle="Grant access to a clinician, choose how long it lasts, or remove access at any time." action={<button className="btn" onClick={()=>setGrantOpen(true)} data-testid="button-grant-access"><Plus size={15}/> Grant access</button>}/>
       <div className="security-banner"><div><h3>You’re in control of your care circle.</h3><p>Clinicians can view your information only while access is active. You can revoke it whenever you need.</p></div><ShieldCheck size={34} className="security-symbol"/></div>
       {requests.isLoading || permissions.isLoading ? <div className="skeleton"/> : requests.error ? <ErrorState error={requests.error} retry={()=>requests.refetch()}/> : permissions.error ? <ErrorState error={permissions.error} retry={()=>permissions.refetch()}/> : <>
@@ -273,7 +276,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   </>;
 }
 
-function RecordRow({ record, records, onOpen }: { record: MedicalRecord; records?: MedicalRecord[]; onOpen?: (record: MedicalRecord) => void }) {
+function RecordRow({ record, records, onOpen, allowDownload = !onOpen }: { record: MedicalRecord; records?: MedicalRecord[]; onOpen?: (record: MedicalRecord) => void; allowDownload?: boolean }) {
   const [viewingRecord, setViewingRecord] = useState<MedicalRecord | null>(null);
   const history = records ?? [record];
   return <>
@@ -283,17 +286,17 @@ function RecordRow({ record, records, onOpen }: { record: MedicalRecord; records
       <time className="record-meta">{dateLabel(record.createdAt)}</time>
       <span className="record-open-label">Open <ChevronRight size={13}/></span>
     </button>
-    {viewingRecord && !onOpen && <RecordDetailsModal record={viewingRecord} records={history} onClose={() => setViewingRecord(null)} onOpenRecord={setViewingRecord}/>}
+    {viewingRecord && !onOpen && <RecordDetailsModal record={viewingRecord} records={history} onClose={() => setViewingRecord(null)} onOpenRecord={setViewingRecord} allowDownload={allowDownload}/>}
   </>;
 }
 
-function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFollowUp }: { record: MedicalRecord; records: MedicalRecord[]; onClose: () => void; onOpenRecord: (record: MedicalRecord) => void; onCreateFollowUp?: (record: MedicalRecord) => void }) {
+function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFollowUp, allowDownload = false }: { record: MedicalRecord; records: MedicalRecord[]; onClose: () => void; onOpenRecord: (record: MedicalRecord) => void; onCreateFollowUp?: (record: MedicalRecord) => void; allowDownload?: boolean }) {
   const vitals = record.vitals;
   const parentRecord = records.find((item) => item.id === record.followUpToRecordId);
   const followUps = records.filter((item) => item.followUpToRecordId === record.id);
   return <Modal title={`${record.recordType} record`} onClose={onClose}>
     <div className="record-details" data-testid={`record-details-${record.id}`}>
-      <div className="record-detail-byline"><span className="tag">Entered by {record.doctorName}</span><time>{dateLabel(record.createdAt)}</time></div>
+      <div className="record-detail-byline"><span className="tag">Entered by {record.doctorName}</span><div className="record-detail-actions"><time>{dateLabel(record.createdAt)}</time>{allowDownload && <button type="button" className="btn secondary small no-print" onClick={() => downloadMedicalRecord(record)} data-testid={`button-download-record-${record.id}`}><Download size={13}/> Download .txt</button>}</div></div>
       <div className="notice record-readonly-note">{onCreateFollowUp ? 'This record is read-only. Add a linked follow-up to document a correction or new information.' : 'This record is read-only. Doctors add corrections or new information as linked follow-up records.'}</div>
       {record.followUpToRecordId !== null && <section className="record-detail-section"><h3>Follows up on</h3>{parentRecord ? <button type="button" className="record-related-link" onClick={() => onOpenRecord(parentRecord)}><span><strong>{parentRecord.recordType}: {parentRecord.diagnosis || 'Care note'}</strong><small>By {parentRecord.doctorName} · {dateLabel(parentRecord.createdAt)}</small></span><ChevronRight size={15}/></button> : <p>Original record #{record.followUpToRecordId}</p>}</section>}
       {followUps.length > 0 && <section className="record-detail-section"><h3>Linked follow-ups</h3>{followUps.map((followUp) => <button type="button" className="record-related-link" key={followUp.id} onClick={() => onOpenRecord(followUp)}><span><strong>{followUp.diagnosis || 'Follow-up note'}</strong><small>By {followUp.doctorName} · {dateLabel(followUp.createdAt)}</small></span><ChevronRight size={15}/></button>)}</section>}
