@@ -43,6 +43,7 @@ export const RegisterResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
+  "hospitalName": zod.string().nullish(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -68,6 +69,7 @@ export const LoginResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
+  "hospitalName": zod.string().nullish(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -82,6 +84,7 @@ export const GetMeResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
+  "hospitalName": zod.string().nullish(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -96,6 +99,7 @@ export const GetPatientProfileResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
+  "hospitalName": zod.string().nullish(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -245,6 +249,7 @@ export const GetDoctorProfileResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
+  "hospitalName": zod.string().nullish(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -263,18 +268,7 @@ export const SearchPatientsQueryParams = zod.object({
 })
 
 export const SearchPatientsResponseItem = zod.object({
-  "user": zod.object({
-  "id": zod.number().int(),
-  "email": zod.string().email(),
-  "name": zod.string(),
-  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
-  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
-  "dateOfBirth": zod.coerce.date().nullish(),
-  "contactInfo": zod.string().nullish(),
-  "isActive": zod.boolean(),
-  "createdAt": zod.coerce.date()
-}),
-  "emergencyInfo": zod.union([zod.object({
+  "emergencyInfo": zod.object({
   "patientId": zod.number().int(),
   "patientName": zod.string(),
   "bloodGroup": zod.string(),
@@ -283,9 +277,7 @@ export const SearchPatientsResponseItem = zod.object({
   "allergies": zod.string(),
   "emergencyContact": zod.string(),
   "updatedAt": zod.coerce.date()
-}),zod.null()]),
-  "hasAccess": zod.boolean(),
-  "expiresAt": zod.coerce.date().nullable()
+})
 })
 export const SearchPatientsResponse = zod.array(SearchPatientsResponseItem)
 
@@ -511,6 +503,7 @@ export const GetPendingDoctorsResponseItem = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
+  "hospitalName": zod.string().nullish(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -529,6 +522,7 @@ export const ApproveDoctorResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
+  "hospitalName": zod.string().nullish(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -546,6 +540,7 @@ export const RevokeDoctorResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
+  "hospitalName": zod.string().nullish(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -567,6 +562,7 @@ export const SearchUsersResponseItem = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
+  "hospitalName": zod.string().nullish(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),

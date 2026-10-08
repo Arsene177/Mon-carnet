@@ -128,6 +128,7 @@ export function userResponse(user: typeof usersTable.$inferSelect) {
     ...current,
     dateOfBirth: user.dateOfBirth ?? null,
     contactInfo: user.contactInfo ?? null,
+    hospitalName: user.hospitalName ?? null,
     isActive: user.isActive,
     createdAt: user.createdAt.toISOString(),
   };

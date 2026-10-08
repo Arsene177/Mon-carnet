@@ -60,7 +60,64 @@ type DoctorRecordFormValues = {
   heartRate: string;
   temperature: string;
   weightKg: string;
+  recordSpecific: Record<string, string>;
   codedDiagnoses: CodedDiagnosisDraft[];
+};
+type AccessHistoryEntry = {
+  id: number;
+  doctorName: string;
+  hospitalName: string;
+  action: string;
+  accessedAt: string;
+};
+const recordSpecificFields: Record<string, Array<{ key: string; label: string; type?: string }>> = {
+  Consultation: [
+    { key: 'consultationDate', label: 'Consultation date', type: 'date' },
+    { key: 'presentingComplaint', label: 'Presenting complaint' },
+    { key: 'examFindings', label: 'Examination findings' },
+  ],
+  Diagnosis: [
+    { key: 'diagnosisDate', label: 'Diagnosis date', type: 'date' },
+    { key: 'diagnosticBasis', label: 'Diagnostic basis' },
+    { key: 'severity', label: 'Severity / stage' },
+  ],
+  Treatment: [
+    { key: 'startDate', label: 'Treatment start date', type: 'date' },
+    { key: 'treatmentPlan', label: 'Treatment plan' },
+    { key: 'monitoring', label: 'Monitoring plan' },
+  ],
+  'Lab Results': [
+    { key: 'testName', label: 'Test / panel' },
+    { key: 'result', label: 'Result summary' },
+    { key: 'referenceRange', label: 'Reference range' },
+    { key: 'testDate', label: 'Test date', type: 'date' },
+  ],
+  Prescription: [
+    { key: 'dose', label: 'Dose' },
+    { key: 'route', label: 'Route' },
+    { key: 'frequency', label: 'Frequency' },
+    { key: 'duration', label: 'Duration' },
+  ],
+  Surgery: [
+    { key: 'procedure', label: 'Procedure' },
+    { key: 'surgeryDate', label: 'Procedure date', type: 'date' },
+    { key: 'outcome', label: 'Outcome' },
+    { key: 'surgeon', label: 'Surgeon' },
+  ],
+  Emergency: [
+    { key: 'triageLevel', label: 'Triage level' },
+    { key: 'disposition', label: 'Disposition' },
+    { key: 'immediateCare', label: 'Immediate care' },
+  ],
+  'Follow-up': [
+    { key: 'followUpDate', label: 'Follow-up date', type: 'date' },
+    { key: 'progress', label: 'Progress since last record' },
+    { key: 'nextSteps', label: 'Next steps' },
+  ],
+  Other: [
+    { key: 'documentTitle', label: 'Record title' },
+    { key: 'description', label: 'Additional information' },
+  ],
 };
 
 function localDateInputValue() {
@@ -79,6 +136,7 @@ function defaultDoctorRecordForm(recordType: MedicalRecordRecordType = 'Consulta
     heartRate: '',
     temperature: '',
     weightKg: '',
+    recordSpecific: {},
     codedDiagnoses: [],
   };
 }
@@ -223,11 +281,33 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const [grantOpen, setGrantOpen] = useState(false);
   const [grantEmail, setGrantEmail] = useState('');
   const [grantDays, setGrantDays] = useState('30');
+  const [accessHistory, setAccessHistory] = useState<AccessHistoryEntry[]>([]);
+  const [accessHistoryLoading, setAccessHistoryLoading] = useState(false);
+  const [accessHistoryError, setAccessHistoryError] = useState('');
   const [toast, setToast] = useState('');
   const grant = useGrantPatientPermission();
   const revoke = useRevokePatientPermission();
   const updateEmergency = useUpdateEmergencyInfo();
   const emergency = profile.data?.emergencyInfo;
+  useEffect(() => {
+    if (tab !== 'Access control') return;
+    let active = true;
+    setAccessHistoryLoading(true);
+    setAccessHistoryError('');
+    fetch('/api/patient/access-history', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
+    }).then(async (response) => {
+      if (!response.ok) throw new Error('Could not load record access history.');
+      return response.json() as Promise<AccessHistoryEntry[]>;
+    }).then((entries) => {
+      if (active) setAccessHistory(entries);
+    }).catch((error: unknown) => {
+      if (active) setAccessHistoryError(errText(error));
+    }).finally(() => {
+      if (active) setAccessHistoryLoading(false);
+    });
+    return () => { active = false; };
+  }, [tab]);
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getGetPatientProfileQueryKey() });
     qc.invalidateQueries({ queryKey: getGetPatientPermissionsQueryKey() });
@@ -268,6 +348,15 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
         <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Clinician requests</h2><p className="panel-caption">A doctor searched for your care profile</p></div><span className="tag warning">{requests.data?.length ?? 0} pending</span></div><div className="panel-body">{requests.data?.length ? requests.data.map((request)=><div className="data-row" key={`${request.doctorId}-${request.searchedAt}`}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.doctorEmail} · {dateLabel(request.searchedAt)}</small></span></div><button className="btn small secondary" onClick={()=>{setGrantEmail(request.doctorEmail);setGrantOpen(true);}} data-testid={`button-review-request-${request.doctorId}`}>Review access</button></div>) : <EmptyState icon={KeyRound} title="No requests to review" children="When a doctor asks to see your profile, you can decide whether to grant access here."/>}</div></section>
         <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your active access</h2><p className="panel-caption">Only approved clinicians can see your records</p></div></div><div className="panel-body">{permissions.data?.filter(p=>p.granted).length ? permissions.data.filter(p=>p.granted).map((permission)=><div className="data-row" key={permission.id}><div className="person-cell"><div className="avatar">{initials(permission.doctorName)}</div><span>{permission.doctorName}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{permission.doctorEmail}</small></span></div><span className="tag">Until {dateLabel(permission.expiresAt)}</span><button className="btn small ghost" disabled={revoke.isPending} onClick={()=>revokeDoctor(permission.doctorId)} data-testid={`button-revoke-${permission.doctorId}`}><Trash2 size={13}/> Revoke</button></div>) : <EmptyState icon={Shield} title="No clinicians have access" children="Grant access by entering a doctor's registered email address."/>}</div></section>
       </>}
+      <section className="panel" style={{marginTop:17}}>
+        <div className="panel-head"><div><h2 className="panel-title">Record access history</h2><p className="panel-caption">Doctors who viewed your emergency information, records, or attached documents.</p></div><span className="tag">{accessHistory.length} events</span></div>
+        <div className="panel-body">
+          {accessHistoryLoading ? <div className="skeleton"/> : accessHistoryError ? <div className="error-state" role="alert">{accessHistoryError}</div> : accessHistory.length ? accessHistory.map((event) => <div className="data-row" key={event.id}>
+            <div className="person-cell"><div className="avatar">{initials(event.doctorName)}</div><span>{event.doctorName}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{event.hospitalName} · {event.action}</small></span></div>
+            <time className="data-value">{new Date(event.accessedAt).toLocaleString()}</time>
+          </div>) : <EmptyState icon={Shield} title="No doctor access recorded yet" children="When a clinician opens your shared information, the hospital and time will appear here."/>}
+        </div>
+      </section>
       {grantOpen && <Modal title="Grant a doctor access" onClose={()=>setGrantOpen(false)}><p className="subhead" style={{margin:'0 0 18px'}}>Choose a clinician and duration. They must have a verified Medichain doctor account.</p><form onSubmit={submitGrant}><div className="field"><label htmlFor="grant-email">Doctor’s email</label><input id="grant-email" type="email" required value={grantEmail} onChange={e=>setGrantEmail(e.target.value)} data-testid="input-doctor-email" placeholder="doctor@clinic.org"/></div><div className="field" style={{marginTop:14}}><label htmlFor="grant-duration">Access duration</label><select id="grant-duration" value={grantDays} onChange={e=>setGrantDays(e.target.value)} data-testid="select-duration"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="180">180 days</option><option value="365">1 year</option></select></div><div className="form-actions"><button className="btn ghost" type="button" onClick={()=>setGrantOpen(false)}>Cancel</button><button className="btn" type="submit" disabled={grant.isPending} data-testid="button-confirm-grant">{grant.isPending?'Saving…':'Grant access'}</button></div></form></Modal>}
     </>}
     {tab === 'Emergency info' && <><Heading eyebrow="Critical care details" title="Emergency information" subtitle="Keep important details current. Approved doctors can use this information to act quickly." action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-emergency"><Printer size={15}/> Print summary</button>}/><div className="security-banner"><div><h3>Made for the moments that matter.</h3><p>This concise summary supports safer urgent care when you cannot speak for yourself.</p></div><HeartPulse size={34} className="security-symbol"/></div>
@@ -292,6 +381,8 @@ function RecordRow({ record, records, onOpen, allowDownload = !onOpen }: { recor
 
 function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFollowUp, allowDownload = false }: { record: MedicalRecord; records: MedicalRecord[]; onClose: () => void; onOpenRecord: (record: MedicalRecord) => void; onCreateFollowUp?: (record: MedicalRecord) => void; allowDownload?: boolean }) {
   const vitals = record.vitals;
+  const attachmentPath = record.notes.match(/Attachment object: (\/objects\/uploads\/[0-9a-f-]{36})/)?.[1];
+  const attachmentName = record.notes.match(/Attachment: (.+)/)?.[1];
   const parentRecord = records.find((item) => item.id === record.followUpToRecordId);
   const followUps = records.filter((item) => item.followUpToRecordId === record.id);
   return <Modal title={`${record.recordType} record`} onClose={onClose}>
@@ -318,6 +409,7 @@ function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFo
       <section className="record-detail-section"><h3>Treatment / plan</h3><p>{record.treatment || 'No treatment or plan documented.'}</p></section>
       <section className="record-detail-section"><h3>Medications</h3><p>{record.medications.length ? record.medications.join(', ') : 'No medications documented.'}</p></section>
       <section className="record-detail-section"><h3>Clinical notes</h3><p>{record.notes || 'No additional notes.'}</p></section>
+       {attachmentPath && <section className="record-detail-section"><h3>Attached document</h3><AttachmentDownloadLink patientId={record.patientId} objectPath={attachmentPath} fileName={attachmentName || 'Lab report'}/></section>}
       <section className="record-detail-section"><h3>Vitals</h3>
         <div className="record-vitals">
           <div><span>Blood pressure</span><strong>{vitals.bloodPressure || 'Not recorded'}</strong></div>
@@ -331,12 +423,36 @@ function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFo
   </Modal>;
 }
 
+function AttachmentDownloadLink({ patientId, objectPath, fileName }: { patientId: number; objectPath: string; fileName: string }) {
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const openDocument = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const query = new URLSearchParams({ patientId: String(patientId), objectPath });
+      const response = await fetch(`/api/attachments/download-url?${query}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
+      });
+      const result = await response.json() as { downloadURL?: string; error?: string };
+      if (!response.ok || !result.downloadURL) throw new Error(result.error || 'Could not open this document.');
+      window.open(result.downloadURL, '_blank', 'noopener,noreferrer');
+    } catch (cause) {
+      setError(errText(cause));
+    } finally {
+      setLoading(false);
+    }
+  };
+  return <div><button type="button" className="btn small secondary" onClick={()=>void openDocument()} disabled={loading}><Download size={13}/>{loading ? 'Preparing…' : `Open ${fileName}`}</button>{error && <p className="field-note" role="alert">{error}</p>}</div>;
+}
+
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return <div role="presentation" onMouseDown={(e)=>{if(e.target===e.currentTarget)onClose();}} style={{position:'fixed',inset:0,zIndex:50,background:'#17343580',display:'flex',alignItems:'center',justifyContent:'center',overflowY:'auto',padding:16}}><section role="dialog" aria-modal="true" aria-label={title} className="panel" style={{width:'min(100%,440px)',maxHeight:'calc(100dvh - 32px)',display:'flex',flexDirection:'column',padding:0,overflow:'hidden',boxShadow:'0 22px 70px #17343540'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'20px 23px 12px',flexShrink:0}}><h2 className="panel-title">{title}</h2><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={16}/></button></div><div style={{padding:'4px 23px 23px',overflowY:'auto',minHeight:0,overscrollBehavior:'contain'}}>{children}</div></section></div>;
 }
 
 function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const [search, setSearch] = useState('');
+  const [patientLookup, setPatientLookup] = useState('');
   const [codeSearch, setCodeSearch] = useState('');
   const [activeCodeRow, setActiveCodeRow] = useState<number | null>(null);
   const [selectedDiseaseCodes, setSelectedDiseaseCodes] = useState<Array<DiseaseCode | null>>([]);
@@ -344,10 +460,15 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const [entryOpen, setEntryOpen] = useState(false);
   const [viewingRecord, setViewingRecord] = useState<MedicalRecord | null>(null);
   const [followUpSource, setFollowUpSource] = useState<MedicalRecord | null>(null);
+  const [uploadedDocument, setUploadedDocument] = useState<{ fileName: string; objectPath: string } | null>(null);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [hospitalName, setHospitalName] = useState(user.hospitalName ?? '');
+  const [savingHospital, setSavingHospital] = useState(false);
   const [toast, setToast] = useState('');
   const recordForm = useForm<DoctorRecordFormValues>({
     defaultValues: defaultDoctorRecordForm(),
   });
+  const recordTypeRegistration = recordForm.register('recordType');
   const codedDiagnosisFields = useFieldArray({
     control: recordForm.control,
     name: 'codedDiagnoses',
@@ -359,18 +480,68 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const codeSearchParams = useMemo(() => ({ query: codeSearch.trim().length >= 2 ? codeSearch.trim() : '__' }), [codeSearch]);
   const searchResults = useSearchPatients(params, { query: { enabled: search.trim().length >= 2, queryKey: getSearchPatientsQueryKey(params), retry: false } });
   const diseaseCodeSearch = useSearchDiseaseCodes(codeSearchParams, { query: { enabled: activeDoctor && entryOpen && activeCodeRow !== null && codeSearch.trim().length >= 2, queryKey: getSearchDiseaseCodesQueryKey(codeSearchParams), retry: false } });
-  const emergency = useGetPatientEmergency(patientId ?? 0, { query: { enabled: patientId !== null, queryKey: getGetPatientEmergencyQueryKey(patientId ?? 0), retry: false } });
   const patientRecords = useGetDoctorPatientRecords(patientId ?? 0, { query: { enabled: patientId !== null, queryKey: getGetDoctorPatientRecordsQueryKey(patientId ?? 0), retry: false } });
   const addRecord = useAddDoctorPatientRecord();
   const qc = useQueryClient();
-  const selected = searchResults.data?.find((result) => result.user.id === patientId);
+  const canAccessSelectedPatient = patientId !== null && patientRecords.data !== undefined && !patientRecords.error;
+  useEffect(() => {
+    if (profile.data?.hospitalName !== undefined) setHospitalName(profile.data.hospitalName ?? '');
+  }, [profile.data?.hospitalName]);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
+  const uploadLabDocument = async (file: File) => {
+    if (patientId === null) return;
+    if (!['application/pdf', 'image/png', 'image/jpeg'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      notify('Choose a PDF, PNG, or JPEG file smaller than 10 MB.');
+      return;
+    }
+    setUploadedDocument(null);
+    setUploadingDocument(true);
+    try {
+      const authorization = `Bearer ${localStorage.getItem('medichain_token') ?? ''}`;
+      const response = await fetch(`/api/doctor/patient/${patientId}/attachments/upload-url`, {
+        method: 'POST',
+        headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, contentType: file.type, size: file.size }),
+      });
+      const upload = await response.json() as { uploadURL?: string; objectPath?: string; error?: string };
+      if (!response.ok || !upload.uploadURL || !upload.objectPath) throw new Error(upload.error || 'Could not prepare this document upload.');
+      const stored = await fetch(upload.uploadURL, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      if (!stored.ok) throw new Error('The document upload did not complete.');
+      setUploadedDocument({ fileName: file.name, objectPath: upload.objectPath });
+      notify('Lab document uploaded. Save the record to attach it.');
+    } catch (error) {
+      notify(errText(error));
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+  const saveHospitalProfile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingHospital(true);
+    try {
+      const response = await fetch('/api/doctor/profile', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalName: hospitalName.trim() }),
+      });
+      const body = await response.json() as User & { error?: string };
+      if (!response.ok) throw new Error(body.error || 'Could not save the hospital or clinic.');
+      setHospitalName(body.hospitalName ?? '');
+      qc.setQueryData(getGetDoctorProfileQueryKey(), body);
+      notify('Professional profile saved.');
+    } catch (error) {
+      notify(errText(error));
+    } finally {
+      setSavingHospital(false);
+    }
+  };
   useEffect(() => {
     if (!entryOpen) return;
     recordForm.reset(defaultDoctorRecordForm(followUpSource ? 'Follow-up' : 'Consultation'));
     setSelectedDiseaseCodes([]);
     setActiveCodeRow(null);
     setCodeSearch('');
+    setUploadedDocument(null);
   }, [entryOpen, followUpSource?.id]);
   const startFollowUp = (source: MedicalRecord) => {
     setViewingRecord(null);
@@ -388,12 +559,20 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       return;
     }
     const numOrNull = (value: string) => value.trim() ? Number(value) : null;
+    const detailLines: string[] = [];
+    (recordSpecificFields[values.recordType] ?? []).forEach(({ key, label }) => {
+      const value = values.recordSpecific[key]?.trim();
+      if (value) detailLines.push(`${label}: ${value}`);
+    });
+    if (uploadedDocument && values.recordType === 'Lab Results') {
+      detailLines.push(`Attachment: ${uploadedDocument.fileName}`, `Attachment object: ${uploadedDocument.objectPath}`);
+    }
     const payload: MedicalRecordInput = {
       recordType: values.recordType,
       diagnosis: values.diagnosis,
       treatment: values.treatment,
       medications: values.medications.split(',').map((item) => item.trim()).filter(Boolean),
-      notes: values.notes,
+      notes: [values.notes.trim(), detailLines.length ? `Record details (${values.recordType}):\n${detailLines.join('\n')}` : ''].filter(Boolean).join('\n\n'),
       followUpToRecordId: followUpSource?.id ?? null,
       codedDiagnoses: values.codedDiagnoses.map((diagnosis) => ({
         diseaseCodeId: diagnosis.diseaseCodeId!,
@@ -453,18 +632,24 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       <Heading eyebrow="Clinical workspace" title="Patient search" subtitle="Find a patient and act on the information they have chosen to share."/>
       <div className="security-banner"><div><h3>Care begins with consent.</h3><p>Search for a patient to view the emergency information available to you. Full records require their permission.</p></div><ShieldCheck size={33} className="security-symbol"/></div>
       <div className="searchbox" style={{marginBottom:18,width:'min(100%,550px)'}}><Search size={16} color="#81918c"/><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by patient name or email" data-testid="input-patient-search"/></div>
-      {search.trim().length < 2 ? <section className="panel"><EmptyState icon={Search} title="Search for a patient" children="Enter at least two characters to find a patient by name or email." /></section> : searchResults.isLoading ? <div className="skeleton"/> : searchResults.error ? <ErrorState error={searchResults.error} retry={()=>searchResults.refetch()}/> : !searchResults.data?.length ? <section className="panel"><EmptyState icon={Users} title="No patients found" children="Check the spelling or try searching with a different name or email." /></section> :
-        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Search results</h2><p className="panel-caption">{searchResults.data.length} patient{searchResults.data.length===1?'':'s'} found</p></div></div><div className="panel-body">{searchResults.data.map((result)=><div key={result.user.id} className="data-row"><div className="person-cell"><div className="avatar">{initials(result.user.name)}</div><span>{result.user.name}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{result.user.email}</small></span></div><span className={result.hasAccess?'tag':'tag warning'}>{result.hasAccess?'Records available':'Emergency only'}</span><button className="btn small secondary" onClick={()=>choosePatient(result.user.id)} data-testid={`button-view-patient-${result.user.id}`}>Open patient <ArrowRight size={13}/></button></div>)}</div></section>}
-      {selected && <section className="panel" style={{marginTop:19}}><div className="panel-head"><div><h2 className="panel-title">{selected.user.name}</h2><p className="panel-caption">{selected.user.email} · Patient since {dateLabel(selected.user.createdAt)}</p></div><button className="icon-button" onClick={()=>{setPatientId(null);setEntryOpen(false);setViewingRecord(null);setFollowUpSource(null);}} aria-label="Close patient details"><X size={15}/></button></div><div className="panel-body">
-        {emergency.isLoading ? <div className="skeleton"/> : emergency.error ? <ErrorState error={emergency.error} retry={()=>emergency.refetch()}/> : emergency.data ? <div className="callout" style={{marginBottom:15}}><div className="callout-head"><HeartPulse size={16}/> Emergency information</div><div className="data-row"><span className="data-key">Blood group</span><span className="data-value">{emergency.data.bloodGroup}</span></div><div className="data-row"><span className="data-key">Allergies</span><span className="data-value">{emergency.data.allergies || 'None listed'}</span></div><div className="data-row"><span className="data-key">Emergency contact</span><span className="data-value">{emergency.data.emergencyContact || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Updated</span><span className="data-value">{dateLabel(emergency.data.updatedAt)}</span></div></div> : <EmptyState icon={HeartPulse} title="Emergency information unavailable" children="This patient has not added emergency details yet."/>}
-        {selected.hasAccess ? <><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',margin:'20px 0 10px'}}><div><h3 className="panel-title">Shared medical records</h3><p className="panel-caption">Access expires {dateLabel(selected.expiresAt)} · Existing entries are read-only</p></div><button className="btn small" onClick={()=>{setFollowUpSource(null);setEntryOpen(true);}} data-testid="button-add-record"><Plus size={14}/> Add record</button></div>{patientRecords.isLoading ? <div className="skeleton"/> : patientRecords.error ? <ErrorState error={patientRecords.error} retry={()=>patientRecords.refetch()}/> : patientRecords.data?.length ? patientRecords.data.map(r=><RecordRow key={r.id} record={r} records={patientRecords.data ?? []} onOpen={setViewingRecord}/>) : <EmptyState icon={FileHeart} title="No shared records yet" children="Add a consultation or other record to begin this patient’s shared timeline."/>}</> : <div className="notice" style={{marginTop:18}}>Full medical records are private until this patient grants you access. You can view only emergency information for now.</div>}
-      </div></section>}
-      {entryOpen && selected?.hasAccess && <Modal title={followUpSource ? `Follow-up to ${followUpSource.recordType}` : `Add a record for ${selected.user.name}`} onClose={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>
+      {search.trim().length < 2 ? <section className="panel"><EmptyState icon={Search} title="Search emergency information" children="Enter a patient's name or email. This search only returns emergency details." /></section> : searchResults.isLoading ? <div className="skeleton"/> : searchResults.error ? <ErrorState error={searchResults.error} retry={()=>searchResults.refetch()}/> : !searchResults.data?.length ? <section className="panel"><EmptyState icon={Users} title="No emergency information found" children="Try another search or ask the patient to add emergency details." /></section> :
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Emergency information</h2><p className="panel-caption">{searchResults.data.length} matching patient{searchResults.data.length===1?'':'s'}</p></div></div><div className="panel-body">{searchResults.data.map(({ emergencyInfo })=><article key={emergencyInfo.patientId} className="callout" style={{marginBottom:12}}><div className="callout-head"><HeartPulse size={16}/> {emergencyInfo.patientName} · Patient ID {emergencyInfo.patientId}</div><div className="data-row"><span className="data-key">Blood group</span><span className="data-value">{emergencyInfo.bloodGroup}</span></div><div className="data-row"><span className="data-key">Allergies</span><span className="data-value">{emergencyInfo.allergies || 'None listed'}</span></div><div className="data-row"><span className="data-key">Emergency contact</span><span className="data-value">{emergencyInfo.emergencyContact || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Height / weight</span><span className="data-value">{emergencyInfo.heightCm} cm · {emergencyInfo.weightKg} kg</span></div><small>Updated {dateLabel(emergencyInfo.updatedAt)}</small></article>)}</div></section>}
+      {entryOpen && canAccessSelectedPatient && <Modal title={followUpSource ? `Follow-up to ${followUpSource.recordType}` : `Add a record for patient #${patientId}`} onClose={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>
         {followUpSource ? <div className="callout record-source-callout"><div className="callout-head"><FileHeart size={16}/> This entry will be linked to</div><p><strong>{followUpSource.recordType}: {followUpSource.diagnosis || 'Care note'}</strong><br/>By {followUpSource.doctorName} · {dateLabel(followUpSource.createdAt)}</p></div> : <p className="field-note record-create-note">Saved records are permanent. To correct or add details to an existing entry, open it and choose “Add linked follow-up.”</p>}
         <Form {...recordForm}>
         <form key={followUpSource?.id ?? 'new-record'} onSubmit={recordForm.handleSubmit(submitRecord)}>
           <div className="form-grid">
-            <div className="field"><label htmlFor="record-type">Record type</label><select id="record-type" {...recordForm.register('recordType')} data-testid="select-record-type">{followUpSource ? <option value="Follow-up">Follow-up</option> : ['Consultation','Diagnosis','Treatment','Lab Results','Prescription','Surgery','Emergency','Other'].map((type)=><option key={type}>{type}</option>)}</select></div>
+            <div className="field"><label htmlFor="record-type">Record type</label><select id="record-type" {...recordTypeRegistration} onChange={(event)=>{recordTypeRegistration.onChange(event);setUploadedDocument(null);}} data-testid="select-record-type">{followUpSource ? <option value="Follow-up">Follow-up</option> : ['Consultation','Diagnosis','Treatment','Lab Results','Prescription','Surgery','Emergency','Other'].map((type)=><option key={type}>{type}</option>)}</select></div>
+            {(recordSpecificFields[recordForm.watch('recordType')] ?? []).map((field) => {
+              const fieldId = `record-specific-${field.key}`;
+              return <div className={`field ${field.key === 'immediateCare' || field.key === 'examFindings' || field.key === 'treatmentPlan' || field.key === 'monitoring' || field.key === 'progress' || field.key === 'nextSteps' || field.key === 'description' ? 'full' : ''}`} key={field.key}>
+                <label htmlFor={fieldId}>{field.label}</label>
+                {['immediateCare','examFindings','treatmentPlan','monitoring','progress','nextSteps','description'].includes(field.key)
+                  ? <textarea id={fieldId} {...recordForm.register(`recordSpecific.${field.key}`)} data-testid={`input-${field.key}`}/>
+                  : <input id={fieldId} type={field.type ?? 'text'} {...recordForm.register(`recordSpecific.${field.key}`)} data-testid={`input-${field.key}`}/>}
+              </div>;
+            })}
+            {recordForm.watch('recordType') === 'Lab Results' && <div className="field full"><label htmlFor="record-lab-document">Attach lab report <span className="field-note">PDF, PNG or JPEG · up to 10 MB</span></label><input id="record-lab-document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={uploadingDocument} onChange={(event)=>{const file=event.currentTarget.files?.[0];if(file)void uploadLabDocument(file);event.currentTarget.value='';}} data-testid="input-lab-document"/>{uploadingDocument ? <small>Uploading securely…</small> : uploadedDocument ? <small>Uploaded: {uploadedDocument.fileName}</small> : <small>Documents are private and can be opened only by the patient or an authorized clinician.</small>}</div>}
             <div className="field"><label htmlFor="record-diagnosis">Diagnosis</label><input id="record-diagnosis" {...recordForm.register('diagnosis')} required maxLength={5000} data-testid="input-diagnosis"/></div>
             <div className="field full" style={{position:'relative'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
@@ -529,10 +714,24 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         </form>
         </Form>
       </Modal>}
-      {viewingRecord && selected?.hasAccess && <RecordDetailsModal record={viewingRecord} records={patientRecords.data ?? [viewingRecord]} onClose={()=>setViewingRecord(null)} onOpenRecord={setViewingRecord} onCreateFollowUp={startFollowUp}/>}
+      {viewingRecord && canAccessSelectedPatient && <RecordDetailsModal record={viewingRecord} records={patientRecords.data ?? [viewingRecord]} onClose={()=>setViewingRecord(null)} onOpenRecord={setViewingRecord} onCreateFollowUp={startFollowUp}/>}
     </>}
-    {tab === 'Record entry' && <><Heading eyebrow="Clinical notes" title="Record entry" subtitle="Choose a patient with active access, then add a clear, useful care note."/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Select a patient</h2><p className="panel-caption">Search patients first to confirm their record-sharing permission.</p></div></div><div className="panel-body"><div className="searchbox"><Search size={15} color="#81918c"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Patient name or email" data-testid="input-entry-patient-search"/></div>{search.trim().length>=2 && (searchResults.isLoading?<div className="skeleton" style={{marginTop:15}}/>:searchResults.error?<ErrorState error={searchResults.error} retry={()=>searchResults.refetch()}/>:searchResults.data?.filter(r=>r.hasAccess).map(r=><div className="data-row" key={r.user.id}><div className="person-cell"><div className="avatar">{initials(r.user.name)}</div><span>{r.user.name}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{r.user.email}</small></span></div><span className="tag">Access active</span><button className="btn small" onClick={()=>{choosePatient(r.user.id);setEntryOpen(true);}} data-testid={`button-create-record-${r.user.id}`}><FilePlus2 size={13}/> New record</button></div>))}{search.trim().length>=2 && !searchResults.isLoading && !searchResults.error && !searchResults.data?.some(r=>r.hasAccess) && <EmptyState icon={KeyRound} title="No active access found" children="The patient needs to grant you permission before you can add a record."/>}</div></section></>}
-    {tab === 'Profile' && <><Heading eyebrow="Clinician account" title="Your profile" subtitle="Your account identity for patients and the Medichain care network."/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Professional profile</h2><p className="panel-caption">Registered account information</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">Name</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">Email address</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">Account status</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">Contact</span><span className="data-value">{profile.data?.contactInfo || 'Not provided'}</span></div></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your impact</h2><p className="panel-caption">Stats from your clinical activity</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">Patients treated</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">Records added</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">This month</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div></>}
+    {tab === 'Record entry' && <>
+      <Heading eyebrow="Clinical notes" title="Record entry" subtitle="Use the patient's Medichain ID to open their shared history and add a new record."/>
+      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Open patient record</h2><p className="panel-caption">Patient names are for emergency lookup only. Full history requires the patient ID and an active permission.</p></div></div><div className="panel-body">
+        <form className="form-grid" onSubmit={(event)=>{event.preventDefault();const id=Number(patientLookup.trim());if(!Number.isSafeInteger(id)||id<1){notify('Enter a valid patient ID.');return;}setPatientId(id);setViewingRecord(null);setEntryOpen(false);setFollowUpSource(null);}}>
+          <div className="field"><label htmlFor="input-entry-patient-id">Patient ID</label><input id="input-entry-patient-id" type="number" min="1" step="1" required value={patientLookup} onChange={(event)=>{setPatientLookup(event.target.value);if(Number(event.target.value)!==patientId)setPatientId(null);}} placeholder="Enter patient ID" data-testid="input-entry-patient-id"/></div>
+          <div className="field" style={{alignSelf:'end'}}><button className="btn" type="submit" data-testid="button-open-patient-record"><Search size={14}/> Open history</button></div>
+        </form>
+        {patientId !== null && <div style={{marginTop:20}}>
+          <div className="panel-head" style={{padding:'12px 0'}}><div><h2 className="panel-title">Patient #{patientId} · Medical history</h2><p className="panel-caption">Read-only history. Add new information as a separate record or linked follow-up.</p></div>
+            {canAccessSelectedPatient && <button className="btn small" onClick={()=>{setFollowUpSource(null);setEntryOpen(true);}} data-testid="button-add-record"><Plus size={14}/> New record</button>}
+          </div>
+          {patientRecords.isLoading ? <div className="skeleton"/> : patientRecords.error ? <ErrorState error={patientRecords.error} retry={()=>patientRecords.refetch()}/> : patientRecords.data?.length ? patientRecords.data.map((record)=><RecordRow key={record.id} record={record} records={patientRecords.data ?? []} onOpen={setViewingRecord}/>) : <EmptyState icon={FileHeart} title="No records yet" children="This patient has granted access, but no clinician has added a record yet."/>}
+        </div>}
+      </div></section>
+    </>}
+    {tab === 'Profile' && <><Heading eyebrow="Clinician account" title="Your profile" subtitle="Your account identity for patients and the Medichain care network."/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Professional profile</h2><p className="panel-caption">Your hospital or clinic is shown in patient access logs.</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">Name</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">Email address</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">Account status</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">Contact</span><span className="data-value">{profile.data?.contactInfo || 'Not provided'}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">Hospital or clinic</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder="Your hospital or clinic name" data-testid="input-doctor-hospital"/></div><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?'Saving…':'Save workplace'}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your impact</h2><p className="panel-caption">Stats from your clinical activity</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">Patients treated</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">Records added</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">This month</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div></>}
     {toast && <div className="toast-message" role="status">{toast}</div>}
   </>;
 }

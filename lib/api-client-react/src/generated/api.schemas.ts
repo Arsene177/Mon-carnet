@@ -32,6 +32,8 @@ export interface User {
   id: number;
   email: string;
   name: string;
+  /** @nullable */
+  hospitalName: string | null;
   role: Role;
   status: AccountStatus;
   /** @nullable */
@@ -319,11 +321,7 @@ export interface PatientSearchRequest {
 }
 
 export interface PatientSearchResult {
-  user: User;
-  emergencyInfo: EmergencyInfo | null;
-  hasAccess: boolean;
-  /** @nullable */
-  expiresAt: string | null;
+  emergencyInfo: EmergencyInfo;
 }
 
 export interface DoctorStats {
