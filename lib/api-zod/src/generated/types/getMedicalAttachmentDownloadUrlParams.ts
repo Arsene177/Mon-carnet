@@ -5,8 +5,8 @@
  * Medichain secure medical records API
  * OpenAPI spec version: 0.1.0
  */
-import type { EmergencyInfo } from './emergencyInfo';
 
-export interface PatientSearchResult {
-  emergencyInfo: EmergencyInfo;
-}
+export type GetMedicalAttachmentDownloadUrlParams = {
+patientId: number;
+objectPath: string;
+};

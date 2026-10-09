@@ -12,6 +12,7 @@ export interface User {
   id: number;
   email: string;
   name: string;
+  /** @nullable */
   hospitalName: string | null;
   role: Role;
   status: AccountStatus;

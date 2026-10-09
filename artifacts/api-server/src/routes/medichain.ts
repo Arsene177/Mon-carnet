@@ -9,9 +9,11 @@ import {
   countDistinct,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   ilike,
+  lt,
   ne,
   or,
   sql,
@@ -62,6 +64,7 @@ import {
   usersTable,
   emergencyInfoTable,
   medicalDiagnosesTable,
+  medicalAttachmentsTable,
   medicalRecordsTable,
   accessPermissionsTable,
   patientSearchesTable,
@@ -82,7 +85,7 @@ function privateObjectPathParts(objectPath: string) {
   return { bucketName, objectName };
 }
 
-async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET", ttlSeconds: number) {
+async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET" | "DELETE", ttlSeconds: number) {
   const { bucketName, objectName } = privateObjectPathParts(objectPath);
   const response = await fetch("http://127.0.0.1:1106/object-storage/signed-object-url", {
     method: "POST",
@@ -99,6 +102,30 @@ async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET", 
   const result = await response.json() as { signed_url?: string };
   if (!result.signed_url) throw new Error("Storage did not return a signed URL.");
   return result.signed_url;
+}
+
+async function purgeExpiredMedicalAttachments() {
+  const expired = await db
+    .select({ id: medicalAttachmentsTable.id, objectPath: medicalAttachmentsTable.objectPath })
+    .from(medicalAttachmentsTable)
+    .where(and(
+      inArray(medicalAttachmentsTable.status, ["UPLOADING", "READY"]),
+      lt(medicalAttachmentsTable.expiresAt, new Date()),
+    ))
+    .limit(100);
+  for (const attachment of expired) {
+    try {
+      const deleteURL = await createSignedObjectUrl(attachment.objectPath, "DELETE", 60);
+      const response = await fetch(deleteURL, { method: "DELETE", signal: AbortSignal.timeout(30_000) });
+      if (response.ok || response.status === 404) {
+        await db.delete(medicalAttachmentsTable).where(eq(medicalAttachmentsTable.id, attachment.id));
+      } else {
+        console.warn("Expired private medical attachment could not be deleted", attachment.id, response.status);
+      }
+    } catch (error) {
+      console.warn("Expired private medical attachment cleanup will be retried", attachment.id, error);
+    }
+  }
 }
 
 function invalidBody(res: Response, message: string) {
@@ -655,12 +682,164 @@ router.post(
       res.status(403).json({ error: "Patient access is not currently granted or has expired." });
       return;
     }
+    await purgeExpiredMedicalAttachments();
     const objectPath = `/objects/uploads/${randomUUID()}`;
     try {
+      const [attachment] = await db.insert(medicalAttachmentsTable).values({
+        patientId,
+        doctorId: req.currentUser!.id,
+        objectPath,
+        fileName: safeName,
+        contentType,
+        size,
+        status: "UPLOADING",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      }).returning();
+      if (!attachment) throw new Error("Medical attachment reservation returned no row.");
       const uploadURL = await createSignedObjectUrl(objectPath, "PUT", 900);
-      res.status(201).json({ uploadURL, objectPath, fileName: safeName, contentType, size });
+      res.status(201).json({
+        attachmentId: attachment.id,
+        uploadURL,
+        fileName: attachment.fileName,
+        contentType: attachment.contentType,
+        size: attachment.size,
+      });
     } catch (error) {
       req.log.error({ err: error }, "Unable to create private medical document upload URL");
+      res.status(503).json({ error: "Private file storage is temporarily unavailable." });
+    }
+  },
+);
+
+router.get(
+  "/doctor/patient/:patientId/attachments/pending",
+  requireAuth("DOCTOR"),
+  async (req, res): Promise<void> => {
+    const patientId = Number(req.params.patientId);
+    if (!Number.isInteger(patientId) || patientId < 1) {
+      res.status(400).json({ error: "Invalid patient ID." });
+      return;
+    }
+    if (!(await getActivePermission(patientId, req.currentUser!.id))) {
+      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      return;
+    }
+    await purgeExpiredMedicalAttachments();
+    const rows = await db.select({
+      id: medicalAttachmentsTable.id,
+      fileName: medicalAttachmentsTable.fileName,
+      contentType: medicalAttachmentsTable.contentType,
+      size: medicalAttachmentsTable.size,
+      status: medicalAttachmentsTable.status,
+      expiresAt: medicalAttachmentsTable.expiresAt,
+    }).from(medicalAttachmentsTable).where(and(
+      eq(medicalAttachmentsTable.patientId, patientId),
+      eq(medicalAttachmentsTable.doctorId, req.currentUser!.id),
+      inArray(medicalAttachmentsTable.status, ["UPLOADING", "READY"]),
+      gt(medicalAttachmentsTable.expiresAt, new Date()),
+    )).orderBy(asc(medicalAttachmentsTable.createdAt));
+    res.json(rows.map((row) => ({
+      ...row,
+      expiresAt: row.expiresAt?.toISOString() ?? null,
+    })));
+  },
+);
+
+router.post(
+  "/doctor/patient/:patientId/attachments/:attachmentId/complete",
+  requireAuth("DOCTOR"),
+  async (req, res): Promise<void> => {
+    const patientId = Number(req.params.patientId);
+    const attachmentId = Number(req.params.attachmentId);
+    if (!Number.isInteger(patientId) || patientId < 1 || !Number.isInteger(attachmentId) || attachmentId < 1) {
+      res.status(400).json({ error: "Invalid attachment reference." });
+      return;
+    }
+    if (!(await getActivePermission(patientId, req.currentUser!.id))) {
+      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      return;
+    }
+    const [attachment] = await db.select().from(medicalAttachmentsTable).where(and(
+      eq(medicalAttachmentsTable.id, attachmentId),
+      eq(medicalAttachmentsTable.patientId, patientId),
+      eq(medicalAttachmentsTable.doctorId, req.currentUser!.id),
+      inArray(medicalAttachmentsTable.status, ["UPLOADING", "READY"]),
+      gt(medicalAttachmentsTable.expiresAt, new Date()),
+    )).limit(1);
+    if (!attachment) {
+      res.status(404).json({ error: "This pending upload was not found or has expired." });
+      return;
+    }
+    if (attachment.status === "READY") {
+      res.json({ id: attachment.id, status: attachment.status });
+      return;
+    }
+    try {
+      const probeURL = await createSignedObjectUrl(attachment.objectPath, "GET", 60);
+      const probe = await fetch(probeURL, {
+        headers: { Range: "bytes=0-0" },
+        signal: AbortSignal.timeout(30_000),
+      });
+      await probe.body?.cancel();
+      if (!probe.ok) {
+        res.status(409).json({ error: "The file is not available in private storage yet. Retry the upload." });
+        return;
+      }
+      const [updated] = await db.update(medicalAttachmentsTable).set({
+        status: "READY",
+        uploadedAt: new Date(),
+      }).where(and(
+        eq(medicalAttachmentsTable.id, attachmentId),
+        eq(medicalAttachmentsTable.status, "UPLOADING"),
+        gt(medicalAttachmentsTable.expiresAt, new Date()),
+      )).returning({ id: medicalAttachmentsTable.id, status: medicalAttachmentsTable.status });
+      if (!updated) {
+        res.status(409).json({ error: "This upload is no longer pending." });
+        return;
+      }
+      res.json(updated);
+    } catch (error) {
+      req.log.error({ err: error }, "Unable to confirm private medical document upload");
+      res.status(503).json({ error: "Private file storage is temporarily unavailable." });
+    }
+  },
+);
+
+router.delete(
+  "/doctor/patient/:patientId/attachments/:attachmentId",
+  requireAuth("DOCTOR"),
+  async (req, res): Promise<void> => {
+    const patientId = Number(req.params.patientId);
+    const attachmentId = Number(req.params.attachmentId);
+    if (!Number.isInteger(patientId) || patientId < 1 || !Number.isInteger(attachmentId) || attachmentId < 1) {
+      res.status(400).json({ error: "Invalid attachment reference." });
+      return;
+    }
+    if (!(await getActivePermission(patientId, req.currentUser!.id))) {
+      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      return;
+    }
+    const [attachment] = await db.select().from(medicalAttachmentsTable).where(and(
+      eq(medicalAttachmentsTable.id, attachmentId),
+      eq(medicalAttachmentsTable.patientId, patientId),
+      eq(medicalAttachmentsTable.doctorId, req.currentUser!.id),
+      inArray(medicalAttachmentsTable.status, ["UPLOADING", "READY"]),
+    )).limit(1);
+    if (!attachment) {
+      res.status(404).json({ error: "This pending attachment was not found." });
+      return;
+    }
+    try {
+      const deleteURL = await createSignedObjectUrl(attachment.objectPath, "DELETE", 60);
+      const deleted = await fetch(deleteURL, { method: "DELETE", signal: AbortSignal.timeout(30_000) });
+      if (!deleted.ok && deleted.status !== 404) {
+        res.status(503).json({ error: "The file could not be removed from private storage." });
+        return;
+      }
+      await db.delete(medicalAttachmentsTable).where(eq(medicalAttachmentsTable.id, attachment.id));
+      res.status(204).end();
+    } catch (error) {
+      req.log.error({ err: error }, "Unable to delete pending private medical document");
       res.status(503).json({ error: "Private file storage is temporarily unavailable." });
     }
   },
@@ -811,7 +990,16 @@ router.post(
     const patientId = params.data.patientId;
     const followUpToRecordId = body.data.followUpToRecordId;
     const codedDiagnoses = body.data.codedDiagnoses ?? [];
+    const attachmentIds = body.data.attachmentIds ?? [];
     const isFollowUp = body.data.recordType === "Follow-up";
+    if (
+      new Set(attachmentIds).size !== attachmentIds.length ||
+      attachmentIds.length > 5 ||
+      (attachmentIds.length > 0 && body.data.recordType !== "Lab Results")
+    ) {
+      invalidBody(res, "Attach up to five unique pending documents to a lab-results record.");
+      return;
+    }
     if (isFollowUp !== (followUpToRecordId !== null)) {
       invalidBody(
         res,
@@ -832,6 +1020,30 @@ router.post(
       res.status(403).json({ error: "Patient access is not currently granted or has expired." });
       return;
     }
+    const readyAttachments = attachmentIds.length
+      ? await db.select({
+          id: medicalAttachmentsTable.id,
+          objectPath: medicalAttachmentsTable.objectPath,
+          fileName: medicalAttachmentsTable.fileName,
+        }).from(medicalAttachmentsTable).where(and(
+          eq(medicalAttachmentsTable.patientId, patientId),
+          eq(medicalAttachmentsTable.doctorId, req.currentUser!.id),
+          eq(medicalAttachmentsTable.status, "READY"),
+          gt(medicalAttachmentsTable.expiresAt, new Date()),
+          inArray(medicalAttachmentsTable.id, attachmentIds),
+        ))
+      : [];
+    if (readyAttachments.length !== attachmentIds.length) {
+      res.status(409).json({ error: "One or more lab reports are no longer available. Refresh pending uploads and retry." });
+      return;
+    }
+    const attachmentNotes = readyAttachments.map(
+      (attachment) => `Attachment: ${attachment.fileName}\nAttachment object: ${attachment.objectPath}`,
+    );
+    const recordNotes = [
+      body.data.notes.trim(),
+      ...attachmentNotes,
+    ].filter(Boolean).join("\n\n");
     const diseaseCodeIds = codedDiagnoses.map((diagnosis) => diagnosis.diseaseCodeId);
     if (new Set(diseaseCodeIds).size !== diseaseCodeIds.length) {
       invalidBody(res, "A disease code can only be attached once to a record.");
@@ -890,7 +1102,9 @@ router.post(
         return;
       }
     }
-    const record = await db.transaction(async (tx) => {
+    let record: typeof medicalRecordsTable.$inferSelect;
+    try {
+      record = await db.transaction(async (tx) => {
       const [created] = await tx
         .insert(medicalRecordsTable)
         .values({
@@ -900,12 +1114,30 @@ router.post(
           diagnosis: body.data.diagnosis,
           treatment: body.data.treatment,
           medications: body.data.medications,
-          notes: body.data.notes,
+          notes: recordNotes,
           followUpToRecordId,
           vitals: body.data.vitals,
         })
         .returning();
       if (!created) throw new Error("Medical record insert returned no row");
+
+      if (attachmentIds.length > 0) {
+        const linkedAttachments = await tx.update(medicalAttachmentsTable).set({
+          recordId: created.id,
+          status: "ATTACHED",
+          expiresAt: null,
+          attachedAt: new Date(),
+        }).where(and(
+          inArray(medicalAttachmentsTable.id, attachmentIds),
+          eq(medicalAttachmentsTable.patientId, patientId),
+          eq(medicalAttachmentsTable.doctorId, req.currentUser!.id),
+          eq(medicalAttachmentsTable.status, "READY"),
+          gt(medicalAttachmentsTable.expiresAt, new Date()),
+        )).returning({ id: medicalAttachmentsTable.id });
+        if (linkedAttachments.length !== attachmentIds.length) {
+          throw new Error("PENDING_ATTACHMENTS_CHANGED");
+        }
+      }
 
       const diagnoses =
         codedDiagnoses.length > 0
@@ -943,7 +1175,14 @@ router.post(
         })),
       ]);
       return created;
-    });
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "PENDING_ATTACHMENTS_CHANGED") {
+        res.status(409).json({ error: "One or more lab reports were changed before saving. Refresh pending uploads and retry." });
+        return;
+      }
+      throw error;
+    }
     const diagnosesByRecord = await codedDiagnosesByRecordId([record.id]);
     res.status(201).json(
       AddDoctorPatientRecordResponse.parse(

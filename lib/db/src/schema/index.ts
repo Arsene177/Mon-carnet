@@ -20,4 +20,5 @@
 export * from "./medichain";
 export * from "./disease-codes";
 export * from "./medical-diagnoses";
+export * from "./medical-attachments";
 export * from "./audit-events";

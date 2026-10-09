@@ -76,6 +76,11 @@ export interface RegistrationInput {
   contactInfo?: string;
 }
 
+export interface DoctorProfileInput {
+  /** @maxLength 180 */
+  hospitalName: string;
+}
+
 export interface LoginInput {
   email: string;
   /**
@@ -289,6 +294,11 @@ export interface MedicalRecordInput {
   notes: string;
   /** @nullable */
   followUpToRecordId: number | null;
+  /**
+     * @maxItems 5
+     * @items.minimum 1
+     */
+  attachmentIds?: number[];
   /** @maxItems 10 */
   codedDiagnoses?: CodedDiagnosisInput[];
   vitals: MedicalRecordInputVitals;
@@ -322,6 +332,73 @@ export interface PatientSearchRequest {
 
 export interface PatientSearchResult {
   emergencyInfo: EmergencyInfo;
+}
+
+export interface MedicalAttachment {
+  fileName: string;
+  contentType: string;
+  size: number;
+}
+
+export type AttachmentUploadInputContentType = typeof AttachmentUploadInputContentType[keyof typeof AttachmentUploadInputContentType];
+
+
+export const AttachmentUploadInputContentType = {
+  'application/pdf': 'application/pdf',
+  'image/png': 'image/png',
+  'image/jpeg': 'image/jpeg',
+} as const;
+
+export interface AttachmentUploadInput {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  fileName: string;
+  contentType: AttachmentUploadInputContentType;
+  /**
+     * @minimum 1
+     * @maximum 10485760
+     */
+  size: number;
+}
+
+export interface AttachmentUploadResponse {
+  attachmentId: number;
+  uploadURL: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+}
+
+export type PendingMedicalAttachmentStatus = typeof PendingMedicalAttachmentStatus[keyof typeof PendingMedicalAttachmentStatus];
+
+
+export const PendingMedicalAttachmentStatus = {
+  UPLOADING: 'UPLOADING',
+  READY: 'READY',
+} as const;
+
+export interface PendingMedicalAttachment {
+  id: number;
+  fileName: string;
+  contentType: string;
+  size: number;
+  status: PendingMedicalAttachmentStatus;
+  /** @nullable */
+  expiresAt: string | null;
+}
+
+export interface AttachmentDownloadResponse {
+  downloadURL: string;
+}
+
+export interface PatientAccessEvent {
+  id: number;
+  doctorName: string;
+  hospitalName: string;
+  action: string;
+  accessedAt: string;
 }
 
 export interface DoctorStats {
@@ -367,6 +444,23 @@ export type SearchPatientsParams = {
  * @minLength 2
  */
 query: string;
+};
+
+export type ConfirmMedicalAttachmentUpload200Status = typeof ConfirmMedicalAttachmentUpload200Status[keyof typeof ConfirmMedicalAttachmentUpload200Status];
+
+
+export const ConfirmMedicalAttachmentUpload200Status = {
+  READY: 'READY',
+} as const;
+
+export type ConfirmMedicalAttachmentUpload200 = {
+  id: number;
+  status: ConfirmMedicalAttachmentUpload200Status;
+};
+
+export type GetMedicalAttachmentDownloadUrlParams = {
+patientId: number;
+objectPath: string;
 };
 
 export type SearchDiseaseCodesParams = {

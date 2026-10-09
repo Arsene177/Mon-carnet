@@ -160,3 +160,5 @@ overrides:
   esbuild: "0.28.2"
   # orval pins js-yaml to an exact version older than the CVE fix (>=4.3.2)
   js-yaml: '4.3.2'
+  # Express's existing range permits this newer patch, avoiding the blocked 2.0.7 tarball.
+  proxy-addr: 2.0.8

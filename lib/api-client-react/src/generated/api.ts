@@ -23,18 +23,26 @@ import type {
   AccessPermission,
   AdminAnalytics,
   AdminStats,
+  AttachmentDownloadResponse,
+  AttachmentUploadInput,
+  AttachmentUploadResponse,
   AuthSession,
+  ConfirmMedicalAttachmentUpload200,
   DiseaseCode,
+  DoctorProfileInput,
   DoctorStats,
   EmergencyInfo,
   EmergencyInfoInput,
+  GetMedicalAttachmentDownloadUrlParams,
   HealthStatus,
   LoginInput,
   MedicalRecord,
   MedicalRecordInput,
+  PatientAccessEvent,
   PatientProfile,
   PatientSearchRequest,
   PatientSearchResult,
+  PendingMedicalAttachment,
   PermissionGrantInput,
   RegistrationInput,
   SearchDiseaseCodesParams,
@@ -898,6 +906,77 @@ export function useGetPatientPendingRequests<TData = Awaited<ReturnType<typeof g
 
 
 
+export const getGetPatientAccessHistoryUrl = () => {
+
+
+
+
+  return `/api/patient/access-history`
+}
+
+export const getPatientAccessHistory = async ( options?: Parameters<typeof customFetch>[1]): Promise<PatientAccessEvent[]> => {
+
+  return customFetch<PatientAccessEvent[]>(getGetPatientAccessHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPatientAccessHistoryQueryKey = () => {
+    return [
+    `/api/patient/access-history`
+    ] as const;
+    }
+
+
+export const getGetPatientAccessHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getPatientAccessHistory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPatientAccessHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPatientAccessHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPatientAccessHistory>>> = ({ signal }) => getPatientAccessHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPatientAccessHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPatientAccessHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getPatientAccessHistory>>>
+export type GetPatientAccessHistoryQueryError = ErrorType<unknown>
+
+
+
+export function useGetPatientAccessHistory<TData = Awaited<ReturnType<typeof getPatientAccessHistory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPatientAccessHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPatientAccessHistoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetDoctorProfileUrl = () => {
 
 
@@ -969,6 +1048,88 @@ export function useGetDoctorProfile<TData = Awaited<ReturnType<typeof getDoctorP
 
 
 
+export const getUpdateDoctorProfileUrl = () => {
+
+
+
+
+  return `/api/doctor/profile`
+}
+
+export const updateDoctorProfile = async (doctorProfileInput: DoctorProfileInput, options?: Parameters<typeof customFetch>[1]): Promise<User> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<User>(getUpdateDoctorProfileUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(doctorProfileInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateDoctorProfileMutationKey = () => ['updateDoctorProfile'] as const;
+
+export const getUpdateDoctorProfileMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDoctorProfile>>, TError,UpdateDoctorProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateDoctorProfile>>, TError,UpdateDoctorProfileMutationVariables, TContext> => {
+
+const mutationKey = getUpdateDoctorProfileMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateDoctorProfile>>, UpdateDoctorProfileMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateDoctorProfile(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateDoctorProfileMutationResult = NonNullable<Awaited<ReturnType<typeof updateDoctorProfile>>>
+    export type UpdateDoctorProfileMutationBody = BodyType<DoctorProfileInput>
+    export type UpdateDoctorProfileMutationError = ErrorType<unknown>
+    export type UpdateDoctorProfileMutationVariables = {data: BodyType<DoctorProfileInput>}
+
+    export const useUpdateDoctorProfile = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDoctorProfile>>, TError,UpdateDoctorProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateDoctorProfile>>,
+        TError,
+        UpdateDoctorProfileMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateDoctorProfileMutationOptions(options));
+    }
+
 export const getSearchPatientsUrl = (params: SearchPatientsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -1035,6 +1196,378 @@ export function useSearchPatients<TData = Awaited<ReturnType<typeof searchPatien
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchPatientsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestPatientAttachmentUploadUrl = (patientId: number,) => {
+
+
+
+
+  return `/api/doctor/patient/${patientId}/attachments/upload-url`
+}
+
+export const requestPatientAttachmentUpload = async (patientId: number,
+    attachmentUploadInput: AttachmentUploadInput, options?: Parameters<typeof customFetch>[1]): Promise<AttachmentUploadResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AttachmentUploadResponse>(getRequestPatientAttachmentUploadUrl(patientId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(attachmentUploadInput)
+  }
+);}
+
+
+
+
+
+export const getRequestPatientAttachmentUploadMutationKey = () => ['requestPatientAttachmentUpload'] as const;
+
+export const getRequestPatientAttachmentUploadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestPatientAttachmentUpload>>, TError,RequestPatientAttachmentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestPatientAttachmentUpload>>, TError,RequestPatientAttachmentUploadMutationVariables, TContext> => {
+
+const mutationKey = getRequestPatientAttachmentUploadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestPatientAttachmentUpload>>, RequestPatientAttachmentUploadMutationVariables> = (props) => {
+          const {patientId,data} = props ?? {};
+
+          return  requestPatientAttachmentUpload(patientId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestPatientAttachmentUploadMutationResult = NonNullable<Awaited<ReturnType<typeof requestPatientAttachmentUpload>>>
+    export type RequestPatientAttachmentUploadMutationBody = BodyType<AttachmentUploadInput>
+    export type RequestPatientAttachmentUploadMutationError = ErrorType<unknown>
+    export type RequestPatientAttachmentUploadMutationVariables = {patientId: number;data: BodyType<AttachmentUploadInput>}
+
+    export const useRequestPatientAttachmentUpload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestPatientAttachmentUpload>>, TError,RequestPatientAttachmentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestPatientAttachmentUpload>>,
+        TError,
+        RequestPatientAttachmentUploadMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRequestPatientAttachmentUploadMutationOptions(options));
+    }
+
+export const getGetPendingMedicalAttachmentsUrl = (patientId: number,) => {
+
+
+
+
+  return `/api/doctor/patient/${patientId}/attachments/pending`
+}
+
+export const getPendingMedicalAttachments = async (patientId: number, options?: Parameters<typeof customFetch>[1]): Promise<PendingMedicalAttachment[]> => {
+
+  return customFetch<PendingMedicalAttachment[]>(getGetPendingMedicalAttachmentsUrl(patientId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPendingMedicalAttachmentsQueryKey = (patientId: number,) => {
+    return [
+    `/api/doctor/patient/${patientId}/attachments/pending`
+    ] as const;
+    }
+
+
+export const getGetPendingMedicalAttachmentsQueryOptions = <TData = Awaited<ReturnType<typeof getPendingMedicalAttachments>>, TError = ErrorType<unknown>>(patientId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPendingMedicalAttachments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPendingMedicalAttachmentsQueryKey(patientId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPendingMedicalAttachments>>> = ({ signal }) => getPendingMedicalAttachments(patientId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: patientId !== null && patientId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPendingMedicalAttachments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPendingMedicalAttachmentsQueryResult = NonNullable<Awaited<ReturnType<typeof getPendingMedicalAttachments>>>
+export type GetPendingMedicalAttachmentsQueryError = ErrorType<unknown>
+
+
+
+export function useGetPendingMedicalAttachments<TData = Awaited<ReturnType<typeof getPendingMedicalAttachments>>, TError = ErrorType<unknown>>(
+ patientId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPendingMedicalAttachments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPendingMedicalAttachmentsQueryOptions(patientId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getConfirmMedicalAttachmentUploadUrl = (patientId: number,
+    attachmentId: number,) => {
+
+
+
+
+  return `/api/doctor/patient/${patientId}/attachments/${attachmentId}/complete`
+}
+
+export const confirmMedicalAttachmentUpload = async (patientId: number,
+    attachmentId: number, options?: Parameters<typeof customFetch>[1]): Promise<ConfirmMedicalAttachmentUpload200> => {
+
+  return customFetch<ConfirmMedicalAttachmentUpload200>(getConfirmMedicalAttachmentUploadUrl(patientId,attachmentId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getConfirmMedicalAttachmentUploadMutationKey = () => ['confirmMedicalAttachmentUpload'] as const;
+
+export const getConfirmMedicalAttachmentUploadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmMedicalAttachmentUpload>>, TError,ConfirmMedicalAttachmentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmMedicalAttachmentUpload>>, TError,ConfirmMedicalAttachmentUploadMutationVariables, TContext> => {
+
+const mutationKey = getConfirmMedicalAttachmentUploadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmMedicalAttachmentUpload>>, ConfirmMedicalAttachmentUploadMutationVariables> = (props) => {
+          const {patientId,attachmentId} = props ?? {};
+
+          return  confirmMedicalAttachmentUpload(patientId,attachmentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmMedicalAttachmentUploadMutationResult = NonNullable<Awaited<ReturnType<typeof confirmMedicalAttachmentUpload>>>
+
+    export type ConfirmMedicalAttachmentUploadMutationError = ErrorType<unknown>
+    export type ConfirmMedicalAttachmentUploadMutationVariables = {patientId: number;attachmentId: number}
+
+    export const useConfirmMedicalAttachmentUpload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmMedicalAttachmentUpload>>, TError,ConfirmMedicalAttachmentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmMedicalAttachmentUpload>>,
+        TError,
+        ConfirmMedicalAttachmentUploadMutationVariables,
+        TContext
+      > => {
+      return useMutation(getConfirmMedicalAttachmentUploadMutationOptions(options));
+    }
+
+export const getDeletePendingMedicalAttachmentUrl = (patientId: number,
+    attachmentId: number,) => {
+
+
+
+
+  return `/api/doctor/patient/${patientId}/attachments/${attachmentId}`
+}
+
+export const deletePendingMedicalAttachment = async (patientId: number,
+    attachmentId: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeletePendingMedicalAttachmentUrl(patientId,attachmentId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeletePendingMedicalAttachmentMutationKey = () => ['deletePendingMedicalAttachment'] as const;
+
+export const getDeletePendingMedicalAttachmentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePendingMedicalAttachment>>, TError,DeletePendingMedicalAttachmentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePendingMedicalAttachment>>, TError,DeletePendingMedicalAttachmentMutationVariables, TContext> => {
+
+const mutationKey = getDeletePendingMedicalAttachmentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePendingMedicalAttachment>>, DeletePendingMedicalAttachmentMutationVariables> = (props) => {
+          const {patientId,attachmentId} = props ?? {};
+
+          return  deletePendingMedicalAttachment(patientId,attachmentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePendingMedicalAttachmentMutationResult = NonNullable<Awaited<ReturnType<typeof deletePendingMedicalAttachment>>>
+
+    export type DeletePendingMedicalAttachmentMutationError = ErrorType<unknown>
+    export type DeletePendingMedicalAttachmentMutationVariables = {patientId: number;attachmentId: number}
+
+    export const useDeletePendingMedicalAttachment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePendingMedicalAttachment>>, TError,DeletePendingMedicalAttachmentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePendingMedicalAttachment>>,
+        TError,
+        DeletePendingMedicalAttachmentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeletePendingMedicalAttachmentMutationOptions(options));
+    }
+
+export const getGetMedicalAttachmentDownloadUrlUrl = (params: GetMedicalAttachmentDownloadUrlParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/attachments/download-url?${stringifiedParams}` : `/api/attachments/download-url`
+}
+
+export const getMedicalAttachmentDownloadUrl = async (params: GetMedicalAttachmentDownloadUrlParams, options?: Parameters<typeof customFetch>[1]): Promise<AttachmentDownloadResponse> => {
+
+  return customFetch<AttachmentDownloadResponse>(getGetMedicalAttachmentDownloadUrlUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMedicalAttachmentDownloadUrlQueryKey = (params?: GetMedicalAttachmentDownloadUrlParams,) => {
+    return [
+    `/api/attachments/download-url`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMedicalAttachmentDownloadUrlQueryOptions = <TData = Awaited<ReturnType<typeof getMedicalAttachmentDownloadUrl>>, TError = ErrorType<unknown>>(params: GetMedicalAttachmentDownloadUrlParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMedicalAttachmentDownloadUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMedicalAttachmentDownloadUrlQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMedicalAttachmentDownloadUrl>>> = ({ signal }) => getMedicalAttachmentDownloadUrl(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMedicalAttachmentDownloadUrl>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMedicalAttachmentDownloadUrlQueryResult = NonNullable<Awaited<ReturnType<typeof getMedicalAttachmentDownloadUrl>>>
+export type GetMedicalAttachmentDownloadUrlQueryError = ErrorType<unknown>
+
+
+
+export function useGetMedicalAttachmentDownloadUrl<TData = Awaited<ReturnType<typeof getMedicalAttachmentDownloadUrl>>, TError = ErrorType<unknown>>(
+ params: GetMedicalAttachmentDownloadUrlParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMedicalAttachmentDownloadUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMedicalAttachmentDownloadUrlQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

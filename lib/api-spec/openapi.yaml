@@ -259,6 +259,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AttachmentUploadResponse"
+  /doctor/patient/{patientId}/attachments/pending:
+    get:
+      operationId: getPendingMedicalAttachments
+      tags: [doctor]
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: The doctor's unexpired uploads that are not linked to a record
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PendingMedicalAttachment" }
+  /doctor/patient/{patientId}/attachments/{attachmentId}/complete:
+    post:
+      operationId: confirmMedicalAttachmentUpload
+      tags: [doctor]
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: attachmentId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Upload confirmed and available to attach to a lab record
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: integer }
+                  status: { type: string, enum: [READY] }
+  /doctor/patient/{patientId}/attachments/{attachmentId}:
+    delete:
+      operationId: deletePendingMedicalAttachment
+      tags: [doctor]
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: attachmentId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Pending upload and private file deleted
   /attachments/download-url:
     get:
       operationId: getMedicalAttachmentDownloadUrl
@@ -591,6 +648,10 @@ components:
           items: { type: string, maxLength: 200 }
         notes: { type: string, maxLength: 10000 }
         followUpToRecordId: { type: ["integer", "null"] }
+        attachmentIds:
+          type: array
+          maxItems: 5
+          items: { type: integer, minimum: 1 }
         codedDiagnoses:
           type: array
           maxItems: 10
@@ -688,13 +749,23 @@ components:
         size: { type: integer, minimum: 1, maximum: 10485760 }
     AttachmentUploadResponse:
       type: object
-      required: [uploadURL, objectPath, fileName, contentType, size]
+      required: [attachmentId, uploadURL, fileName, contentType, size]
       properties:
+        attachmentId: { type: integer }
         uploadURL: { type: string, format: uri }
-        objectPath: { type: string }
         fileName: { type: string }
         contentType: { type: string }
         size: { type: integer }
+    PendingMedicalAttachment:
+      type: object
+      required: [id, fileName, contentType, size, status, expiresAt]
+      properties:
+        id: { type: integer }
+        fileName: { type: string }
+        contentType: { type: string }
+        size: { type: integer }
+        status: { type: string, enum: [UPLOADING, READY] }
+        expiresAt: { type: ["string", "null"], format: date-time }
     AttachmentDownloadResponse:
       type: object
       required: [downloadURL]

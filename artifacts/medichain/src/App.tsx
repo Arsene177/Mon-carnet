@@ -70,6 +70,14 @@ type AccessHistoryEntry = {
   action: string;
   accessedAt: string;
 };
+type PendingMedicalAttachment = {
+  id: number;
+  fileName: string;
+  contentType: string;
+  size: number;
+  status: 'UPLOADING' | 'READY';
+  expiresAt: string | null;
+};
 const recordSpecificFields: Record<string, Array<{ key: string; label: string; type?: string }>> = {
   Consultation: [
     { key: 'consultationDate', label: 'Consultation date', type: 'date' },
@@ -468,7 +476,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const [entryOpen, setEntryOpen] = useState(false);
   const [viewingRecord, setViewingRecord] = useState<MedicalRecord | null>(null);
   const [followUpSource, setFollowUpSource] = useState<MedicalRecord | null>(null);
-  const [uploadedDocument, setUploadedDocument] = useState<{ fileName: string; objectPath: string } | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingMedicalAttachment[]>([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [hospitalName, setHospitalName] = useState(user.hospitalName ?? '');
   const [savingHospital, setSavingHospital] = useState(false);
@@ -492,18 +500,38 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const addRecord = useAddDoctorPatientRecord();
   const qc = useQueryClient();
   const canAccessSelectedPatient = patientId !== null && patientRecords.data !== undefined && !patientRecords.error;
+  const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
+  useEffect(() => {
+    setPendingAttachments([]);
+    if (patientId === null || !canAccessSelectedPatient) return;
+    let current = true;
+    const authorization = `Bearer ${localStorage.getItem('medichain_token') ?? ''}`;
+    void fetch(`/api/doctor/patient/${patientId}/attachments/pending`, {
+      headers: { Authorization: authorization },
+    }).then(async (response) => {
+      const body = await response.json() as PendingMedicalAttachment[] | { error?: string };
+      if (!response.ok) throw new Error('error' in body ? body.error || 'Could not load pending lab reports.' : 'Could not load pending lab reports.');
+      if (current && Array.isArray(body)) setPendingAttachments(body);
+    }).catch((error) => {
+      if (current) notify(errText(error));
+    });
+    return () => { current = false; };
+  }, [patientId, canAccessSelectedPatient]);
   useEffect(() => {
     if (profile.data?.hospitalName !== undefined) setHospitalName(profile.data.hospitalName ?? '');
   }, [profile.data?.hospitalName]);
-  const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
   const uploadLabDocument = async (file: File) => {
     if (patientId === null) return;
+    if (pendingAttachments.length >= 5) {
+      notify('Attach up to five lab reports to one record. Remove a pending report before adding another.');
+      return;
+    }
     if (!['application/pdf', 'image/png', 'image/jpeg'].includes(file.type) || file.size > 10 * 1024 * 1024) {
       notify('Choose a PDF, PNG, or JPEG file smaller than 10 MB.');
       return;
     }
-    setUploadedDocument(null);
     setUploadingDocument(true);
+    let reserved: PendingMedicalAttachment | null = null;
     try {
       const authorization = `Bearer ${localStorage.getItem('medichain_token') ?? ''}`;
       const response = await fetch(`/api/doctor/patient/${patientId}/attachments/upload-url`, {
@@ -511,16 +539,69 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         headers: { Authorization: authorization, 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileName: file.name, contentType: file.type, size: file.size }),
       });
-      const upload = await response.json() as { uploadURL?: string; objectPath?: string; error?: string };
-      if (!response.ok || !upload.uploadURL || !upload.objectPath) throw new Error(upload.error || 'Could not prepare this document upload.');
+      const upload = await response.json() as { attachmentId?: number; uploadURL?: string; error?: string };
+      if (!response.ok || !upload.uploadURL || !upload.attachmentId) throw new Error(upload.error || 'Could not prepare this document upload.');
+      reserved = {
+        id: upload.attachmentId,
+        fileName: file.name,
+        contentType: file.type,
+        size: file.size,
+        status: 'UPLOADING',
+        expiresAt: null,
+      };
+      setPendingAttachments((current) => [...current.filter((item) => item.id !== reserved!.id), reserved!]);
       const stored = await fetch(upload.uploadURL, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
       if (!stored.ok) throw new Error('The document upload did not complete.');
-      setUploadedDocument({ fileName: file.name, objectPath: upload.objectPath });
-      notify('Lab document uploaded. Save the record to attach it.');
+      const completed = await fetch(`/api/doctor/patient/${patientId}/attachments/${upload.attachmentId}/complete`, {
+        method: 'POST',
+        headers: { Authorization: authorization },
+      });
+      const completion = await completed.json() as { error?: string };
+      if (!completed.ok) throw new Error(completion.error || 'The upload is saved; retry confirmation before saving the record.');
+      setPendingAttachments((current) => current.map((item) =>
+        item.id === upload.attachmentId ? { ...item, status: 'READY' } : item,
+      ));
+      notify('Lab report saved as a pending attachment. It will remain available if record saving is interrupted.');
     } catch (error) {
+      if (reserved) setPendingAttachments((current) => current.some((item) => item.id === reserved!.id)
+        ? current
+        : [...current, reserved!]);
       notify(errText(error));
     } finally {
       setUploadingDocument(false);
+    }
+  };
+  const confirmPendingAttachment = async (attachmentId: number) => {
+    if (patientId === null) return;
+    try {
+      const response = await fetch(`/api/doctor/patient/${patientId}/attachments/${attachmentId}/complete`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'The file is not ready yet.');
+      setPendingAttachments((current) => current.map((item) =>
+        item.id === attachmentId ? { ...item, status: 'READY' } : item,
+      ));
+      notify('Lab report is ready to attach.');
+    } catch (error) {
+      notify(errText(error));
+    }
+  };
+  const removePendingAttachment = async (attachmentId: number) => {
+    if (patientId === null) return;
+    try {
+      const response = await fetch(`/api/doctor/patient/${patientId}/attachments/${attachmentId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
+      });
+      if (!response.ok) {
+        const result = await response.json() as { error?: string };
+        throw new Error(result.error || 'Could not remove this pending upload.');
+      }
+      setPendingAttachments((current) => current.filter((item) => item.id !== attachmentId));
+    } catch (error) {
+      notify(errText(error));
     }
   };
   const saveHospitalProfile = async (event: FormEvent<HTMLFormElement>) => {
@@ -549,7 +630,6 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     setSelectedDiseaseCodes([]);
     setActiveCodeRow(null);
     setCodeSearch('');
-    setUploadedDocument(null);
   }, [entryOpen, followUpSource?.id]);
   const startFollowUp = (source: MedicalRecord) => {
     setViewingRecord(null);
@@ -572,9 +652,6 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       const value = values.recordSpecific[key]?.trim();
       if (value) detailLines.push(`${label}: ${value}`);
     });
-    if (uploadedDocument && values.recordType === 'Lab Results') {
-      detailLines.push(`Attachment: ${uploadedDocument.fileName}`, `Attachment object: ${uploadedDocument.objectPath}`);
-    }
     const payload: MedicalRecordInput = {
       recordType: values.recordType,
       diagnosis: values.diagnosis,
@@ -582,6 +659,9 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       medications: values.medications.split(',').map((item) => item.trim()).filter(Boolean),
       notes: [values.notes.trim(), detailLines.length ? `Record details (${values.recordType}):\n${detailLines.join('\n')}` : ''].filter(Boolean).join('\n\n'),
       followUpToRecordId: followUpSource?.id ?? null,
+      attachmentIds: values.recordType === 'Lab Results'
+        ? pendingAttachments.filter((attachment) => attachment.status === 'READY').map((attachment) => attachment.id)
+        : [],
       codedDiagnoses: values.codedDiagnoses.map((diagnosis) => ({
         diseaseCodeId: diagnosis.diseaseCodeId!,
         status: diagnosis.status,
@@ -600,6 +680,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     addRecord.mutate({ patientId, data: payload }, { onSuccess: (record) => {
       qc.invalidateQueries({ queryKey: getGetDoctorPatientRecordsQueryKey(patientId) });
       qc.invalidateQueries({ queryKey: getGetDoctorStatsQueryKey() });
+      setPendingAttachments([]);
       setEntryOpen(false); setFollowUpSource(null); setSelectedDiseaseCodes([]); setActiveCodeRow(null); setViewingRecord(record); notify('Record added to the patient file.');
     }, onError: (error) => notify(errText(error)) });
   };
@@ -646,7 +727,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         <Form {...recordForm}>
         <form key={followUpSource?.id ?? 'new-record'} onSubmit={recordForm.handleSubmit(submitRecord)}>
           <div className="form-grid">
-            <div className="field"><label htmlFor="record-type">Record type</label><select id="record-type" {...recordTypeRegistration} onChange={(event)=>{recordTypeRegistration.onChange(event);setUploadedDocument(null);}} data-testid="select-record-type">{followUpSource ? <option value="Follow-up">Follow-up</option> : ['Consultation','Diagnosis','Treatment','Lab Results','Prescription','Surgery','Emergency','Other'].map((type)=><option key={type}>{type}</option>)}</select></div>
+            <div className="field"><label htmlFor="record-type">Record type</label><select id="record-type" {...recordTypeRegistration} onChange={recordTypeRegistration.onChange} data-testid="select-record-type">{followUpSource ? <option value="Follow-up">Follow-up</option> : ['Consultation','Diagnosis','Treatment','Lab Results','Prescription','Surgery','Emergency','Other'].map((type)=><option key={type}>{type}</option>)}</select></div>
             {(recordSpecificFields[recordForm.watch('recordType')] ?? []).map((field) => {
               const fieldId = `record-specific-${field.key}`;
               return <div className={`field ${field.key === 'immediateCare' || field.key === 'examFindings' || field.key === 'treatmentPlan' || field.key === 'monitoring' || field.key === 'progress' || field.key === 'nextSteps' || field.key === 'description' ? 'full' : ''}`} key={field.key}>
@@ -656,7 +737,19 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
                   : <input id={fieldId} type={field.type ?? 'text'} {...recordForm.register(`recordSpecific.${field.key}`)} data-testid={`input-${field.key}`}/>}
               </div>;
             })}
-            {recordForm.watch('recordType') === 'Lab Results' && <div className="field full"><label htmlFor="record-lab-document">Attach lab report <span className="field-note">PDF, PNG or JPEG · up to 10 MB</span></label><input id="record-lab-document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={uploadingDocument} onChange={(event)=>{const file=event.currentTarget.files?.[0];if(file)void uploadLabDocument(file);event.currentTarget.value='';}} data-testid="input-lab-document"/>{uploadingDocument ? <small>Uploading securely…</small> : uploadedDocument ? <small>Uploaded: {uploadedDocument.fileName}</small> : <small>Documents are private and can be opened only by the patient or an authorized clinician.</small>}</div>}
+            {recordForm.watch('recordType') === 'Lab Results' && <div className="field full">
+              <label htmlFor="record-lab-document">Attach lab report <span className="field-note">PDF, PNG or JPEG · up to 10 MB per report</span></label>
+              <input id="record-lab-document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={uploadingDocument} onChange={(event)=>{const file=event.currentTarget.files?.[0];if(file)void uploadLabDocument(file);event.currentTarget.value='';}} data-testid="input-lab-document"/>
+              {uploadingDocument && <small>Uploading securely…</small>}
+              {!pendingAttachments.length && <small>Pending uploads stay available for seven days and remain linked to this patient if saving the record is interrupted.</small>}
+              {pendingAttachments.map((attachment) => <div key={attachment.id} className="callout" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginTop:10}}>
+                <div><strong>{attachment.fileName}</strong><br/><small>{attachment.status === 'READY' ? 'Ready to attach to this lab record' : 'Upload needs confirmation; retry before saving'}</small></div>
+                <div style={{display:'flex',gap:8,flexShrink:0}}>
+                  {attachment.status === 'UPLOADING' && <button type="button" className="btn small secondary" onClick={()=>void confirmPendingAttachment(attachment.id)}>Confirm upload</button>}
+                  <button type="button" className="btn small secondary" onClick={()=>void removePendingAttachment(attachment.id)}>Remove</button>
+                </div>
+              </div>)}
+            </div>}
             <div className="field"><label htmlFor="record-diagnosis">Diagnosis</label><input id="record-diagnosis" {...recordForm.register('diagnosis')} required maxLength={5000} data-testid="input-diagnosis"/></div>
             <div className="field full" style={{position:'relative'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>

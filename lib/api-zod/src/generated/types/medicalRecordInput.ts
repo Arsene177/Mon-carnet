@@ -21,6 +21,11 @@ export interface MedicalRecordInput {
   notes: string;
   /** @nullable */
   followUpToRecordId: number | null;
+  /**
+     * @maxItems 5
+     * @items.minimum 1
+     */
+  attachmentIds?: number[];
   /** @maxItems 10 */
   codedDiagnoses?: CodedDiagnosisInput[];
   vitals: MedicalRecordInputVitals;

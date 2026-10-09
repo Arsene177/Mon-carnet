@@ -43,7 +43,7 @@ export const RegisterResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
-  "hospitalName": zod.string().nullish(),
+  "hospitalName": zod.string().nullable(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -69,7 +69,7 @@ export const LoginResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
-  "hospitalName": zod.string().nullish(),
+  "hospitalName": zod.string().nullable(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -84,7 +84,7 @@ export const GetMeResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
-  "hospitalName": zod.string().nullish(),
+  "hospitalName": zod.string().nullable(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -99,7 +99,7 @@ export const GetPatientProfileResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
-  "hospitalName": zod.string().nullish(),
+  "hospitalName": zod.string().nullable(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -245,11 +245,43 @@ export const GetPatientPendingRequestsResponseItem = zod.object({
 export const GetPatientPendingRequestsResponse = zod.array(GetPatientPendingRequestsResponseItem)
 
 
+export const GetPatientAccessHistoryResponseItem = zod.object({
+  "id": zod.number().int(),
+  "doctorName": zod.string(),
+  "hospitalName": zod.string(),
+  "action": zod.string(),
+  "accessedAt": zod.coerce.date()
+})
+export const GetPatientAccessHistoryResponse = zod.array(GetPatientAccessHistoryResponseItem)
+
+
 export const GetDoctorProfileResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
-  "hospitalName": zod.string().nullish(),
+  "hospitalName": zod.string().nullable(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+export const updateDoctorProfileBodyHospitalNameMax = 180;
+
+
+
+export const UpdateDoctorProfileBody = zod.object({
+  "hospitalName": zod.string().max(updateDoctorProfileBodyHospitalNameMax)
+})
+
+export const UpdateDoctorProfileResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -280,6 +312,75 @@ export const SearchPatientsResponseItem = zod.object({
 })
 })
 export const SearchPatientsResponse = zod.array(SearchPatientsResponseItem)
+
+
+export const RequestPatientAttachmentUploadParams = zod.object({
+  "patientId": zod.coerce.number().int()
+})
+
+export const requestPatientAttachmentUploadBodyFileNameMax = 255;
+
+export const requestPatientAttachmentUploadBodySizeMax = 10485760;
+
+
+
+export const RequestPatientAttachmentUploadBody = zod.object({
+  "fileName": zod.string().min(1).max(requestPatientAttachmentUploadBodyFileNameMax),
+  "contentType": zod.enum(['application/pdf', 'image/png', 'image/jpeg']),
+  "size": zod.number().int().min(1).max(requestPatientAttachmentUploadBodySizeMax)
+})
+
+export const RequestPatientAttachmentUploadResponse = zod.object({
+  "attachmentId": zod.number().int(),
+  "uploadURL": zod.string().url(),
+  "fileName": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number().int()
+})
+
+
+export const GetPendingMedicalAttachmentsParams = zod.object({
+  "patientId": zod.coerce.number().int()
+})
+
+export const GetPendingMedicalAttachmentsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "fileName": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number().int(),
+  "status": zod.enum(['UPLOADING', 'READY']),
+  "expiresAt": zod.coerce.date().nullable()
+})
+export const GetPendingMedicalAttachmentsResponse = zod.array(GetPendingMedicalAttachmentsResponseItem)
+
+
+export const ConfirmMedicalAttachmentUploadParams = zod.object({
+  "patientId": zod.coerce.number().int(),
+  "attachmentId": zod.coerce.number().int()
+})
+
+export const ConfirmMedicalAttachmentUploadResponse = zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['READY'])
+})
+
+
+export const DeletePendingMedicalAttachmentParams = zod.object({
+  "patientId": zod.coerce.number().int(),
+  "attachmentId": zod.coerce.number().int()
+})
+
+export const DeletePendingMedicalAttachmentResponse = zod.void()
+
+
+export const GetMedicalAttachmentDownloadUrlQueryParams = zod.object({
+  "patientId": zod.coerce.number().int(),
+  "objectPath": zod.coerce.string()
+})
+
+export const GetMedicalAttachmentDownloadUrlResponse = zod.object({
+  "downloadURL": zod.string().url()
+})
 
 
 export const searchDiseaseCodesQueryQueryMin = 2;
@@ -382,6 +483,9 @@ export const addDoctorPatientRecordBodyMedicationsItemMax = 200;
 
 export const addDoctorPatientRecordBodyNotesMax = 10000;
 
+
+export const addDoctorPatientRecordBodyAttachmentIdsMax = 5;
+
 export const addDoctorPatientRecordBodyCodedDiagnosesItemNotesMax = 10000;
 
 export const addDoctorPatientRecordBodyCodedDiagnosesMax = 10;
@@ -405,6 +509,7 @@ export const AddDoctorPatientRecordBody = zod.object({
   "medications": zod.array(zod.string().max(addDoctorPatientRecordBodyMedicationsItemMax)),
   "notes": zod.string().max(addDoctorPatientRecordBodyNotesMax),
   "followUpToRecordId": zod.number().int().nullable(),
+  "attachmentIds": zod.array(zod.number().int().min(1)).max(addDoctorPatientRecordBodyAttachmentIdsMax).optional(),
   "codedDiagnoses": zod.array(zod.object({
   "diseaseCodeId": zod.number().int(),
   "status": zod.enum(['suspected', 'probable', 'confirmed', 'ruled_out']),
@@ -503,7 +608,7 @@ export const GetPendingDoctorsResponseItem = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
-  "hospitalName": zod.string().nullish(),
+  "hospitalName": zod.string().nullable(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -522,7 +627,7 @@ export const ApproveDoctorResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
-  "hospitalName": zod.string().nullish(),
+  "hospitalName": zod.string().nullable(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -540,7 +645,7 @@ export const RevokeDoctorResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
-  "hospitalName": zod.string().nullish(),
+  "hospitalName": zod.string().nullable(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -562,7 +667,7 @@ export const SearchUsersResponseItem = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
-  "hospitalName": zod.string().nullish(),
+  "hospitalName": zod.string().nullable(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
