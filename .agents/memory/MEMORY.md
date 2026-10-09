@@ -1,1 +1,1 @@
-- [Medical record integrity](medical-record-integrity.md) — add coded diagnoses only at record creation; preserve free text and immutable records with linked follow-ups.
+- [Medical record integrity](medical-record-integrity.md) — preserve immutable records, patient-granted access, emergency-only name lookup, and hospital-stamped access history.

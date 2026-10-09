@@ -14,6 +14,7 @@ export const auditEventsTable = pgTable(
     action: text("action").notNull(),
     entityType: text("entity_type").notNull(),
     entityId: integer("entity_id"),
+    hospitalName: text("hospital_name"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

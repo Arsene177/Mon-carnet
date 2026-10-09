@@ -12,11 +12,11 @@ import {
   getGetAdminAnalyticsQueryKey, getGetAdminStatsQueryKey, getGetDoctorProfileQueryKey, getGetMeQueryKey,
   getGetPatientPendingRequestsQueryKey, getGetPatientPermissionsQueryKey,
   getGetPatientProfileQueryKey, getGetPatientRecordsQueryKey, getGetPendingDoctorsQueryKey,
-  getGetDoctorPatientRecordsQueryKey, getGetDoctorStatsQueryKey, getGetPatientEmergencyQueryKey,
+  getGetDoctorPatientRecordsQueryKey, getGetDoctorStatsQueryKey,
   getSearchDiseaseCodesQueryKey, getSearchPatientsQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
   useAddDoctorPatientRecord, useApproveDoctor, useGetAdminAnalytics, useGetAdminStats,
   useGetDoctorPatientRecords, useGetDoctorProfile, useGetDoctorStats, useGetMe,
-  useGetPatientEmergency, useGetPatientPendingRequests, useGetPatientPermissions,
+  useGetPatientPendingRequests, useGetPatientPermissions,
   useGetPatientProfile, useGetPatientRecords, useGetPendingDoctors, useGrantPatientPermission,
   useLogin, useRegister, useRevokeDoctor, useRevokePatientPermission, useSearchPatients,
   useSearchDiseaseCodes, useSearchUsers, useUpdateEmergencyInfo,
@@ -429,6 +429,13 @@ function AttachmentDownloadLink({ patientId, objectPath, fileName }: { patientId
   const openDocument = async () => {
     setLoading(true);
     setError('');
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) {
+      setLoading(false);
+      setError('Allow pop-ups to open this private document.');
+      return;
+    }
+    popup.opener = null;
     try {
       const query = new URLSearchParams({ patientId: String(patientId), objectPath });
       const response = await fetch(`/api/attachments/download-url?${query}`, {
@@ -436,8 +443,9 @@ function AttachmentDownloadLink({ patientId, objectPath, fileName }: { patientId
       });
       const result = await response.json() as { downloadURL?: string; error?: string };
       if (!response.ok || !result.downloadURL) throw new Error(result.error || 'Could not open this document.');
-      window.open(result.downloadURL, '_blank', 'noopener,noreferrer');
+      popup.location.href = result.downloadURL;
     } catch (cause) {
+      popup.close();
       setError(errText(cause));
     } finally {
       setLoading(false);
@@ -595,7 +603,6 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       setEntryOpen(false); setFollowUpSource(null); setSelectedDiseaseCodes([]); setActiveCodeRow(null); setViewingRecord(record); notify('Record added to the patient file.');
     }, onError: (error) => notify(errText(error)) });
   };
-  const choosePatient = (id: number) => { setPatientId(id); setEntryOpen(false); setViewingRecord(null); setFollowUpSource(null); setSelectedDiseaseCodes([]); setActiveCodeRow(null); setCodeSearch(''); };
   const addCodedDiagnosis = () => {
     const nextIndex = codedDiagnosisFields.fields.length;
     codedDiagnosisFields.append({

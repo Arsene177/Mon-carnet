@@ -15,6 +15,7 @@ export type CurrentUser = {
   id: number;
   email: string;
   name: string;
+  hospitalName: string | null;
   role: MedichainRole;
   status: MedichainStatus;
 };
@@ -117,6 +118,7 @@ export function publicUser(user: typeof usersTable.$inferSelect): CurrentUser {
     id: user.id,
     email: user.email,
     name: user.name,
+    hospitalName: user.hospitalName ?? null,
     role: user.role as MedichainRole,
     status,
   };

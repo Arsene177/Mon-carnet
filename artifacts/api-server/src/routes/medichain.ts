@@ -511,7 +511,7 @@ router.get("/patient/access-history", requireAuth("PATIENT"), async (req, res): 
     .select({
       id: auditEventsTable.id,
       doctorName: usersTable.name,
-      hospitalName: usersTable.hospitalName,
+      hospitalName: auditEventsTable.hospitalName,
       action: auditEventsTable.action,
       accessedAt: auditEventsTable.createdAt,
     })
@@ -596,6 +596,7 @@ router.get("/doctor/search-patient", requireAuth("DOCTOR"), async (req, res): Pr
         patientId: patient.id,
         action: "EMERGENCY_INFO_VIEWED",
         entityType: "emergency_info",
+        hospitalName: req.currentUser!.hospitalName,
       });
       return { emergencyInfo: emergencyResponse(emergency, patient.name) };
     }),
@@ -704,6 +705,7 @@ router.get(
           action: "MEDICAL_ATTACHMENT_DOWNLOADED",
           entityType: "medical_attachment",
           entityId: record.id,
+          hospitalName: current.hospitalName,
         });
       }
       res.json({ downloadURL });
@@ -741,6 +743,13 @@ router.get(
       res.status(404).json({ error: "Emergency information has not been added" });
       return;
     }
+    await db.insert(auditEventsTable).values({
+      actorUserId: req.currentUser!.id,
+      patientId: patient.id,
+      action: "EMERGENCY_INFO_VIEWED",
+      entityType: "emergency_info",
+      hospitalName: req.currentUser!.hospitalName,
+    });
     res.json(GetPatientEmergencyResponse.parse(emergencyResponse(info, patient.name)));
   },
 );
@@ -779,6 +788,7 @@ router.get(
       patientId,
       action: "MEDICAL_RECORDS_VIEWED",
       entityType: "medical_record_collection",
+      hospitalName: req.currentUser!.hospitalName,
     });
     res.json(
       GetDoctorPatientRecordsResponse.parse(
