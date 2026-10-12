@@ -10,6 +10,7 @@ Medichain lets patients manage emergency information and control which approved 
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
+- Run the database schema push after updating an existing environment; patient access IDs and revocable, non-expiring grants require the latest schema.
 - `pnpm --filter @workspace/api-server run seed` — seed development demo accounts and sample records
 - Required env: `DATABASE_URL` — Postgres connection string
 - Authentication uses `JWT_SECRET` or the existing `SESSION_SECRET` secret.
@@ -34,7 +35,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Patients can share their Patient ID with a verified doctor to grant immediate, non-expiring access to their medical booklet. Patients can revoke a doctor's access at any time; doing so also refreshes the Patient ID to prevent reuse of the old one. Doctors can search patients by name to view available emergency information.
 
 ## User preferences
 

@@ -1,7 +1,5 @@
 import { Router, type IRouter, type Response } from "express";
-import {
-  randomUUID,
-} from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   and,
   asc,
@@ -12,6 +10,7 @@ import {
   gt,
   gte,
   inArray,
+  isNull,
   ilike,
   lt,
   ne,
@@ -26,6 +25,8 @@ import {
   ApproveDoctorResponse,
   GrantPatientPermissionBody,
   GrantPatientPermissionResponse,
+  GrantPatientAccessByIdBody,
+  GrantPatientAccessByIdResponse,
   GetAdminAnalyticsResponse,
   GetAdminStatsResponse,
   GetDoctorPatientRecordsParams,
@@ -245,7 +246,7 @@ async function getActivePermission(patientId: number, doctorId: number) {
         eq(accessPermissionsTable.patientId, patientId),
         eq(accessPermissionsTable.doctorId, doctorId),
         eq(accessPermissionsTable.granted, true),
-        gte(accessPermissionsTable.expiresAt, new Date()),
+        or(isNull(accessPermissionsTable.expiresAt), gte(accessPermissionsTable.expiresAt, new Date())),
       ),
     )
     .limit(1);
@@ -267,7 +268,7 @@ async function permissionResponse(
     doctorEmail: doctor?.email ?? "",
     granted: permission.granted,
     grantedAt: permission.grantedAt.toISOString(),
-    expiresAt: permission.expiresAt.toISOString(),
+    expiresAt: permission.expiresAt?.toISOString() ?? null,
   });
 }
 
@@ -300,6 +301,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
         email: input.email.trim().toLowerCase(),
         passwordHash: hashPassword(input.password),
         role: input.role === "DOCTOR" ? "PENDING_DOCTOR" : "PATIENT",
+        patientAccessId: input.role === "PATIENT" ? randomBytes(16).toString("hex").toUpperCase() : null,
         dateOfBirth:
           input.role === "PATIENT" && input.dateOfBirth
             ? input.dateOfBirth.toISOString().slice(0, 10)
@@ -365,6 +367,18 @@ router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise
     res.status(404).json({ error: "Profile not found" });
     return;
   }
+  const [profileUser] = user.patientAccessId
+    ? [user]
+    : await db
+        .update(usersTable)
+        .set({
+          patientAccessId: sql`coalesce(${usersTable.patientAccessId}, ${randomBytes(16).toString("hex").toUpperCase()})`,
+        })
+        .where(eq(usersTable.id, userId))
+        .returning();
+  if (!profileUser?.patientAccessId) {
+    throw new Error("Patient profile is missing its access ID.");
+  }
   const [emergency] = await db
     .select()
     .from(emergencyInfoTable)
@@ -377,10 +391,17 @@ router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise
   const [permissions] = await db
     .select({ value: count() })
     .from(accessPermissionsTable)
-    .where(and(eq(accessPermissionsTable.patientId, userId), eq(accessPermissionsTable.granted, true)));
+    .where(
+      and(
+        eq(accessPermissionsTable.patientId, userId),
+        eq(accessPermissionsTable.granted, true),
+        or(isNull(accessPermissionsTable.expiresAt), gte(accessPermissionsTable.expiresAt, new Date())),
+      ),
+    );
   res.json(
     GetPatientProfileResponse.parse({
       user: userResponse(user),
+      patientAccessId: profileUser.patientAccessId,
       emergencyInfo: emergency ? emergencyResponse(emergency, user.name) : null,
       recordCount: records.value,
       permissionsCount: permissions.value,
@@ -493,15 +514,24 @@ router.delete(
       res.status(400).json({ error: "Invalid doctor" });
       return;
     }
-    await db
-      .update(accessPermissionsTable)
-      .set({ granted: false, expiresAt: new Date() })
-      .where(
-        and(
-          eq(accessPermissionsTable.patientId, req.currentUser!.id),
-          eq(accessPermissionsTable.doctorId, parsed.data.doctorId),
-        ),
-      );
+    await db.transaction(async (tx) => {
+      const revoked = await tx
+        .update(accessPermissionsTable)
+        .set({ granted: false, expiresAt: new Date() })
+        .where(
+          and(
+            eq(accessPermissionsTable.patientId, req.currentUser!.id),
+            eq(accessPermissionsTable.doctorId, parsed.data.doctorId),
+          ),
+        )
+        .returning({ id: accessPermissionsTable.id });
+      if (revoked.length > 0) {
+        await tx
+          .update(usersTable)
+          .set({ patientAccessId: randomBytes(16).toString("hex").toUpperCase() })
+          .where(eq(usersTable.id, req.currentUser!.id));
+      }
+    });
     res.status(204).send();
   },
 );
@@ -629,6 +659,66 @@ router.get("/doctor/search-patient", requireAuth("DOCTOR"), async (req, res): Pr
     }),
   );
   res.json(SearchPatientsResponse.parse(results.filter((result) => result !== null)));
+});
+
+router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): Promise<void> => {
+  const parsed = GrantPatientAccessByIdBody.safeParse(req.body);
+  if (!parsed.success) {
+    invalidBody(res, "Enter a valid Patient ID.");
+    return;
+  }
+  const [patient] = await db
+    .select()
+    .from(usersTable)
+    .where(
+      and(
+        eq(usersTable.patientAccessId, parsed.data.patientAccessId.toUpperCase()),
+        eq(usersTable.role, "PATIENT"),
+        eq(usersTable.isActive, true),
+      ),
+    )
+    .limit(1);
+  if (!patient) {
+    res.status(404).json({ error: "Patient ID not found." });
+    return;
+  }
+
+  const grantedAt = new Date();
+  await db.transaction(async (tx) => {
+    const [permission] = await tx
+      .insert(accessPermissionsTable)
+      .values({
+        patientId: patient.id,
+        doctorId: req.currentUser!.id,
+        granted: true,
+        grantedAt,
+        expiresAt: null,
+      })
+      .onConflictDoUpdate({
+        target: [accessPermissionsTable.patientId, accessPermissionsTable.doctorId],
+        set: { granted: true, grantedAt, expiresAt: null },
+      })
+      .returning();
+    if (!permission) {
+      throw new Error("Patient access grant returned no row.");
+    }
+
+    await tx.insert(auditEventsTable).values({
+      actorUserId: req.currentUser!.id,
+      patientId: patient.id,
+      action: "PATIENT_ACCESS_ID_USED",
+      entityType: "access_permission",
+      entityId: permission.id,
+      hospitalName: req.currentUser!.hospitalName,
+    });
+  });
+
+  res.json(
+    GrantPatientAccessByIdResponse.parse({
+      patientId: patient.id,
+      patientName: patient.name,
+    }),
+  );
 });
 
 router.get(
@@ -1241,7 +1331,7 @@ router.get("/admin/stats", requireAuth("ADMIN"), async (_req, res): Promise<void
     .where(
       and(
         eq(accessPermissionsTable.granted, true),
-        gte(accessPermissionsTable.expiresAt, new Date()),
+        or(isNull(accessPermissionsTable.expiresAt), gte(accessPermissionsTable.expiresAt, new Date())),
       ),
     );
   res.json(
@@ -1266,7 +1356,10 @@ router.get("/admin/analytics", requireAuth("ADMIN"), async (_req, res): Promise<
   const [permissions] = await db
     .select({ value: count() })
     .from(accessPermissionsTable)
-    .where(and(eq(accessPermissionsTable.granted, true), gte(accessPermissionsTable.expiresAt, new Date())));
+    .where(and(
+      eq(accessPermissionsTable.granted, true),
+      or(isNull(accessPermissionsTable.expiresAt), gte(accessPermissionsTable.expiresAt, new Date())),
+    ));
   const since = new Date();
   since.setMonth(since.getMonth() - 5, 1);
   since.setHours(0, 0, 0, 0);

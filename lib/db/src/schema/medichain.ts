@@ -31,6 +31,7 @@ export const usersTable = pgTable(
     role: text("role").notNull(),
     name: text("name").notNull(),
     hospitalName: text("hospital_name"),
+    patientAccessId: text("patient_access_id"),
     dateOfBirth: date("date_of_birth", { mode: "string" }),
     contactInfo: text("contact_info"),
     isActive: boolean("is_active").notNull().default(true),
@@ -44,6 +45,7 @@ export const usersTable = pgTable(
   },
   (table) => [
     uniqueIndex("medichain_users_email_unique").on(table.email),
+    uniqueIndex("medichain_users_patient_access_id_unique").on(table.patientAccessId),
     index("medichain_users_role_index").on(table.role),
   ],
 );
@@ -120,7 +122,7 @@ export const accessPermissionsTable = pgTable(
     grantedAt: timestamp("granted_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

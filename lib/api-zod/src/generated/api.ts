@@ -94,6 +94,11 @@ export const GetMeResponse = zod.object({
 })
 
 
+export const getPatientProfileResponsePatientAccessIdMin = 32;
+export const getPatientProfileResponsePatientAccessIdMax = 32;
+
+
+
 export const GetPatientProfileResponse = zod.object({
   "user": zod.object({
   "id": zod.number().int(),
@@ -107,6 +112,7 @@ export const GetPatientProfileResponse = zod.object({
   "isActive": zod.boolean(),
   "createdAt": zod.coerce.date()
 }),
+  "patientAccessId": zod.string().min(getPatientProfileResponsePatientAccessIdMin).max(getPatientProfileResponsePatientAccessIdMax),
   "emergencyInfo": zod.union([zod.object({
   "patientId": zod.number().int(),
   "patientName": zod.string(),
@@ -204,7 +210,7 @@ export const GetPatientPermissionsResponseItem = zod.object({
   "doctorEmail": zod.string().email(),
   "granted": zod.boolean(),
   "grantedAt": zod.coerce.date(),
-  "expiresAt": zod.coerce.date()
+  "expiresAt": zod.coerce.date().nullable()
 })
 export const GetPatientPermissionsResponse = zod.array(GetPatientPermissionsResponseItem)
 
@@ -225,7 +231,7 @@ export const GrantPatientPermissionResponse = zod.object({
   "doctorEmail": zod.string().email(),
   "granted": zod.boolean(),
   "grantedAt": zod.coerce.date(),
-  "expiresAt": zod.coerce.date()
+  "expiresAt": zod.coerce.date().nullable()
 })
 
 
@@ -312,6 +318,23 @@ export const SearchPatientsResponseItem = zod.object({
 })
 })
 export const SearchPatientsResponse = zod.array(SearchPatientsResponseItem)
+
+
+export const grantPatientAccessByIdBodyPatientAccessIdMin = 32;
+export const grantPatientAccessByIdBodyPatientAccessIdMax = 32;
+
+
+export const grantPatientAccessByIdBodyPatientAccessIdRegExp = new RegExp('^[A-Fa-f0-9]{32}$');
+
+
+export const GrantPatientAccessByIdBody = zod.object({
+  "patientAccessId": zod.string().min(grantPatientAccessByIdBodyPatientAccessIdMin).max(grantPatientAccessByIdBodyPatientAccessIdMax).regex(grantPatientAccessByIdBodyPatientAccessIdRegExp)
+})
+
+export const GrantPatientAccessByIdResponse = zod.object({
+  "patientId": zod.number().int(),
+  "patientName": zod.string()
+})
 
 
 export const RequestPatientAttachmentUploadParams = zod.object({

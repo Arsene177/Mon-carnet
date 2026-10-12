@@ -13,5 +13,6 @@ export interface AccessPermission {
   doctorEmail: string;
   granted: boolean;
   grantedAt: Date;
-  expiresAt: Date;
+  /** @nullable */
+  expiresAt: Date | null;
 }

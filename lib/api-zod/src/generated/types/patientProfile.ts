@@ -10,6 +10,11 @@ import type { User } from './user';
 
 export interface PatientProfile {
   user: User;
+  /**
+     * @minLength 32
+     * @maxLength 32
+     */
+  patientAccessId: string;
   emergencyInfo: EmergencyInfo | null;
   recordCount: number;
   permissionsCount: number;

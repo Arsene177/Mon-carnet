@@ -38,7 +38,9 @@ import type {
   LoginInput,
   MedicalRecord,
   MedicalRecordInput,
+  PatientAccessCodeInput,
   PatientAccessEvent,
+  PatientBookletAccess,
   PatientProfile,
   PatientSearchRequest,
   PatientSearchResult,
@@ -1207,6 +1209,88 @@ export function useSearchPatients<TData = Awaited<ReturnType<typeof searchPatien
 
 
 
+
+export const getGrantPatientAccessByIdUrl = () => {
+
+
+
+
+  return `/api/doctor/patient-access`
+}
+
+export const grantPatientAccessById = async (patientAccessCodeInput: PatientAccessCodeInput, options?: Parameters<typeof customFetch>[1]): Promise<PatientBookletAccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PatientBookletAccess>(getGrantPatientAccessByIdUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(patientAccessCodeInput)
+  }
+);}
+
+
+
+
+
+export const getGrantPatientAccessByIdMutationKey = () => ['grantPatientAccessById'] as const;
+
+export const getGrantPatientAccessByIdMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof grantPatientAccessById>>, TError,GrantPatientAccessByIdMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof grantPatientAccessById>>, TError,GrantPatientAccessByIdMutationVariables, TContext> => {
+
+const mutationKey = getGrantPatientAccessByIdMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof grantPatientAccessById>>, GrantPatientAccessByIdMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  grantPatientAccessById(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GrantPatientAccessByIdMutationResult = NonNullable<Awaited<ReturnType<typeof grantPatientAccessById>>>
+    export type GrantPatientAccessByIdMutationBody = BodyType<PatientAccessCodeInput>
+    export type GrantPatientAccessByIdMutationError = ErrorType<void>
+    export type GrantPatientAccessByIdMutationVariables = {data: BodyType<PatientAccessCodeInput>}
+
+    export const useGrantPatientAccessById = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof grantPatientAccessById>>, TError,GrantPatientAccessByIdMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof grantPatientAccessById>>,
+        TError,
+        GrantPatientAccessByIdMutationVariables,
+        TContext
+      > => {
+      return useMutation(getGrantPatientAccessByIdMutationOptions(options));
+    }
 
 export const getRequestPatientAttachmentUploadUrl = (patientId: number,) => {
 

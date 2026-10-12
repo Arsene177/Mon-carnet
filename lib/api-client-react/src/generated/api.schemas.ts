@@ -136,6 +136,11 @@ export interface EmergencyInfoInput {
 
 export interface PatientProfile {
   user: User;
+  /**
+     * @minLength 32
+     * @maxLength 32
+     */
+  patientAccessId: string;
   emergencyInfo: EmergencyInfo | null;
   recordCount: number;
   permissionsCount: number;
@@ -311,7 +316,8 @@ export interface AccessPermission {
   doctorEmail: string;
   granted: boolean;
   grantedAt: string;
-  expiresAt: string;
+  /** @nullable */
+  expiresAt: string | null;
 }
 
 export interface PermissionGrantInput {
@@ -321,6 +327,20 @@ export interface PermissionGrantInput {
      * @maximum 365
      */
   durationDays: number;
+}
+
+export interface PatientAccessCodeInput {
+  /**
+     * @minLength 32
+     * @maxLength 32
+     * @pattern ^[A-Fa-f0-9]{32}$
+     */
+  patientAccessId: string;
+}
+
+export interface PatientBookletAccess {
+  patientId: number;
+  patientName: string;
 }
 
 export interface PatientSearchRequest {
