@@ -6,8 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * A private access code distinct from the short display Patient ID.
+ */
 export interface PatientAccessCodeInput {
   /**
+     * The patient's private 128-bit booklet access code.
      * @minLength 32
      * @maxLength 32
      * @pattern ^[A-Fa-f0-9]{32}$

@@ -134,6 +134,21 @@ function localDateInputValue() {
   return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
+function PatientIdIndicator({ onOpenProfile }: { onOpenProfile: () => void }) {
+  const profile = useGetPatientProfile();
+  const patientDisplayId = profile.data?.patientDisplayId;
+  return <button
+    type="button"
+    className="patient-id-indicator"
+    onClick={onOpenProfile}
+    aria-label={patientDisplayId ? `Patient ID ${patientDisplayId}. Open profile` : profile.isError ? 'Could not load Patient ID. Open profile' : 'Patient ID is loading'}
+    data-testid="topbar-patient-display-id"
+  >
+    <span>Patient ID</span>
+    <code>{patientDisplayId ?? (profile.isError ? 'Unavailable' : 'Loading…')}</code>
+  </button>;
+}
+
 function defaultDoctorRecordForm(recordType: MedicalRecordRecordType = 'Consultation'): DoctorRecordFormValues {
   return {
     recordType,
@@ -262,7 +277,7 @@ function Workspace({ user, onSignOut }: { user: User; onSignOut: () => void }) {
       <div className="sidebar-bottom"><div className="privacy-note"><b><ShieldCheck size={14} style={{verticalAlign:'-3px',marginRight:6}}/>Your care stays yours</b>Access is granted by you and can be changed at any time.</div><div className="profile-mini"><div className="avatar">{initials(user.name)}</div><div style={{flex:1,minWidth:0}}><strong>{user.name}</strong><span>{user.role === 'PENDING_DOCTOR' ? 'Doctor · pending review' : user.role.toLowerCase()}</span></div><button className="icon-button" onClick={onSignOut} aria-label="Sign out" data-testid="button-signout"><LogOut size={15}/></button></div></div>
     </aside>
     <main className="main-area">
-      <header className="topbar"><div className="crumb"><span>Medichain</span><ChevronRight size={13}/><strong>{tab}</strong></div><div className="top-actions"><span className="status-pill"><i className="status-dot"/> Secure workspace</span><OnboardingGuide user={user} activeTab={tab} onTabChange={setTab}/><button className="icon-button" aria-label="Sign out" onClick={onSignOut} data-testid="button-signout-top"><LogOut size={15}/></button></div></header>
+      <header className="topbar"><div className="crumb"><span>Medichain</span><ChevronRight size={13}/><strong>{tab}</strong></div><div className="top-actions"><span className="status-pill"><i className="status-dot"/> Secure workspace</span><OnboardingGuide user={user} activeTab={tab} onTabChange={setTab}/><button className="icon-button" aria-label="Sign out" onClick={onSignOut} data-testid="button-signout-top"><LogOut size={15}/></button>{user.role === 'PATIENT' && <PatientIdIndicator onOpenProfile={() => setTab('Profile')}/>}</div></header>
       {user.role === 'ADMIN' ? <AdminView user={user} tab={tab} onTab={setTab}/> : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? <DoctorView user={user} tab={tab}/> : <PatientView user={user} tab={tab} onTab={setTab}/>}
     </main>
   </div>;
@@ -346,23 +361,29 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
       <Heading eyebrow="Patient workspace" title={`Good to see you, ${user.name.split(' ')[0]}.`} subtitle="Your records, shared care and important health details — all together." action={<button className="btn secondary" onClick={() => { onTab('Emergency info'); }} data-testid="button-emergency"><HeartPulse size={15}/> Emergency info</button>}/>
       {profile.isLoading ? <div className="grid stats-grid">{[1,2,3,4].map((n)=><div className="skeleton" key={n}/>)}</div> : profile.error ? <ErrorState error={profile.error} retry={() => profile.refetch()}/> : <>
         <section className="panel" style={{marginBottom:17}}>
-          <div className="panel-head"><div><h2 className="panel-title">Your Patient ID</h2><p className="panel-caption">Share this ID with a doctor to give them immediate access to your medical booklet.</p></div><Shield size={17} color="#69a293"/></div>
+          <div className="panel-head"><div><h2 className="panel-title">Your Patient ID</h2><p className="panel-caption">This is your display ID. Find your secure sharing code in Profile.</p></div><Shield size={17} color="#69a293"/></div>
           <div className="panel-body">
-            <div className="callout"><div className="callout-head"><ShieldCheck size={16}/> Patient ID</div><p style={{margin:'10px 0'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="overview-patient-access-id">{profile.data?.patientAccessId ?? 'Unavailable'}</code></p><p className="field-note">You can stop a doctor's access at any time in Access control. Revoking access also refreshes this ID.</p></div>
+            <div className="callout"><div className="callout-head"><ShieldCheck size={16}/> Patient ID</div><p style={{margin:'10px 0'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="overview-patient-display-id">{profile.data?.patientDisplayId ?? 'Unavailable'}</code></p><p className="field-note">Use this ID to identify your profile. To grant booklet access, share the separate secure code shown in Profile.</p><button className="btn small secondary" onClick={()=>onTab('Profile')} data-testid="button-view-profile">View sharing code <ArrowRight size={13}/></button></div>
           </div>
         </section>
         <div className="grid stats-grid"><Stat label="Medical records" value={profile.data?.recordCount ?? 0} note="Records in your secure file" icon={FileHeart}/><Stat label="Doctors with access" value={profile.data?.permissionsCount ?? 0} note="You control every connection" icon={Users}/><Stat label="Date of birth" value={user.dateOfBirth ? new Date(user.dateOfBirth).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : '—'} note={user.dateOfBirth ? dateLabel(user.dateOfBirth) : 'Add details to your profile'} icon={CalendarDays}/><Stat label="Emergency details" value={emergency ? 'Ready' : 'Add now'} note={emergency ? 'Available to your care team' : 'Help clinicians act with confidence'} icon={HeartPulse}/></div>
-        <div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Recent records</h2><p className="panel-caption">A view of your latest care history</p></div><button className="btn ghost small" onClick={()=>onTab('Records')} data-testid="button-all-records">All records <ArrowRight size={13}/></button></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={()=>records.refetch()}/> : records.data?.length ? records.data.slice(0,4).map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []}/>) : <EmptyState icon={FileHeart} title="Your record begins here" children="When a clinician adds a visit or result, it will appear in this timeline."/>}</div></section>
+        <div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Recent records</h2><p className="panel-caption">A view of your latest care history</p></div><button className="btn ghost small" onClick={()=>onTab('Records')} data-testid="button-all-records">All records <ArrowRight size={13}/></button></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.slice(0,4).map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []} patientDisplayId={profile.data?.patientDisplayId}/>) : <EmptyState icon={FileHeart} title="Your record begins here" children="When a clinician adds a visit or result, it will appear in this timeline."/>}</div></section>
           <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Care essentials</h2><p className="panel-caption">Useful in a moment that matters</p></div><Shield size={17} color="#69a293"/></div><div className="panel-body"><div className="callout"><div className="callout-head"><HeartPulse size={16}/> Emergency summary</div><p>{emergency ? `${emergency.bloodGroup} blood group · ${emergency.allergies ? `Allergies: ${emergency.allergies}` : 'No allergies listed'}` : 'Add your blood group, allergies and an emergency contact.'}</p><button className="btn small secondary" onClick={()=>onTab('Emergency info')} data-testid="button-update-emergency">Review details <ArrowRight size={13}/></button></div><div style={{height:15}}/><div className="data-row"><span className="data-key">Contact</span><span className="data-value">{user.contactInfo || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Pending requests</span><span className="data-value">{requests.data?.length ?? '—'}</span></div></div></section></div>
       </>}
     </>}
     {tab === 'Profile' && <>
-      <Heading eyebrow="Patient account" title="Your profile" subtitle="Your personal details and the Patient ID you can share with a doctor."/>
+      <Heading eyebrow="Patient account" title="Your profile" subtitle="Your short profile ID and the separate secure code used to share your booklet."/>
       {profile.isLoading ? <div className="skeleton"/> : profile.error ? <ErrorState error={profile.error} retry={() => profile.refetch()}/> : <>
         <section className="panel" style={{marginBottom:17}}>
-          <div className="panel-head"><div><h2 className="panel-title">Your Patient ID</h2><p className="panel-caption">Share this ID with a doctor to give them immediate access to your medical booklet.</p></div><span className="tag">Private</span></div>
+          <div className="panel-head"><div><h2 className="panel-title">Your Patient ID</h2><p className="panel-caption">Use this short ID to identify your profile. It does not grant access to your medical booklet.</p></div><span className="tag">Display ID</span></div>
           <div className="panel-body">
-            <div className="callout"><div className="callout-head"><ShieldCheck size={16}/> Patient ID</div><p style={{margin:'10px 0'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-access-id">{profile.data?.patientAccessId}</code></p><p className="field-note">A doctor can use this ID to access your booklet right away. You can stop their access at any time in Access control; revoking access also refreshes this ID.</p></div>
+            <div className="callout"><div className="callout-head"><ShieldCheck size={16}/> Patient ID</div><p style={{margin:'10px 0'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-display-id">{profile.data?.patientDisplayId}</code></p></div>
+          </div>
+        </section>
+        <section className="panel" style={{marginBottom:17}}>
+          <div className="panel-head"><div><h2 className="panel-title">Secure sharing code</h2><p className="panel-caption">Only share this private code with a verified doctor who should access your booklet.</p></div><span className="tag warning">Private</span></div>
+          <div className="panel-body">
+            <div className="callout"><div className="callout-head"><KeyRound size={16}/> Booklet access code</div><p style={{margin:'10px 0',overflowWrap:'anywhere'}}><code style={{fontSize:16,letterSpacing:1}} data-testid="text-patient-access-code">{profile.data?.patientAccessId}</code></p><p className="field-note">Access is granted immediately when a doctor enters this code. Revoke their access at any time in Access control; revoking rotates the code.</p></div>
           </div>
         </section>
         <section className="panel">
@@ -377,7 +398,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
         </section>
       </>}
     </>}
-    {tab === 'Records' && <><Heading eyebrow="Your health history" title="Medical records" subtitle="Visits, diagnoses, prescriptions and test results shared with your care team." action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-records"><Printer size={15}/> Print booklet</button>}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your record timeline</h2><p className="panel-caption">Newest records appear first. Open a record to review or download its full details. Use Print booklet to save a PDF.</p></div><span className="tag">{records.data?.length ?? 0} records</span></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []}/>) : <EmptyState icon={FileHeart} title="No records yet" children="Your medical records will appear here when a clinician adds them to your care history."/>}</div></section></>}
+    {tab === 'Records' && <><Heading eyebrow="Your health history" title="Medical records" subtitle="Visits, diagnoses, prescriptions and test results shared with your care team." action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-records"><Printer size={15}/> Print booklet</button>}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your record timeline</h2><p className="panel-caption">Newest records appear first. Open a record to review or download its full details. Use Print booklet to save a PDF.</p></div><span className="tag">{records.data?.length ?? 0} records</span></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []} patientDisplayId={profile.data?.patientDisplayId}/>) : <EmptyState icon={FileHeart} title="No records yet" children="Your medical records will appear here when a clinician adds them to your care history."/>}</div></section></>}
     {tab === 'Access control' && <><Heading eyebrow="Your permissions" title="Who can see your records?" subtitle="Grant access to a clinician, choose how long it lasts, or remove access at any time." action={<button className="btn" onClick={()=>setGrantOpen(true)} data-testid="button-grant-access"><Plus size={15}/> Grant access</button>}/>
       <div className="security-banner"><div><h3>You’re in control of your care circle.</h3><p>Clinicians can view your information only while access is active. You can revoke it whenever you need.</p></div><ShieldCheck size={34} className="security-symbol"/></div>
       {requests.isLoading || permissions.isLoading ? <div className="skeleton"/> : requests.error ? <ErrorState error={requests.error} retry={()=>requests.refetch()}/> : permissions.error ? <ErrorState error={permissions.error} retry={()=>permissions.refetch()}/> : <>
@@ -401,7 +422,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   </>;
 }
 
-function RecordRow({ record, records, onOpen, allowDownload = !onOpen }: { record: MedicalRecord; records?: MedicalRecord[]; onOpen?: (record: MedicalRecord) => void; allowDownload?: boolean }) {
+function RecordRow({ record, records, onOpen, allowDownload = !onOpen, patientDisplayId }: { record: MedicalRecord; records?: MedicalRecord[]; onOpen?: (record: MedicalRecord) => void; allowDownload?: boolean; patientDisplayId?: string }) {
   const [viewingRecord, setViewingRecord] = useState<MedicalRecord | null>(null);
   const history = records ?? [record];
   return <>
@@ -411,11 +432,11 @@ function RecordRow({ record, records, onOpen, allowDownload = !onOpen }: { recor
       <time className="record-meta">{dateLabel(record.createdAt)}</time>
       <span className="record-open-label">Open <ChevronRight size={13}/></span>
     </button>
-    {viewingRecord && !onOpen && <RecordDetailsModal record={viewingRecord} records={history} onClose={() => setViewingRecord(null)} onOpenRecord={setViewingRecord} allowDownload={allowDownload}/>}
+    {viewingRecord && !onOpen && <RecordDetailsModal record={viewingRecord} records={history} onClose={() => setViewingRecord(null)} onOpenRecord={setViewingRecord} allowDownload={allowDownload} patientDisplayId={patientDisplayId}/>}
   </>;
 }
 
-function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFollowUp, allowDownload = false }: { record: MedicalRecord; records: MedicalRecord[]; onClose: () => void; onOpenRecord: (record: MedicalRecord) => void; onCreateFollowUp?: (record: MedicalRecord) => void; allowDownload?: boolean }) {
+function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFollowUp, allowDownload = false, patientDisplayId }: { record: MedicalRecord; records: MedicalRecord[]; onClose: () => void; onOpenRecord: (record: MedicalRecord) => void; onCreateFollowUp?: (record: MedicalRecord) => void; allowDownload?: boolean; patientDisplayId?: string }) {
   const vitals = record.vitals;
   const attachmentPath = record.notes.match(/Attachment object: (\/objects\/uploads\/[0-9a-f-]{36})/)?.[1];
   const attachmentName = record.notes.match(/Attachment: (.+)/)?.[1];
@@ -423,7 +444,7 @@ function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFo
   const followUps = records.filter((item) => item.followUpToRecordId === record.id);
   return <Modal title={`${record.recordType} record`} onClose={onClose}>
     <div className="record-details" data-testid={`record-details-${record.id}`}>
-      <div className="record-detail-byline"><span className="tag">Entered by {record.doctorName}</span><div className="record-detail-actions"><time>{dateLabel(record.createdAt)}</time>{allowDownload && <button type="button" className="btn secondary small no-print" onClick={() => downloadMedicalRecord(record)} data-testid={`button-download-record-${record.id}`}><Download size={13}/> Download .txt</button>}</div></div>
+      <div className="record-detail-byline"><span className="tag">Entered by {record.doctorName}</span><div className="record-detail-actions"><time>{dateLabel(record.createdAt)}</time>{allowDownload && <button type="button" className="btn secondary small no-print" onClick={() => downloadMedicalRecord(record, patientDisplayId)} data-testid={`button-download-record-${record.id}`}><Download size={13}/> Download .txt</button>}</div></div>
       <div className="notice record-readonly-note">{onCreateFollowUp ? 'This record is read-only. Add a linked follow-up to document a correction or new information.' : 'This record is read-only. Doctors add corrections or new information as linked follow-up records.'}</div>
       {record.followUpToRecordId !== null && <section className="record-detail-section"><h3>Follows up on</h3>{parentRecord ? <button type="button" className="record-related-link" onClick={() => onOpenRecord(parentRecord)}><span><strong>{parentRecord.recordType}: {parentRecord.diagnosis || 'Care note'}</strong><small>By {parentRecord.doctorName} · {dateLabel(parentRecord.createdAt)}</small></span><ChevronRight size={15}/></button> : <p>Original record #{record.followUpToRecordId}</p>}</section>}
       {followUps.length > 0 && <section className="record-detail-section"><h3>Linked follow-ups</h3>{followUps.map((followUp) => <button type="button" className="record-related-link" key={followUp.id} onClick={() => onOpenRecord(followUp)}><span><strong>{followUp.diagnosis || 'Follow-up note'}</strong><small>By {followUp.doctorName} · {dateLabel(followUp.createdAt)}</small></span><ChevronRight size={15}/></button>)}</section>}
@@ -501,6 +522,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const [activeCodeRow, setActiveCodeRow] = useState<number | null>(null);
   const [selectedDiseaseCodes, setSelectedDiseaseCodes] = useState<Array<DiseaseCode | null>>([]);
   const [patientId, setPatientId] = useState<number | null>(null);
+  const [patientDisplayId, setPatientDisplayId] = useState<string | null>(null);
   const [entryOpen, setEntryOpen] = useState(false);
   const [viewingRecord, setViewingRecord] = useState<MedicalRecord | null>(null);
   const [followUpSource, setFollowUpSource] = useState<MedicalRecord | null>(null);
@@ -718,6 +740,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     grantAccessById.mutate({ data: { patientAccessId: patientAccessCode.trim() } }, { onSuccess: (patient) => {
       setPatientAccessCode('');
       setPatientId(patient.patientId);
+      setPatientDisplayId(patient.patientDisplayId);
       setEntryOpen(false);
       setViewingRecord(null);
       setFollowUpSource(null);
@@ -760,12 +783,12 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   return <>
     {tab === 'Patients' && <>
       <Heading eyebrow="Clinical workspace" title="Patient search" subtitle="Search any patient by name or email to find emergency information."/>
-      <div className="security-banner"><div><h3>Emergency information for the care team.</h3><p>Find emergency details across the patient database. Full medical booklets require the Patient ID shared by the patient.</p></div><ShieldCheck size={33} className="security-symbol"/></div>
+      <div className="security-banner"><div><h3>Emergency information for the care team.</h3><p>Find emergency details across the patient database. Full medical booklets require the secure sharing code from the patient.</p></div><ShieldCheck size={33} className="security-symbol"/></div>
       <div className="searchbox" style={{marginBottom:18,width:'min(100%,550px)'}}><Search size={16} color="#81918c"/><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by patient name or email" data-testid="input-patient-search"/></div>
       {search.trim().length < 2 ? <section className="panel"><EmptyState icon={Search} title="Search emergency information" children="Enter a patient's name or email. This search only returns emergency details." /></section> : searchResults.isLoading ? <div className="skeleton"/> : searchResults.error ? <ErrorState error={searchResults.error} retry={()=>searchResults.refetch()}/> : !searchResults.data?.length ? <section className="panel"><EmptyState icon={Users} title="No emergency information found" children="Try another search or ask the patient to add emergency details." /></section> :
         <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Emergency information</h2><p className="panel-caption">{searchResults.data.length} matching patient{searchResults.data.length===1?'':'s'}</p></div></div><div className="panel-body">{searchResults.data.map(({ emergencyInfo })=><article key={emergencyInfo.patientId} className="callout" style={{marginBottom:12}}><div className="callout-head"><HeartPulse size={16}/> {emergencyInfo.patientName}</div><div className="data-row"><span className="data-key">Blood group</span><span className="data-value">{emergencyInfo.bloodGroup}</span></div><div className="data-row"><span className="data-key">Allergies</span><span className="data-value">{emergencyInfo.allergies || 'None listed'}</span></div><div className="data-row"><span className="data-key">Emergency contact</span><span className="data-value">{emergencyInfo.emergencyContact || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Height / weight</span><span className="data-value">{emergencyInfo.heightCm} cm · {emergencyInfo.weightKg} kg</span></div><small>Updated {dateLabel(emergencyInfo.updatedAt)}</small></article>)}</div></section>}
     </>}
-    {entryOpen && canAccessSelectedPatient && <Modal title={followUpSource ? `Follow-up to ${followUpSource.recordType}` : `Add a record for patient #${patientId}`} onClose={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>
+    {entryOpen && canAccessSelectedPatient && <Modal title={followUpSource ? `Follow-up to ${followUpSource.recordType}` : `Add a record for ${patientDisplayId || 'patient'}`} onClose={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>
         {followUpSource ? <div className="callout record-source-callout"><div className="callout-head"><FileHeart size={16}/> This entry will be linked to</div><p><strong>{followUpSource.recordType}: {followUpSource.diagnosis || 'Care note'}</strong><br/>By {followUpSource.doctorName} · {dateLabel(followUpSource.createdAt)}</p></div> : <p className="field-note record-create-note">Saved records are permanent. To correct or add details to an existing entry, open it and choose “Add linked follow-up.”</p>}
         <Form {...recordForm}>
         <form key={followUpSource?.id ?? 'new-record'} onSubmit={recordForm.handleSubmit(submitRecord)}>
@@ -857,19 +880,19 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         </form>
         </Form>
       </Modal>}
-    {viewingRecord && canAccessSelectedPatient && <RecordDetailsModal record={viewingRecord} records={patientRecords.data ?? [viewingRecord]} onClose={()=>setViewingRecord(null)} onOpenRecord={setViewingRecord} onCreateFollowUp={startFollowUp}/>}
+    {viewingRecord && canAccessSelectedPatient && <RecordDetailsModal record={viewingRecord} records={patientRecords.data ?? [viewingRecord]} onClose={()=>setViewingRecord(null)} onOpenRecord={setViewingRecord} onCreateFollowUp={startFollowUp} patientDisplayId={patientDisplayId ?? undefined}/>}
     {tab === 'Record entry' && <>
-      <Heading eyebrow="Clinical notes" title="Record entry" subtitle="Use the Patient ID shared by the patient to open their booklet and add a new record."/>
-      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Open patient record</h2><p className="panel-caption">Entering the patient's ID grants immediate access, which they can revoke at any time.</p></div></div><div className="panel-body">
+      <Heading eyebrow="Clinical notes" title="Record entry" subtitle="Enter the secure sharing code provided by the patient to open their booklet and add a new record."/>
+      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Open patient record</h2><p className="panel-caption">Entering the patient's private sharing code grants immediate access, which they can revoke at any time.</p></div></div><div className="panel-body">
         <form className="form-grid" onSubmit={submitPatientAccessCode}>
-          <div className="field"><label htmlFor="input-entry-patient-id">Patient ID</label><input id="input-entry-patient-id" type="text" minLength={32} maxLength={32} required value={patientAccessCode} onChange={(event)=>{setPatientAccessCode(event.target.value);setPatientId(null);setViewingRecord(null);}} placeholder="Enter the patient's 32-character ID" data-testid="input-entry-patient-id"/></div>
+          <div className="field"><label htmlFor="input-entry-patient-id">Secure sharing code</label><input id="input-entry-patient-id" type="text" minLength={32} maxLength={32} required value={patientAccessCode} onChange={(event)=>{setPatientAccessCode(event.target.value);setPatientId(null);setPatientDisplayId(null);setViewingRecord(null);}} placeholder="Enter the patient's 32-character code" data-testid="input-entry-patient-id"/></div>
           <div className="field" style={{alignSelf:'end'}}><button className="btn" type="submit" disabled={grantAccessById.isPending} data-testid="button-open-patient-record"><Search size={14}/> {grantAccessById.isPending ? 'Opening…' : 'Open history'}</button></div>
         </form>
         {patientId !== null && <div style={{marginTop:20}}>
-          <div className="panel-head" style={{padding:'12px 0'}}><div><h2 className="panel-title">Patient #{patientId} · Medical history</h2><p className="panel-caption">Read-only history. Add new information as a separate record or linked follow-up.</p></div>
+          <div className="panel-head" style={{padding:'12px 0'}}><div><h2 className="panel-title">{patientDisplayId ?? 'Patient'} · Medical history</h2><p className="panel-caption">Read-only history. Add new information as a separate record or linked follow-up.</p></div>
             {canAccessSelectedPatient && <button className="btn small" onClick={()=>{setFollowUpSource(null);setEntryOpen(true);}} data-testid="button-add-record"><Plus size={14}/> New record</button>}
           </div>
-          {patientRecords.isLoading ? <div className="skeleton"/> : patientRecords.error ? <ErrorState error={patientRecords.error} retry={()=>patientRecords.refetch()}/> : patientRecords.data?.length ? patientRecords.data.map((record)=><RecordRow key={record.id} record={record} records={patientRecords.data ?? []} onOpen={setViewingRecord}/>) : <EmptyState icon={FileHeart} title="No records yet" children="This patient has granted access, but no clinician has added a record yet."/>}
+          {patientRecords.isLoading ? <div className="skeleton"/> : patientRecords.error ? <ErrorState error={patientRecords.error} retry={()=>patientRecords.refetch()}/> : patientRecords.data?.length ? patientRecords.data.map((record)=><RecordRow key={record.id} record={record} records={patientRecords.data ?? []} onOpen={setViewingRecord} patientDisplayId={patientDisplayId ?? undefined}/>) : <EmptyState icon={FileHeart} title="No records yet" children="This patient has granted access, but no clinician has added a record yet."/>}
         </div>}
       </div></section>
     </>}

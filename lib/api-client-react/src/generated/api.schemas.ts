@@ -137,6 +137,13 @@ export interface EmergencyInfoInput {
 export interface PatientProfile {
   user: User;
   /**
+     * @minLength 8
+     * @maxLength 8
+     * @pattern ^CM[A-Z0-9]{6}$
+     */
+  patientDisplayId: string;
+  /**
+     * Private 128-bit code to share only with a doctor who should access the booklet.
      * @minLength 32
      * @maxLength 32
      */
@@ -329,8 +336,12 @@ export interface PermissionGrantInput {
   durationDays: number;
 }
 
+/**
+ * A private access code distinct from the short display Patient ID.
+ */
 export interface PatientAccessCodeInput {
   /**
+     * The patient's private 128-bit booklet access code.
      * @minLength 32
      * @maxLength 32
      * @pattern ^[A-Fa-f0-9]{32}$
@@ -340,6 +351,12 @@ export interface PatientAccessCodeInput {
 
 export interface PatientBookletAccess {
   patientId: number;
+  /**
+     * @minLength 8
+     * @maxLength 8
+     * @pattern ^CM[A-Z0-9]{6}$
+     */
+  patientDisplayId: string;
   patientName: string;
 }
 

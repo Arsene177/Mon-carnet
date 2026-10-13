@@ -11,6 +11,13 @@ import type { User } from './user';
 export interface PatientProfile {
   user: User;
   /**
+     * @minLength 8
+     * @maxLength 8
+     * @pattern ^CM[A-Z0-9]{6}$
+     */
+  patientDisplayId: string;
+  /**
+     * Private 128-bit code to share only with a doctor who should access the booklet.
      * @minLength 32
      * @maxLength 32
      */

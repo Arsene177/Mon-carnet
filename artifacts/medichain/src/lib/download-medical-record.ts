@@ -21,12 +21,12 @@ function downloadTextFile(filename: string, contents: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function downloadMedicalRecord(record: MedicalRecord): void {
+export function downloadMedicalRecord(record: MedicalRecord, patientDisplayId?: string): void {
   const lines = [
     'MEDICHAIN MEDICAL RECORD',
     '========================',
     `Record ID: ${record.id}`,
-    `Patient ID: ${record.patientId}`,
+    ...(patientDisplayId ? [`Patient ID: ${patientDisplayId}`] : []),
     `Record type: ${record.recordType}`,
     `Entered by: ${record.doctorName}`,
     `Created: ${formatDate(record.createdAt)}`,

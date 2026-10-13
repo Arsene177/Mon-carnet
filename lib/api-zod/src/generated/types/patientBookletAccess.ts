@@ -8,5 +8,11 @@
 
 export interface PatientBookletAccess {
   patientId: number;
+  /**
+     * @minLength 8
+     * @maxLength 8
+     * @pattern ^CM[A-Z0-9]{6}$
+     */
+  patientDisplayId: string;
   patientName: string;
 }

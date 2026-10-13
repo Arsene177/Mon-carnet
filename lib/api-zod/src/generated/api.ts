@@ -94,6 +94,11 @@ export const GetMeResponse = zod.object({
 })
 
 
+export const getPatientProfileResponsePatientDisplayIdMin = 8;
+export const getPatientProfileResponsePatientDisplayIdMax = 8;
+
+
+export const getPatientProfileResponsePatientDisplayIdRegExp = new RegExp('^CM[A-Z0-9]{6}$');
 export const getPatientProfileResponsePatientAccessIdMin = 32;
 export const getPatientProfileResponsePatientAccessIdMax = 32;
 
@@ -112,7 +117,8 @@ export const GetPatientProfileResponse = zod.object({
   "isActive": zod.boolean(),
   "createdAt": zod.coerce.date()
 }),
-  "patientAccessId": zod.string().min(getPatientProfileResponsePatientAccessIdMin).max(getPatientProfileResponsePatientAccessIdMax),
+  "patientDisplayId": zod.string().min(getPatientProfileResponsePatientDisplayIdMin).max(getPatientProfileResponsePatientDisplayIdMax).regex(getPatientProfileResponsePatientDisplayIdRegExp),
+  "patientAccessId": zod.string().min(getPatientProfileResponsePatientAccessIdMin).max(getPatientProfileResponsePatientAccessIdMax).describe('Private 128-bit code to share only with a doctor who should access the booklet.'),
   "emergencyInfo": zod.union([zod.object({
   "patientId": zod.number().int(),
   "patientName": zod.string(),
@@ -328,11 +334,19 @@ export const grantPatientAccessByIdBodyPatientAccessIdRegExp = new RegExp('^[A-F
 
 
 export const GrantPatientAccessByIdBody = zod.object({
-  "patientAccessId": zod.string().min(grantPatientAccessByIdBodyPatientAccessIdMin).max(grantPatientAccessByIdBodyPatientAccessIdMax).regex(grantPatientAccessByIdBodyPatientAccessIdRegExp)
-})
+  "patientAccessId": zod.string().min(grantPatientAccessByIdBodyPatientAccessIdMin).max(grantPatientAccessByIdBodyPatientAccessIdMax).regex(grantPatientAccessByIdBodyPatientAccessIdRegExp).describe('The patient\'s private 128-bit booklet access code.')
+}).describe('A private access code distinct from the short display Patient ID.')
+
+export const grantPatientAccessByIdResponsePatientDisplayIdMin = 8;
+export const grantPatientAccessByIdResponsePatientDisplayIdMax = 8;
+
+
+export const grantPatientAccessByIdResponsePatientDisplayIdRegExp = new RegExp('^CM[A-Z0-9]{6}$');
+
 
 export const GrantPatientAccessByIdResponse = zod.object({
   "patientId": zod.number().int(),
+  "patientDisplayId": zod.string().min(grantPatientAccessByIdResponsePatientDisplayIdMin).max(grantPatientAccessByIdResponsePatientDisplayIdMax).regex(grantPatientAccessByIdResponsePatientDisplayIdRegExp),
   "patientName": zod.string()
 })
 

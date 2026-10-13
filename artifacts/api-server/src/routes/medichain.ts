@@ -73,6 +73,47 @@ import {
 import { createAccessToken, hashPassword, publicUser, requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
 
 const router: IRouter = Router();
+const patientDisplayIdAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+function generatePatientDisplayId() {
+  let suffix = "";
+  do {
+    suffix = Array.from(randomBytes(6), (byte) => patientDisplayIdAlphabet[byte % patientDisplayIdAlphabet.length]).join("");
+  } while (!/[0-9]/.test(suffix) || !/[A-Z]/.test(suffix));
+  return `CM${suffix}`;
+}
+
+async function createUniquePatientDisplayId() {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const candidate = generatePatientDisplayId();
+    const [existing] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.patientDisplayId, candidate))
+      .limit(1);
+    if (!existing) return candidate;
+  }
+  throw new Error("Could not create a unique patient display ID.");
+}
+
+async function ensurePatientIdentifiers(user: typeof usersTable.$inferSelect) {
+  if (user.patientDisplayId && user.patientAccessId) return user;
+
+  const patientDisplayId = user.patientDisplayId ?? await createUniquePatientDisplayId();
+  const patientAccessId = user.patientAccessId ?? randomBytes(16).toString("hex").toUpperCase();
+  const [updated] = await db
+    .update(usersTable)
+    .set({
+      patientDisplayId: sql`coalesce(${usersTable.patientDisplayId}, ${patientDisplayId})`,
+      patientAccessId: sql`coalesce(${usersTable.patientAccessId}, ${patientAccessId})`,
+    })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+  if (!updated?.patientDisplayId || !updated.patientAccessId) {
+    throw new Error("Patient profile is missing its identifiers.");
+  }
+  return updated;
+}
 
 function privateObjectPathParts(objectPath: string) {
   const privateDir = process.env.PRIVATE_OBJECT_DIR;
@@ -301,6 +342,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
         email: input.email.trim().toLowerCase(),
         passwordHash: hashPassword(input.password),
         role: input.role === "DOCTOR" ? "PENDING_DOCTOR" : "PATIENT",
+        patientDisplayId: input.role === "PATIENT" ? await createUniquePatientDisplayId() : null,
         patientAccessId: input.role === "PATIENT" ? randomBytes(16).toString("hex").toUpperCase() : null,
         dateOfBirth:
           input.role === "PATIENT" && input.dateOfBirth
@@ -367,18 +409,7 @@ router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise
     res.status(404).json({ error: "Profile not found" });
     return;
   }
-  const [profileUser] = user.patientAccessId
-    ? [user]
-    : await db
-        .update(usersTable)
-        .set({
-          patientAccessId: sql`coalesce(${usersTable.patientAccessId}, ${randomBytes(16).toString("hex").toUpperCase()})`,
-        })
-        .where(eq(usersTable.id, userId))
-        .returning();
-  if (!profileUser?.patientAccessId) {
-    throw new Error("Patient profile is missing its access ID.");
-  }
+  const profileUser = await ensurePatientIdentifiers(user);
   const [emergency] = await db
     .select()
     .from(emergencyInfoTable)
@@ -401,6 +432,7 @@ router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise
   res.json(
     GetPatientProfileResponse.parse({
       user: userResponse(user),
+      patientDisplayId: profileUser.patientDisplayId,
       patientAccessId: profileUser.patientAccessId,
       emergencyInfo: emergency ? emergencyResponse(emergency, user.name) : null,
       recordCount: records.value,
@@ -664,10 +696,10 @@ router.get("/doctor/search-patient", requireAuth("DOCTOR"), async (req, res): Pr
 router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): Promise<void> => {
   const parsed = GrantPatientAccessByIdBody.safeParse(req.body);
   if (!parsed.success) {
-    invalidBody(res, "Enter a valid Patient ID.");
+    invalidBody(res, "Enter a valid secure sharing code.");
     return;
   }
-  const [patient] = await db
+  const [matchedPatient] = await db
     .select()
     .from(usersTable)
     .where(
@@ -678,10 +710,11 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
       ),
     )
     .limit(1);
-  if (!patient) {
-    res.status(404).json({ error: "Patient ID not found." });
+  if (!matchedPatient) {
+    res.status(404).json({ error: "Secure sharing code not found." });
     return;
   }
+  const patient = await ensurePatientIdentifiers(matchedPatient);
 
   const grantedAt = new Date();
   await db.transaction(async (tx) => {
@@ -716,6 +749,7 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
   res.json(
     GrantPatientAccessByIdResponse.parse({
       patientId: patient.id,
+      patientDisplayId: patient.patientDisplayId,
       patientName: patient.name,
     }),
   );

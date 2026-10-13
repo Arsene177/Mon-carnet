@@ -248,13 +248,13 @@ paths:
               $ref: "#/components/schemas/PatientAccessCodeInput"
       responses:
         "200":
-          description: Patient booklet access granted using their shared Patient ID
+          description: Patient booklet access granted using the patient's secure sharing code
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PatientBookletAccess"
         "404":
-          description: Patient ID not found
+          description: Secure sharing code not found
   /doctor/patient/{patientId}/attachments/upload-url:
     post:
       operationId: requestPatientAttachmentUpload
@@ -618,10 +618,15 @@ components:
         emergencyContact: { type: string, maxLength: 300 }
     PatientProfile:
       type: object
-      required: [user, patientAccessId, emergencyInfo, recordCount, permissionsCount]
+      required: [user, patientDisplayId, patientAccessId, emergencyInfo, recordCount, permissionsCount]
       properties:
         user: { $ref: "#/components/schemas/User" }
-        patientAccessId: { type: string, minLength: 32, maxLength: 32 }
+        patientDisplayId: { type: string, minLength: 8, maxLength: 8, pattern: "^CM[A-Z0-9]{6}$" }
+        patientAccessId:
+          type: string
+          minLength: 32
+          maxLength: 32
+          description: Private 128-bit code to share only with a doctor who should access the booklet.
         emergencyInfo: { oneOf: [{ $ref: "#/components/schemas/EmergencyInfo" }, { type: "null" }] }
         recordCount: { type: integer }
         permissionsCount: { type: integer }
@@ -742,14 +747,21 @@ components:
         durationDays: { type: integer, minimum: 1, maximum: 365 }
     PatientAccessCodeInput:
       type: object
+      description: A private access code distinct from the short display Patient ID.
       required: [patientAccessId]
       properties:
-        patientAccessId: { type: string, minLength: 32, maxLength: 32, pattern: "^[A-Fa-f0-9]{32}$" }
+        patientAccessId:
+          type: string
+          minLength: 32
+          maxLength: 32
+          pattern: "^[A-Fa-f0-9]{32}$"
+          description: The patient's private 128-bit booklet access code.
     PatientBookletAccess:
       type: object
-      required: [patientId, patientName]
+      required: [patientId, patientDisplayId, patientName]
       properties:
         patientId: { type: integer }
+        patientDisplayId: { type: string, minLength: 8, maxLength: 8, pattern: "^CM[A-Z0-9]{6}$" }
         patientName: { type: string }
     PatientSearchRequest:
       type: object
