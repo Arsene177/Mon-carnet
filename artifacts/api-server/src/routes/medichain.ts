@@ -23,6 +23,7 @@ import {
   AddDoctorPatientRecordResponse,
   ApproveDoctorParams,
   ApproveDoctorResponse,
+  ChangePasswordBody,
   GrantPatientPermissionBody,
   GrantPatientPermissionResponse,
   GrantPatientAccessByIdBody,
@@ -400,6 +401,28 @@ router.get("/auth/me", requireAuth(), async (req, res): Promise<void> => {
     return;
   }
   res.json(GetMeResponse.parse(userResponse(user)));
+});
+
+router.post("/auth/change-password", requireAuth(), async (req, res): Promise<void> => {
+  const parsed = ChangePasswordBody.safeParse(req.body);
+  if (!parsed.success) {
+    invalidBody(res, "Enter your current password and a new password of at least 8 characters.");
+    return;
+  }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.currentUser!.id)).limit(1);
+  if (!user || !verifyPassword(parsed.data.currentPassword, user.passwordHash)) {
+    res.status(400).json({ error: "Current password is incorrect." });
+    return;
+  }
+  if (parsed.data.currentPassword === parsed.data.newPassword) {
+    invalidBody(res, "Choose a new password that differs from your current password.");
+    return;
+  }
+  await db
+    .update(usersTable)
+    .set({ passwordHash: hashPassword(parsed.data.newPassword) })
+    .where(eq(usersTable.id, user.id));
+  res.status(204).end();
 });
 
 router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise<void> => {

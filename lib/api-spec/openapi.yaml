@@ -80,6 +80,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /auth/change-password:
+    post:
+      operationId: changePassword
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordInput"
+      responses:
+        "204":
+          description: Password changed
+        "400":
+          description: Current password is incorrect or new password is invalid
   /patient/profile:
     get:
       operationId: getPatientProfile
@@ -595,6 +610,12 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 1, maxLength: 128 }
+    ChangePasswordInput:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, minLength: 1, maxLength: 128 }
+        newPassword: { type: string, minLength: 8, maxLength: 128 }
     EmergencyInfo:
       type: object
       required: [patientId, patientName, bloodGroup, weightKg, heightCm, allergies, emergencyContact, updatedAt]

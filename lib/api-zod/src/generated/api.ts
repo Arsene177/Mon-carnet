@@ -94,6 +94,21 @@ export const GetMeResponse = zod.object({
 })
 
 
+export const changePasswordBodyCurrentPasswordMax = 128;
+
+export const changePasswordBodyNewPasswordMin = 8;
+export const changePasswordBodyNewPasswordMax = 128;
+
+
+
+export const ChangePasswordBody = zod.object({
+  "currentPassword": zod.string().min(1).max(changePasswordBodyCurrentPasswordMax),
+  "newPassword": zod.string().min(changePasswordBodyNewPasswordMin).max(changePasswordBodyNewPasswordMax)
+})
+
+export const ChangePasswordResponse = zod.void()
+
+
 export const getPatientProfileResponsePatientDisplayIdMin = 8;
 export const getPatientProfileResponsePatientDisplayIdMax = 8;
 

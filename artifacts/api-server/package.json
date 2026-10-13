@@ -8,6 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "seed": "pnpm run build && node --enable-source-maps ./dist/seed.mjs",
+    "reset-users": "pnpm run build && node --enable-source-maps ./dist/reset-users.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

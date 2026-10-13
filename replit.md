@@ -12,6 +12,7 @@ Medichain lets patients manage emergency information and control which approved 
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Run the database schema push after updating an existing environment; patient display IDs, secure sharing codes, and revocable, non-expiring grants require the latest schema.
 - `pnpm --filter @workspace/api-server run seed` — seed development demo accounts and sample records
+- `pnpm --filter @workspace/api-server run reset-users` — destructive one-time account reset; requires `RESET_ALL_USERS=DELETE_ALL_USERS` and `ADMIN_PASSWORD`, removes all users and linked patient data/attachments, then creates only `arsenedjonkoun5@gmail.com` as admin. Do not run the demo `seed` command afterward.
 - Required env: `DATABASE_URL` — Postgres connection string
 - Authentication uses `JWT_SECRET` or the existing `SESSION_SECRET` secret.
 
@@ -36,6 +37,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 ## Product
 
 Patients have a short `CM`-prefixed display ID and a separate high-entropy sharing code. Sharing the private code with a verified doctor grants immediate, non-expiring access to the medical booklet. Patients can revoke a doctor's access at any time; doing so rotates the sharing code. Doctors can search patients by name to view available emergency information.
+Every signed-in account can change its password from the dashboard Profile page using the current password.
 
 ## User preferences
 

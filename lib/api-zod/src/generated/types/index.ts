@@ -18,6 +18,7 @@ export * from './attachmentUploadInput';
 export * from './attachmentUploadInputContentType';
 export * from './attachmentUploadResponse';
 export * from './authSession';
+export * from './changePasswordInput';
 export * from './codedDiagnosis';
 export * from './codedDiagnosisInput';
 export * from './confirmMedicalAttachmentUpload200';

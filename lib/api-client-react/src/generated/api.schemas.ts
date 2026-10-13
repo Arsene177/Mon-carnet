@@ -90,6 +90,19 @@ export interface LoginInput {
   password: string;
 }
 
+export interface ChangePasswordInput {
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  currentPassword: string;
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  newPassword: string;
+}
+
 export interface EmergencyInfo {
   patientId: number;
   patientName: string;
