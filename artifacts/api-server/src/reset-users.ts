@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   accessPermissionsTable,
   auditEventsTable,
@@ -74,7 +75,7 @@ async function resetUsers() {
     await deleteStoredAttachment(attachment.objectPath);
   }
 
-  const [admin] = await db.transaction(async (tx) => {
+  const admin = await db.transaction(async (tx) => {
     await tx.delete(auditEventsTable);
     await tx.delete(medicalDiagnosesTable);
     await tx.delete(medicalAttachmentsTable);
@@ -83,16 +84,12 @@ async function resetUsers() {
     await tx.delete(emergencyInfoTable);
     await tx.delete(medicalRecordsTable);
     await tx.delete(usersTable);
-    return tx
-      .insert(usersTable)
-      .values({
-        email: adminEmail,
-        passwordHash: hashPassword(adminPassword),
-        role: "ADMIN",
-        name: adminName,
-        isActive: true,
-      })
-      .returning({ id: usersTable.id });
+    const result = await tx.execute(sql`
+      INSERT INTO medichain_users (email, password_hash, role, name, is_active)
+      VALUES (${adminEmail}, ${hashPassword(adminPassword)}, 'ADMIN', ${adminName}, true)
+      RETURNING id
+    `);
+    return result.rows[0];
   });
 
   if (!admin) throw new Error("The administrator account was not created.");
