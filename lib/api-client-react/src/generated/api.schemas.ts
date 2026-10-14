@@ -341,6 +341,52 @@ export interface MedicalRecordInput {
   vitals: MedicalRecordInputVitals;
 }
 
+export type AdminEpidemicMetricAlertLevel = typeof AdminEpidemicMetricAlertLevel[keyof typeof AdminEpidemicMetricAlertLevel];
+
+
+export const AdminEpidemicMetricAlertLevel = {
+  NORMAL: 'NORMAL',
+  WATCH: 'WATCH',
+  ALERT: 'ALERT',
+} as const;
+
+export interface AdminEpidemicMetric {
+  diseaseCodeId: number;
+  diseaseName: string;
+  code: string;
+  codingSystem: string;
+  last7Cases: number;
+  previous7Cases: number;
+  threshold: number;
+  alertLevel: AdminEpidemicMetricAlertLevel;
+}
+
+export interface AdminEpidemicThresholdInput {
+  /**
+     * @minimum 1
+     * @maximum 10000
+     */
+  threshold: number;
+}
+
+export interface AdminEpidemicThreshold {
+  diseaseCodeId: number;
+  threshold: number;
+}
+
+export interface BookletVerificationIssue {
+  verificationCode: string;
+  patientDisplayId: string;
+  recordCount: number;
+  issuedAt: string;
+}
+
+export interface BookletVerificationResult {
+  valid: true;
+  recordCount: number;
+  issuedAt: string;
+}
+
 export interface AccessPermission {
   id: number;
   doctorId: number;
@@ -501,6 +547,7 @@ export interface AdminAnalytics {
   stats: AdminStats;
   monthlyRecords: AdminAnalyticsMonthlyRecordsItem[];
   systemStatus: AdminAnalyticsSystemStatusItem[];
+  epidemicMetrics: AdminEpidemicMetric[];
 }
 
 export type SearchPatientsParams = {

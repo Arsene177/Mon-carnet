@@ -136,6 +136,37 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/MedicalRecord"
+  /patient/booklet-verification:
+    post:
+      operationId: createBookletVerification
+      tags: [patient]
+      responses:
+        "200":
+          description: Create a public verification reference for the complete booklet export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookletVerificationIssue"
+  /booklet-verification/{verificationCode}:
+    get:
+      operationId: verifyBookletExport
+      tags: [patient]
+      parameters:
+        - name: verificationCode
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Publicly verify that a booklet reference was issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookletVerificationResult"
+        "404":
+          description: Verification reference not found
   /patient/permissions:
     get:
       operationId: getPatientPermissions
@@ -485,6 +516,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminAnalytics"
+  /admin/disease-codes/{diseaseCodeId}/epidemic-threshold:
+    put:
+      operationId: updateAdminEpidemicThreshold
+      tags: [admin]
+      parameters:
+        - name: diseaseCodeId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminEpidemicThresholdInput"
+      responses:
+        "200":
+          description: Epidemic case alert threshold updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEpidemicThreshold"
+        "404":
+          description: Epidemic-relevant disease not found
   /admin/pending-doctors:
     get:
       operationId: getPendingDoctors
@@ -780,6 +836,44 @@ components:
         pandemicRelevant: { type: boolean }
         status: { type: string, enum: [ACTIVE, INACTIVE] }
         source: { type: string }
+    AdminEpidemicMetric:
+      type: object
+      required: [diseaseCodeId, diseaseName, code, codingSystem, last7Cases, previous7Cases, threshold, alertLevel]
+      properties:
+        diseaseCodeId: { type: integer }
+        diseaseName: { type: string }
+        code: { type: string }
+        codingSystem: { type: string }
+        last7Cases: { type: integer }
+        previous7Cases: { type: integer }
+        threshold: { type: integer }
+        alertLevel: { type: string, enum: [NORMAL, WATCH, ALERT] }
+    AdminEpidemicThresholdInput:
+      type: object
+      required: [threshold]
+      properties:
+        threshold: { type: integer, minimum: 1, maximum: 10000 }
+    AdminEpidemicThreshold:
+      type: object
+      required: [diseaseCodeId, threshold]
+      properties:
+        diseaseCodeId: { type: integer }
+        threshold: { type: integer }
+    BookletVerificationIssue:
+      type: object
+      required: [verificationCode, patientDisplayId, recordCount, issuedAt]
+      properties:
+        verificationCode: { type: string, format: uuid }
+        patientDisplayId: { type: string }
+        recordCount: { type: integer }
+        issuedAt: { type: string, format: date-time }
+    BookletVerificationResult:
+      type: object
+      required: [valid, recordCount, issuedAt]
+      properties:
+        valid: { type: boolean, enum: [true] }
+        recordCount: { type: integer }
+        issuedAt: { type: string, format: date-time }
     MedicalDiagnosisStatus:
       type: string
       enum: [suspected, probable, confirmed, ruled_out]
@@ -920,7 +1014,7 @@ components:
         activePermissions: { type: integer }
     AdminAnalytics:
       type: object
-      required: [stats, monthlyRecords, systemStatus]
+      required: [stats, monthlyRecords, systemStatus, epidemicMetrics]
       properties:
         stats: { $ref: "#/components/schemas/AdminStats" }
         monthlyRecords:
@@ -939,3 +1033,7 @@ components:
             properties:
               name: { type: string }
               status: { type: string, enum: [Operational, Attention] }
+        epidemicMetrics:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminEpidemicMetric"

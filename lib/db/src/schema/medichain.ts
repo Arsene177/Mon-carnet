@@ -54,6 +54,21 @@ export const usersTable = pgTable(
   ],
 );
 
+export const bookletExportsTable = pgTable(
+  "medichain_booklet_exports",
+  {
+    id: serial("id").primaryKey(),
+    verificationCode: text("verification_code").notNull().unique(),
+    patientId: integer("patient_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    patientDisplayId: text("patient_display_id").notNull(),
+    recordCount: integer("record_count").notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("medichain_booklet_exports_patient_index").on(table.patientId, table.issuedAt)],
+);
+
 export const emergencyInfoTable = pgTable(
   "medichain_emergency_info",
   {

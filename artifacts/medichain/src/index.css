@@ -205,6 +205,47 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
 .mobile-brand { display:none; }
 .toast-message { position:fixed; right:22px; bottom:22px; z-index:60; background:#142a3f; color:#fff; box-shadow:0 12px 30px #142a3f33; border-radius:10px; padding:13px 18px; font-size:12px; animation:slidein .24s ease both; }
 @keyframes slidein { from {opacity:0;transform:translateY(8px)} to {opacity:1;transform:translateY(0)} }
+.booklet-print { display:none; }
+.epidemic-alert-panel { margin:18px 0; border-color:#e8c58c; }
+.epidemic-detail { display:block; margin-top:4px; color:#788683; font-size:11px; line-height:1.5; }
+.epidemic-alert { background:#fce6e2; color:#8b2821; }
+.epidemic-threshold-row { display:grid; grid-template-columns:minmax(150px,1fr) auto auto; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid #e8edf1; }
+.epidemic-threshold-row:last-child { border-bottom:0; }
+.epidemic-threshold-row label { display:flex; align-items:center; gap:8px; color:#71817e; font-size:11px; font-weight:700; }
+.epidemic-threshold-row input { width:92px; padding:8px; border:1px solid #dfe5eb; border-radius:8px; color:#203c3d; }
+.booklet-print { color:#142a3f; font:11pt/1.5 Arial,sans-serif; }
+.booklet-print h1,.booklet-print h2,.booklet-print h3,.booklet-print h4 { color:#142a3f; }
+.booklet-cover { min-height:240mm; padding:12mm 4mm; }
+.booklet-brand { color:#b6751c; font-weight:800; letter-spacing:2px; }
+.booklet-patient { margin:24px 0; }
+.booklet-patient div { display:grid; grid-template-columns:35mm 1fr; gap:8mm; padding:6px 0; border-bottom:1px solid #dfe5eb; }
+.booklet-patient dt { font-weight:700; }
+.booklet-patient dd { margin:0; }
+.booklet-section { margin:18px 0; padding:14px; border:1px solid #dfe5eb; border-radius:8px; }
+.booklet-section p { margin:5px 0; }
+.booklet-verification-note { margin-top:24px; font-size:9pt; }
+.booklet-records { padding:8mm 2mm; }
+.booklet-records > h2 { margin-bottom:16px; }
+.booklet-record { padding:12px 0; border-bottom:1px solid #dfe5eb; }
+.booklet-record h3 { margin:4px 0; }
+.booklet-record h4 { margin:12px 0 3px; font-size:10pt; }
+.booklet-record p { margin:4px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.booklet-record-byline { color:#687b8d; font-size:9pt; }
+.booklet-verification-stamp { display:none; }
+@media print {
+  @page { size:A4; margin:16mm 15mm 20mm; }
+  body.booklet-printing { background:#fff!important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body.booklet-printing .app-shell { display:block!important; }
+  body.booklet-printing .sidebar,body.booklet-printing .topbar { display:none!important; }
+  body.booklet-printing .main-area { display:contents!important; padding:0!important; }
+  body.booklet-printing .main-area > :not(.booklet-print) { display:none!important; }
+  body.booklet-printing .booklet-print { display:block!important; position:relative; isolation:isolate; }
+  body.booklet-printing .booklet-print::before { position:fixed; z-index:0; top:42%; left:10%; content:"MON CARNET · RECORD COPY"; color:rgba(20,42,63,.075); font:bold 30pt Arial,sans-serif; letter-spacing:4px; transform:rotate(-35deg); white-space:nowrap; pointer-events:none; }
+  body.booklet-printing .booklet-print > * { position:relative; z-index:1; }
+  body.booklet-printing .booklet-cover { break-after:page; page-break-after:always; }
+  body.booklet-printing .booklet-verification-stamp { position:fixed; z-index:2; right:0; bottom:-13mm; left:0; display:flex; flex-direction:column; gap:2px; border-top:1px solid #b8c4ce; padding-top:3px; background:rgba(255,255,255,.9); color:#40576d; font:6.5pt/1.25 Arial,sans-serif; overflow-wrap:anywhere; }
+}
+@media (max-width:760px) { .epidemic-threshold-row { grid-template-columns:1fr; gap:9px; } }
 @media (max-width:1050px) { .main-area{padding:0 26px 44px}.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.app-shell{grid-template-columns:220px minmax(0,1fr)} }
 @media (max-width:760px) {
  .app-shell{display:block}.sidebar{position:fixed; z-index:20; bottom:0; top:auto; height:auto; min-height:0; width:100%; padding:7px 9px calc(7px + env(safe-area-inset-bottom)); display:block; box-shadow:0 -7px 24px #18373715}

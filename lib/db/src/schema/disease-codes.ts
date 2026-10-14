@@ -1,5 +1,5 @@
 import { createInsertSchema } from "drizzle-zod";
-import { boolean, index, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 
 export const diseaseCodesTable = pgTable(
@@ -14,6 +14,7 @@ export const diseaseCodesTable = pgTable(
     infectious: boolean("infectious").notNull().default(true),
     epidemicRelevant: boolean("epidemic_relevant").notNull().default(false),
     pandemicRelevant: boolean("pandemic_relevant").notNull().default(false),
+    epidemicAlertThreshold: integer("epidemic_alert_threshold").notNull().default(5),
     status: text("status").notNull().default("ACTIVE"),
     source: text("source").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

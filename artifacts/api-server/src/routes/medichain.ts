@@ -12,6 +12,7 @@ import {
   inArray,
   isNull,
   ilike,
+  lte,
   lt,
   ne,
   or,
@@ -23,6 +24,9 @@ import {
   AddDoctorPatientRecordResponse,
   ApproveDoctorParams,
   ApproveDoctorResponse,
+  CreateBookletVerificationResponse,
+  VerifyBookletExportParams,
+  VerifyBookletExportResponse,
   ChangePasswordBody,
   GrantPatientPermissionBody,
   GrantPatientPermissionResponse,
@@ -59,6 +63,9 @@ import {
   UpdateAdminUserStatusBody,
   UpdateAdminUserStatusParams,
   UpdateAdminUserStatusResponse,
+  UpdateAdminEpidemicThresholdBody,
+  UpdateAdminEpidemicThresholdParams,
+  UpdateAdminEpidemicThresholdResponse,
   UpdateEmergencyInfoBody,
   UpdateEmergencyInfoResponse,
   VerifyDoctorParams,
@@ -66,6 +73,7 @@ import {
 } from "@workspace/api-zod";
 import {
   auditEventsTable,
+  bookletExportsTable,
   db,
   diseaseCodesTable,
   usersTable,
@@ -528,6 +536,73 @@ router.get("/patient/records", requireAuth("PATIENT"), async (req, res): Promise
       await recordsResponse(rows),
     ),
   );
+});
+
+router.post("/patient/booklet-verification", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const patientId = req.currentUser!.id;
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, patientId)).limit(1);
+  if (!user) {
+    res.status(404).json({ error: "Patient profile not found." });
+    return;
+  }
+  const profile = await ensurePatientIdentifiers(user);
+  if (!profile.patientDisplayId) {
+    throw new Error("Patient profile is missing its CM ID.");
+  }
+  const [records] = await db
+    .select({ value: count() })
+    .from(medicalRecordsTable)
+    .where(eq(medicalRecordsTable.patientId, patientId));
+  const [bookletExport] = await db
+    .insert(bookletExportsTable)
+    .values({
+      verificationCode: randomUUID(),
+      patientId,
+      patientDisplayId: profile.patientDisplayId,
+      recordCount: records.value,
+    })
+    .returning();
+  if (!bookletExport) {
+    throw new Error("Booklet verification reference was not created.");
+  }
+  await db.insert(auditEventsTable).values({
+    actorUserId: patientId,
+    patientId,
+    action: "PATIENT_BOOKLET_EXPORTED",
+    entityType: "booklet_export",
+    entityId: bookletExport.id,
+  });
+  res.json(CreateBookletVerificationResponse.parse({
+    verificationCode: bookletExport.verificationCode,
+    patientDisplayId: bookletExport.patientDisplayId,
+    recordCount: bookletExport.recordCount,
+    issuedAt: bookletExport.issuedAt.toISOString(),
+  }));
+});
+
+router.get("/booklet-verification/:verificationCode", async (req, res): Promise<void> => {
+  const parsed = VerifyBookletExportParams.safeParse(req.params);
+  if (!parsed.success) {
+    res.status(404).json({ error: "Booklet verification reference not found." });
+    return;
+  }
+  const [bookletExport] = await db
+    .select({
+      recordCount: bookletExportsTable.recordCount,
+      issuedAt: bookletExportsTable.issuedAt,
+    })
+    .from(bookletExportsTable)
+    .where(eq(bookletExportsTable.verificationCode, parsed.data.verificationCode))
+    .limit(1);
+  if (!bookletExport) {
+    res.status(404).json({ error: "Booklet verification reference not found." });
+    return;
+  }
+  res.json(VerifyBookletExportResponse.parse({
+    valid: true,
+    recordCount: bookletExport.recordCount,
+    issuedAt: bookletExport.issuedAt.toISOString(),
+  }));
 });
 
 router.get("/patient/permissions", requireAuth("PATIENT"), async (req, res): Promise<void> => {
@@ -1483,6 +1558,73 @@ router.get("/admin/analytics", requireAuth("ADMIN"), async (_req, res): Promise<
       count: byMonth.get(key)?.count ?? 0,
     };
   });
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  const dateOffset = (days: number) =>
+    new Date(todayUtc.getTime() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const previousWindowStart = dateOffset(-13);
+  const currentWindowStart = dateOffset(-6);
+  const currentWindowEnd = dateOffset(0);
+  const caseDate = sql`coalesce(${medicalDiagnosesTable.onsetDate}, ${medicalDiagnosesTable.diagnosisDate})`;
+  const epidemicRows = await db
+    .select({
+      diseaseCodeId: diseaseCodesTable.id,
+      diseaseName: diseaseCodesTable.diseaseName,
+      code: diseaseCodesTable.code,
+      codingSystem: diseaseCodesTable.codingSystem,
+      threshold: diseaseCodesTable.epidemicAlertThreshold,
+      last7Cases: countDistinct(sql`case when ${caseDate} >= ${currentWindowStart} then ${medicalRecordsTable.patientId} end`),
+      previous7Cases: countDistinct(sql`case when ${caseDate} < ${currentWindowStart} then ${medicalRecordsTable.patientId} end`),
+    })
+    .from(medicalDiagnosesTable)
+    .innerJoin(medicalRecordsTable, eq(medicalDiagnosesTable.recordId, medicalRecordsTable.id))
+    .innerJoin(diseaseCodesTable, eq(medicalDiagnosesTable.diseaseCodeId, diseaseCodesTable.id))
+    .where(and(
+      eq(diseaseCodesTable.epidemicRelevant, true),
+      eq(diseaseCodesTable.status, "ACTIVE"),
+      inArray(medicalDiagnosesTable.status, ["suspected", "probable", "confirmed"]),
+      gte(caseDate, previousWindowStart),
+      lte(caseDate, currentWindowEnd),
+    ))
+    .groupBy(
+      diseaseCodesTable.id,
+      diseaseCodesTable.diseaseName,
+      diseaseCodesTable.code,
+      diseaseCodesTable.codingSystem,
+      diseaseCodesTable.epidemicAlertThreshold,
+    );
+  const casesByDisease = new Map(epidemicRows.map((row) => [row.diseaseCodeId, row]));
+  const epidemicCodes = await db
+    .select({
+      diseaseCodeId: diseaseCodesTable.id,
+      diseaseName: diseaseCodesTable.diseaseName,
+      code: diseaseCodesTable.code,
+      codingSystem: diseaseCodesTable.codingSystem,
+      threshold: diseaseCodesTable.epidemicAlertThreshold,
+    })
+    .from(diseaseCodesTable)
+    .where(and(eq(diseaseCodesTable.epidemicRelevant, true), eq(diseaseCodesTable.status, "ACTIVE")))
+    .orderBy(asc(diseaseCodesTable.diseaseName));
+  const epidemicMetrics = epidemicCodes.map((code) => {
+    const cases = casesByDisease.get(code.diseaseCodeId);
+    const last7Cases = cases?.last7Cases ?? 0;
+    const threshold = code.threshold;
+    const alertLevel = last7Cases >= threshold
+      ? "ALERT"
+      : last7Cases >= Math.max(1, Math.ceil(threshold * 0.8))
+        ? "WATCH"
+        : "NORMAL";
+    return {
+      diseaseCodeId: code.diseaseCodeId,
+      diseaseName: code.diseaseName,
+      code: code.code,
+      codingSystem: code.codingSystem,
+      last7Cases,
+      previous7Cases: cases?.previous7Cases ?? 0,
+      threshold,
+      alertLevel,
+    };
+  });
   res.json(
     GetAdminAnalyticsResponse.parse({
       stats: {
@@ -1498,8 +1640,31 @@ router.get("/admin/analytics", requireAuth("ADMIN"), async (_req, res): Promise<
         { name: "Database", status: "Operational" },
         { name: "Access controls", status: "Operational" },
       ],
+      epidemicMetrics,
     }),
   );
+});
+
+router.put("/admin/disease-codes/:diseaseCodeId/epidemic-threshold", requireAuth("ADMIN"), async (req, res): Promise<void> => {
+  const parsedParams = UpdateAdminEpidemicThresholdParams.safeParse(req.params);
+  const parsedBody = UpdateAdminEpidemicThresholdBody.safeParse(req.body);
+  if (!parsedParams.success || !parsedBody.success) {
+    invalidBody(res, "Enter a whole-number alert threshold between 1 and 10,000 cases.");
+    return;
+  }
+  const [updated] = await db
+    .update(diseaseCodesTable)
+    .set({ epidemicAlertThreshold: parsedBody.data.threshold })
+    .where(and(
+      eq(diseaseCodesTable.id, parsedParams.data.diseaseCodeId),
+      eq(diseaseCodesTable.epidemicRelevant, true),
+    ))
+    .returning({ diseaseCodeId: diseaseCodesTable.id, threshold: diseaseCodesTable.epidemicAlertThreshold });
+  if (!updated) {
+    res.status(404).json({ error: "Epidemic-relevant disease not found." });
+    return;
+  }
+  res.json(UpdateAdminEpidemicThresholdResponse.parse(updated));
 });
 
 router.get("/admin/pending-doctors", requireAuth("ADMIN"), async (_req, res): Promise<void> => {

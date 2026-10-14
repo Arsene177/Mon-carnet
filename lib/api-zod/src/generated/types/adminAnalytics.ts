@@ -7,10 +7,12 @@
  */
 import type { AdminAnalyticsMonthlyRecordsItem } from './adminAnalyticsMonthlyRecordsItem';
 import type { AdminAnalyticsSystemStatusItem } from './adminAnalyticsSystemStatusItem';
+import type { AdminEpidemicMetric } from './adminEpidemicMetric';
 import type { AdminStats } from './adminStats';
 
 export interface AdminAnalytics {
   stats: AdminStats;
   monthlyRecords: AdminAnalyticsMonthlyRecordsItem[];
   systemStatus: AdminAnalyticsSystemStatusItem[];
+  epidemicMetrics: AdminEpidemicMetric[];
 }

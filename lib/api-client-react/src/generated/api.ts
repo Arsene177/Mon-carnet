@@ -22,12 +22,16 @@ import type {
 import type {
   AccessPermission,
   AdminAnalytics,
+  AdminEpidemicThreshold,
+  AdminEpidemicThresholdInput,
   AdminStats,
   AdminUserStatusInput,
   AttachmentDownloadResponse,
   AttachmentUploadInput,
   AttachmentUploadResponse,
   AuthSession,
+  BookletVerificationIssue,
+  BookletVerificationResult,
   ChangePasswordInput,
   ConfirmMedicalAttachmentUpload200,
   DiseaseCode,
@@ -688,6 +692,145 @@ export function useGetPatientRecords<TData = Awaited<ReturnType<typeof getPatien
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPatientRecordsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateBookletVerificationUrl = () => {
+
+
+
+
+  return `/api/patient/booklet-verification`
+}
+
+export const createBookletVerification = async ( options?: Parameters<typeof customFetch>[1]): Promise<BookletVerificationIssue> => {
+
+  return customFetch<BookletVerificationIssue>(getCreateBookletVerificationUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateBookletVerificationMutationKey = () => ['createBookletVerification'] as const;
+
+export const getCreateBookletVerificationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBookletVerification>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBookletVerification>>, TError,void, TContext> => {
+
+const mutationKey = getCreateBookletVerificationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBookletVerification>>, void> = () => {
+
+
+          return  createBookletVerification(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBookletVerificationMutationResult = NonNullable<Awaited<ReturnType<typeof createBookletVerification>>>
+
+    export type CreateBookletVerificationMutationError = ErrorType<unknown>
+
+
+    export const useCreateBookletVerification = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBookletVerification>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBookletVerification>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCreateBookletVerificationMutationOptions(options));
+    }
+
+export const getVerifyBookletExportUrl = (verificationCode: string,) => {
+
+
+
+
+  return `/api/booklet-verification/${verificationCode}`
+}
+
+export const verifyBookletExport = async (verificationCode: string, options?: Parameters<typeof customFetch>[1]): Promise<BookletVerificationResult> => {
+
+  return customFetch<BookletVerificationResult>(getVerifyBookletExportUrl(verificationCode),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getVerifyBookletExportQueryKey = (verificationCode: string,) => {
+    return [
+    `/api/booklet-verification/${verificationCode}`
+    ] as const;
+    }
+
+
+export const getVerifyBookletExportQueryOptions = <TData = Awaited<ReturnType<typeof verifyBookletExport>>, TError = ErrorType<void>>(verificationCode: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof verifyBookletExport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getVerifyBookletExportQueryKey(verificationCode);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof verifyBookletExport>>> = ({ signal }) => verifyBookletExport(verificationCode, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: verificationCode !== null && verificationCode !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof verifyBookletExport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type VerifyBookletExportQueryResult = NonNullable<Awaited<ReturnType<typeof verifyBookletExport>>>
+export type VerifyBookletExportQueryError = ErrorType<void>
+
+
+
+export function useVerifyBookletExport<TData = Awaited<ReturnType<typeof verifyBookletExport>>, TError = ErrorType<void>>(
+ verificationCode: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof verifyBookletExport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getVerifyBookletExportQueryOptions(verificationCode,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -2263,6 +2406,89 @@ export function useGetAdminAnalytics<TData = Awaited<ReturnType<typeof getAdminA
 
 
 
+
+export const getUpdateAdminEpidemicThresholdUrl = (diseaseCodeId: number,) => {
+
+
+
+
+  return `/api/admin/disease-codes/${diseaseCodeId}/epidemic-threshold`
+}
+
+export const updateAdminEpidemicThreshold = async (diseaseCodeId: number,
+    adminEpidemicThresholdInput: AdminEpidemicThresholdInput, options?: Parameters<typeof customFetch>[1]): Promise<AdminEpidemicThreshold> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AdminEpidemicThreshold>(getUpdateAdminEpidemicThresholdUrl(diseaseCodeId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(adminEpidemicThresholdInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateAdminEpidemicThresholdMutationKey = () => ['updateAdminEpidemicThreshold'] as const;
+
+export const getUpdateAdminEpidemicThresholdMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminEpidemicThreshold>>, TError,UpdateAdminEpidemicThresholdMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAdminEpidemicThreshold>>, TError,UpdateAdminEpidemicThresholdMutationVariables, TContext> => {
+
+const mutationKey = getUpdateAdminEpidemicThresholdMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAdminEpidemicThreshold>>, UpdateAdminEpidemicThresholdMutationVariables> = (props) => {
+          const {diseaseCodeId,data} = props ?? {};
+
+          return  updateAdminEpidemicThreshold(diseaseCodeId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAdminEpidemicThresholdMutationResult = NonNullable<Awaited<ReturnType<typeof updateAdminEpidemicThreshold>>>
+    export type UpdateAdminEpidemicThresholdMutationBody = BodyType<AdminEpidemicThresholdInput>
+    export type UpdateAdminEpidemicThresholdMutationError = ErrorType<void>
+    export type UpdateAdminEpidemicThresholdMutationVariables = {diseaseCodeId: number;data: BodyType<AdminEpidemicThresholdInput>}
+
+    export const useUpdateAdminEpidemicThreshold = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminEpidemicThreshold>>, TError,UpdateAdminEpidemicThresholdMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAdminEpidemicThreshold>>,
+        TError,
+        UpdateAdminEpidemicThresholdMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateAdminEpidemicThresholdMutationOptions(options));
+    }
 
 export const getGetPendingDoctorsUrl = () => {
 

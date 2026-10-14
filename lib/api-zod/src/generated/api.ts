@@ -237,6 +237,25 @@ export const GetPatientRecordsResponseItem = zod.object({
 export const GetPatientRecordsResponse = zod.array(GetPatientRecordsResponseItem)
 
 
+export const CreateBookletVerificationResponse = zod.object({
+  "verificationCode": zod.string().uuid(),
+  "patientDisplayId": zod.string(),
+  "recordCount": zod.number().int(),
+  "issuedAt": zod.coerce.date()
+})
+
+
+export const VerifyBookletExportParams = zod.object({
+  "verificationCode": zod.coerce.string().uuid()
+})
+
+export const VerifyBookletExportResponse = zod.object({
+  "valid": zod.literal(true),
+  "recordCount": zod.number().int(),
+  "issuedAt": zod.coerce.date()
+})
+
+
 export const GetPatientPermissionsResponseItem = zod.object({
   "id": zod.number().int(),
   "doctorId": zod.number().int(),
@@ -675,7 +694,35 @@ export const GetAdminAnalyticsResponse = zod.object({
   "systemStatus": zod.array(zod.object({
   "name": zod.string(),
   "status": zod.enum(['Operational', 'Attention'])
+})),
+  "epidemicMetrics": zod.array(zod.object({
+  "diseaseCodeId": zod.number().int(),
+  "diseaseName": zod.string(),
+  "code": zod.string(),
+  "codingSystem": zod.string(),
+  "last7Cases": zod.number().int(),
+  "previous7Cases": zod.number().int(),
+  "threshold": zod.number().int(),
+  "alertLevel": zod.enum(['NORMAL', 'WATCH', 'ALERT'])
 }))
+})
+
+
+export const UpdateAdminEpidemicThresholdParams = zod.object({
+  "diseaseCodeId": zod.coerce.number().int()
+})
+
+export const updateAdminEpidemicThresholdBodyThresholdMax = 10000;
+
+
+
+export const UpdateAdminEpidemicThresholdBody = zod.object({
+  "threshold": zod.number().int().min(1).max(updateAdminEpidemicThresholdBodyThresholdMax)
+})
+
+export const UpdateAdminEpidemicThresholdResponse = zod.object({
+  "diseaseCodeId": zod.number().int(),
+  "threshold": zod.number().int()
 })
 
 
