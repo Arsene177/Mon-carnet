@@ -14,6 +14,9 @@ export interface User {
   name: string;
   /** @nullable */
   hospitalName: string | null;
+  /** @nullable */
+  professionalMedicalNumber: string | null;
+  doctorVerified: boolean;
   role: Role;
   status: AccountStatus;
   /** @nullable */

@@ -17,9 +17,10 @@ export interface PatientProfile {
      */
   patientDisplayId: string;
   /**
-     * Private 128-bit code to share only with a doctor who should access the booklet.
-     * @minLength 32
-     * @maxLength 32
+     * Compatibility field containing the same CM ID used to identify the profile and grant booklet access.
+     * @minLength 8
+     * @maxLength 8
+     * @pattern ^CM[A-Z0-9]{6}$
      */
   patientAccessId: string;
   emergencyInfo: EmergencyInfo | null;

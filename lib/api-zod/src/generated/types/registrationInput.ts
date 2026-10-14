@@ -24,4 +24,6 @@ export interface RegistrationInput {
   dateOfBirth?: Date;
   /** @maxLength 300 */
   contactInfo?: string;
+  /** @maxLength 120 */
+  professionalMedicalNumber?: string;
 }

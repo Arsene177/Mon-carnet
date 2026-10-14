@@ -16,6 +16,8 @@ export type CurrentUser = {
   email: string;
   name: string;
   hospitalName: string | null;
+  professionalMedicalNumber: string | null;
+  doctorVerified: boolean;
   role: MedichainRole;
   status: MedichainStatus;
 };
@@ -119,6 +121,8 @@ export function publicUser(user: typeof usersTable.$inferSelect): CurrentUser {
     email: user.email,
     name: user.name,
     hospitalName: user.hospitalName ?? null,
+    professionalMedicalNumber: user.professionalMedicalNumber ?? null,
+    doctorVerified: user.doctorVerified,
     role: user.role as MedichainRole,
     status,
   };
@@ -131,6 +135,8 @@ export function userResponse(user: typeof usersTable.$inferSelect) {
     dateOfBirth: user.dateOfBirth ?? null,
     contactInfo: user.contactInfo ?? null,
     hospitalName: user.hospitalName ?? null,
+    professionalMedicalNumber: user.professionalMedicalNumber ?? null,
+    doctorVerified: user.doctorVerified,
     isActive: user.isActive,
     createdAt: user.createdAt.toISOString(),
   };

@@ -13,6 +13,7 @@ export * from './adminAnalyticsMonthlyRecordsItem';
 export * from './adminAnalyticsSystemStatusItem';
 export * from './adminAnalyticsSystemStatusItemStatus';
 export * from './adminStats';
+export * from './adminUserStatusInput';
 export * from './attachmentDownloadResponse';
 export * from './attachmentUploadInput';
 export * from './attachmentUploadInputContentType';

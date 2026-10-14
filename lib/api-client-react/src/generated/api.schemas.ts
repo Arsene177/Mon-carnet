@@ -34,6 +34,9 @@ export interface User {
   name: string;
   /** @nullable */
   hospitalName: string | null;
+  /** @nullable */
+  professionalMedicalNumber: string | null;
+  doctorVerified: boolean;
   role: Role;
   status: AccountStatus;
   /** @nullable */
@@ -74,11 +77,19 @@ export interface RegistrationInput {
   dateOfBirth?: string;
   /** @maxLength 300 */
   contactInfo?: string;
+  /** @maxLength 120 */
+  professionalMedicalNumber?: string;
 }
 
 export interface DoctorProfileInput {
   /** @maxLength 180 */
   hospitalName: string;
+  /** @maxLength 120 */
+  professionalMedicalNumber: string;
+}
+
+export interface AdminUserStatusInput {
+  isActive: boolean;
 }
 
 export interface LoginInput {
@@ -156,9 +167,10 @@ export interface PatientProfile {
      */
   patientDisplayId: string;
   /**
-     * Private 128-bit code to share only with a doctor who should access the booklet.
-     * @minLength 32
-     * @maxLength 32
+     * Compatibility field containing the same CM ID used to identify the profile and grant booklet access.
+     * @minLength 8
+     * @maxLength 8
+     * @pattern ^CM[A-Z0-9]{6}$
      */
   patientAccessId: string;
   emergencyInfo: EmergencyInfo | null;
@@ -334,6 +346,7 @@ export interface AccessPermission {
   doctorId: number;
   doctorName: string;
   doctorEmail: string;
+  doctorVerified: boolean;
   granted: boolean;
   grantedAt: string;
   /** @nullable */
@@ -350,16 +363,16 @@ export interface PermissionGrantInput {
 }
 
 /**
- * A private access code distinct from the short display Patient ID.
+ * The patient's CM ID, which also grants booklet access when entered by a doctor.
  */
 export interface PatientAccessCodeInput {
   /**
-     * The patient's private 128-bit booklet access code.
-     * @minLength 32
-     * @maxLength 32
-     * @pattern ^[A-Fa-f0-9]{32}$
+     * The patient's CM ID and booklet access code.
+     * @minLength 8
+     * @maxLength 8
+     * @pattern ^CM[A-Z0-9]{6}$
      */
-  patientAccessId: string;
+  patientDisplayId: string;
 }
 
 export interface PatientBookletAccess {
@@ -377,6 +390,7 @@ export interface PatientSearchRequest {
   doctorId: number;
   doctorName: string;
   doctorEmail: string;
+  doctorVerified: boolean;
   searchedAt: string;
 }
 

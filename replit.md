@@ -1,6 +1,6 @@
 # Medichain
 
-Medichain lets patients manage emergency information and control which approved doctors can view their medical records.
+Mon carnet lets patients manage emergency information and control which approved doctors can view their medical records.
 
 ## Run & Operate
 
@@ -10,7 +10,7 @@ Medichain lets patients manage emergency information and control which approved 
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Run the database schema push after updating an existing environment; patient display IDs, secure sharing codes, and revocable, non-expiring grants require the latest schema.
+- Run the database schema push after updating an existing environment; patient CM IDs, doctor credential verification, account suspension, and revocable grants require the latest schema.
 - `pnpm --filter @workspace/api-server run seed` — seed development demo accounts and sample records
 - `pnpm --filter @workspace/api-server run reset-users` — destructive one-time account reset; requires `RESET_ALL_USERS=DELETE_ALL_USERS` and `ADMIN_PASSWORD`, removes all users and linked patient data/attachments, then creates only `arsenedjonkoun5@gmail.com` as admin. Do not run the demo `seed` command afterward.
 - Required env: `DATABASE_URL` — Postgres connection string
@@ -36,7 +36,9 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Product
 
-Patients have a short `CM`-prefixed display ID and a separate high-entropy sharing code. Sharing the private code with a verified doctor grants immediate, non-expiring access to the medical booklet. Patients can revoke a doctor's access at any time; doing so rotates the sharing code. Doctors can search patients by name to view available emergency information.
+Patients have a short `CM`-prefixed ID that is also the booklet access code. Entering it grants an approved doctor immediate access; patients can revoke a doctor's access, which rotates the CM ID to prevent the revoked doctor reconnecting with the old code. Failed code attempts are rate-limited.
+Doctor account approval enables clinical access. Doctors must submit a professional medical number; an administrator manually verifies it before awarding the certified badge. Verification status is distinct from account approval.
+Administrators can suspend or restore accounts without permanently deleting accounts or their medical data.
 Every signed-in account can change its password from the dashboard Profile page using the current password.
 
 ## User preferences

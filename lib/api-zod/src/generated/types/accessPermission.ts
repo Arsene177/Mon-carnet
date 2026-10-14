@@ -11,6 +11,7 @@ export interface AccessPermission {
   doctorId: number;
   doctorName: string;
   doctorEmail: string;
+  doctorVerified: boolean;
   granted: boolean;
   grantedAt: Date;
   /** @nullable */

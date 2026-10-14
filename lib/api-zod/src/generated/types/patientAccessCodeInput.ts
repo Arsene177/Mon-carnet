@@ -7,14 +7,14 @@
  */
 
 /**
- * A private access code distinct from the short display Patient ID.
+ * The patient's CM ID, which also grants booklet access when entered by a doctor.
  */
 export interface PatientAccessCodeInput {
   /**
-     * The patient's private 128-bit booklet access code.
-     * @minLength 32
-     * @maxLength 32
-     * @pattern ^[A-Fa-f0-9]{32}$
+     * The patient's CM ID and booklet access code.
+     * @minLength 8
+     * @maxLength 8
+     * @pattern ^CM[A-Z0-9]{6}$
      */
-  patientAccessId: string;
+  patientDisplayId: string;
 }

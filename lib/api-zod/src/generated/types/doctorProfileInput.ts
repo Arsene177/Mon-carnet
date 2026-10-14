@@ -9,4 +9,6 @@
 export interface DoctorProfileInput {
   /** @maxLength 180 */
   hospitalName: string;
+  /** @maxLength 120 */
+  professionalMedicalNumber: string;
 }

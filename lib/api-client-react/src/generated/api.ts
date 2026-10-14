@@ -23,6 +23,7 @@ import type {
   AccessPermission,
   AdminAnalytics,
   AdminStats,
+  AdminUserStatusInput,
   AttachmentDownloadResponse,
   AttachmentUploadInput,
   AttachmentUploadResponse,
@@ -2468,6 +2469,157 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getRevokeDoctorMutationOptions(options));
+    }
+
+export const getVerifyDoctorUrl = (doctorId: number,) => {
+
+
+
+
+  return `/api/admin/doctors/${doctorId}/verify`
+}
+
+export const verifyDoctor = async (doctorId: number, options?: Parameters<typeof customFetch>[1]): Promise<User> => {
+
+  return customFetch<User>(getVerifyDoctorUrl(doctorId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getVerifyDoctorMutationKey = () => ['verifyDoctor'] as const;
+
+export const getVerifyDoctorMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyDoctor>>, TError,VerifyDoctorMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyDoctor>>, TError,VerifyDoctorMutationVariables, TContext> => {
+
+const mutationKey = getVerifyDoctorMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyDoctor>>, VerifyDoctorMutationVariables> = (props) => {
+          const {doctorId} = props ?? {};
+
+          return  verifyDoctor(doctorId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyDoctorMutationResult = NonNullable<Awaited<ReturnType<typeof verifyDoctor>>>
+
+    export type VerifyDoctorMutationError = ErrorType<void>
+    export type VerifyDoctorMutationVariables = {doctorId: number}
+
+    export const useVerifyDoctor = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyDoctor>>, TError,VerifyDoctorMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifyDoctor>>,
+        TError,
+        VerifyDoctorMutationVariables,
+        TContext
+      > => {
+      return useMutation(getVerifyDoctorMutationOptions(options));
+    }
+
+export const getUpdateAdminUserStatusUrl = (userId: number,) => {
+
+
+
+
+  return `/api/admin/users/${userId}/status`
+}
+
+export const updateAdminUserStatus = async (userId: number,
+    adminUserStatusInput: AdminUserStatusInput, options?: Parameters<typeof customFetch>[1]): Promise<User> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<User>(getUpdateAdminUserStatusUrl(userId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(adminUserStatusInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateAdminUserStatusMutationKey = () => ['updateAdminUserStatus'] as const;
+
+export const getUpdateAdminUserStatusMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminUserStatus>>, TError,UpdateAdminUserStatusMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAdminUserStatus>>, TError,UpdateAdminUserStatusMutationVariables, TContext> => {
+
+const mutationKey = getUpdateAdminUserStatusMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAdminUserStatus>>, UpdateAdminUserStatusMutationVariables> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  updateAdminUserStatus(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAdminUserStatusMutationResult = NonNullable<Awaited<ReturnType<typeof updateAdminUserStatus>>>
+    export type UpdateAdminUserStatusMutationBody = BodyType<AdminUserStatusInput>
+    export type UpdateAdminUserStatusMutationError = ErrorType<void>
+    export type UpdateAdminUserStatusMutationVariables = {userId: number;data: BodyType<AdminUserStatusInput>}
+
+    export const useUpdateAdminUserStatus = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminUserStatus>>, TError,UpdateAdminUserStatusMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAdminUserStatus>>,
+        TError,
+        UpdateAdminUserStatusMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateAdminUserStatusMutationOptions(options));
     }
 
 export const getSearchUsersUrl = (params: SearchUsersParams,) => {

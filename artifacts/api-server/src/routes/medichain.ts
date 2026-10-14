@@ -56,8 +56,13 @@ import {
   SearchDiseaseCodesResponse,
   SearchUsersQueryParams,
   SearchUsersResponse,
+  UpdateAdminUserStatusBody,
+  UpdateAdminUserStatusParams,
+  UpdateAdminUserStatusResponse,
   UpdateEmergencyInfoBody,
   UpdateEmergencyInfoResponse,
+  VerifyDoctorParams,
+  VerifyDoctorResponse,
 } from "@workspace/api-zod";
 import {
   auditEventsTable,
@@ -90,7 +95,10 @@ async function createUniquePatientDisplayId() {
     const [existing] = await db
       .select({ id: usersTable.id })
       .from(usersTable)
-      .where(eq(usersTable.patientDisplayId, candidate))
+      .where(or(
+        eq(usersTable.patientDisplayId, candidate),
+        eq(usersTable.patientAccessId, candidate),
+      ))
       .limit(1);
     if (!existing) return candidate;
   }
@@ -98,15 +106,14 @@ async function createUniquePatientDisplayId() {
 }
 
 async function ensurePatientIdentifiers(user: typeof usersTable.$inferSelect) {
-  if (user.patientDisplayId && user.patientAccessId) return user;
+  if (user.patientDisplayId && user.patientAccessId === user.patientDisplayId) return user;
 
   const patientDisplayId = user.patientDisplayId ?? await createUniquePatientDisplayId();
-  const patientAccessId = user.patientAccessId ?? randomBytes(16).toString("hex").toUpperCase();
   const [updated] = await db
     .update(usersTable)
     .set({
       patientDisplayId: sql`coalesce(${usersTable.patientDisplayId}, ${patientDisplayId})`,
-      patientAccessId: sql`coalesce(${usersTable.patientAccessId}, ${patientAccessId})`,
+      patientAccessId: sql`coalesce(${usersTable.patientDisplayId}, ${patientDisplayId})`,
     })
     .where(eq(usersTable.id, user.id))
     .returning();
@@ -308,6 +315,7 @@ async function permissionResponse(
     doctorId: permission.doctorId,
     doctorName: doctor?.name ?? "Doctor",
     doctorEmail: doctor?.email ?? "",
+    doctorVerified: doctor?.doctorVerified ?? false,
     granted: permission.granted,
     grantedAt: permission.grantedAt.toISOString(),
     expiresAt: permission.expiresAt?.toISOString() ?? null,
@@ -325,6 +333,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     invalidBody(res, "Name is required.");
     return;
   }
+  const professionalMedicalNumber = input.professionalMedicalNumber?.trim() || null;
   if (!input.contactInfo?.trim() || (input.role === "PATIENT" && !input.dateOfBirth)) {
     invalidBody(
       res,
@@ -334,8 +343,13 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     );
     return;
   }
+  if (input.role === "DOCTOR" && !professionalMedicalNumber) {
+    invalidBody(res, "Doctor registration requires a professional medical number.");
+    return;
+  }
 
   try {
+    const patientDisplayId = input.role === "PATIENT" ? await createUniquePatientDisplayId() : null;
     const [created] = await db
       .insert(usersTable)
       .values({
@@ -343,8 +357,9 @@ router.post("/auth/register", async (req, res): Promise<void> => {
         email: input.email.trim().toLowerCase(),
         passwordHash: hashPassword(input.password),
         role: input.role === "DOCTOR" ? "PENDING_DOCTOR" : "PATIENT",
-        patientDisplayId: input.role === "PATIENT" ? await createUniquePatientDisplayId() : null,
-        patientAccessId: input.role === "PATIENT" ? randomBytes(16).toString("hex").toUpperCase() : null,
+        professionalMedicalNumber: input.role === "DOCTOR" ? professionalMedicalNumber : null,
+        patientDisplayId,
+        patientAccessId: patientDisplayId,
         dateOfBirth:
           input.role === "PATIENT" && input.dateOfBirth
             ? input.dateOfBirth.toISOString().slice(0, 10)
@@ -581,9 +596,10 @@ router.delete(
         )
         .returning({ id: accessPermissionsTable.id });
       if (revoked.length > 0) {
+        const patientDisplayId = await createUniquePatientDisplayId();
         await tx
           .update(usersTable)
-          .set({ patientAccessId: randomBytes(16).toString("hex").toUpperCase() })
+          .set({ patientDisplayId, patientAccessId: patientDisplayId })
           .where(eq(usersTable.id, req.currentUser!.id));
       }
     });
@@ -610,6 +626,7 @@ router.get("/patient/pending-requests", requireAuth("PATIENT"), async (req, res)
         doctorId: row.doctor.id,
         doctorName: row.doctor.name,
         doctorEmail: row.doctor.email,
+        doctorVerified: row.doctor.doctorVerified,
         searchedAt: row.search.searchedAt.toISOString(),
       });
     }
@@ -660,12 +677,20 @@ router.get("/doctor/profile", requireAuth("DOCTOR"), async (req, res): Promise<v
 
 router.put("/doctor/profile", requireAuth("DOCTOR"), async (req, res): Promise<void> => {
   const hospitalName = typeof req.body?.hospitalName === "string" ? req.body.hospitalName.trim() : null;
-  if (hospitalName === null || hospitalName.length > 180) {
-    invalidBody(res, "Enter a hospital or clinic name up to 180 characters.");
+  const professionalMedicalNumber = typeof req.body?.professionalMedicalNumber === "string"
+    ? req.body.professionalMedicalNumber.trim()
+    : null;
+  if (hospitalName === null || hospitalName.length > 180 || professionalMedicalNumber === null || professionalMedicalNumber.length > 120) {
+    invalidBody(res, "Enter a hospital or clinic name and professional medical number within the allowed lengths.");
     return;
   }
+  const numberChanged = professionalMedicalNumber !== (req.currentUser!.professionalMedicalNumber ?? "");
   const [updated] = await db.update(usersTable)
-    .set({ hospitalName: hospitalName || null })
+    .set({
+      hospitalName: hospitalName || null,
+      professionalMedicalNumber: professionalMedicalNumber || null,
+      ...(numberChanged ? { doctorVerified: false } : {}),
+    })
     .where(eq(usersTable.id, req.currentUser!.id))
     .returning();
   if (!updated) {
@@ -719,7 +744,20 @@ router.get("/doctor/search-patient", requireAuth("DOCTOR"), async (req, res): Pr
 router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): Promise<void> => {
   const parsed = GrantPatientAccessByIdBody.safeParse(req.body);
   if (!parsed.success) {
-    invalidBody(res, "Enter a valid secure sharing code.");
+    invalidBody(res, "Enter a valid patient CM ID.");
+    return;
+  }
+  const attemptsSince = new Date(Date.now() - 15 * 60_000);
+  const [recentFailedAttempts] = await db
+    .select({ value: count() })
+    .from(auditEventsTable)
+    .where(and(
+      eq(auditEventsTable.actorUserId, req.currentUser!.id),
+      eq(auditEventsTable.action, "PATIENT_ACCESS_CODE_REJECTED"),
+      gte(auditEventsTable.createdAt, attemptsSince),
+    ));
+  if (recentFailedAttempts.value >= 5) {
+    res.status(429).json({ error: "Too many incorrect CM IDs. Try again in 15 minutes." });
     return;
   }
   const [matchedPatient] = await db
@@ -727,14 +765,20 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
     .from(usersTable)
     .where(
       and(
-        eq(usersTable.patientAccessId, parsed.data.patientAccessId.toUpperCase()),
+        eq(usersTable.patientDisplayId, parsed.data.patientDisplayId.toUpperCase()),
         eq(usersTable.role, "PATIENT"),
         eq(usersTable.isActive, true),
       ),
     )
     .limit(1);
   if (!matchedPatient) {
-    res.status(404).json({ error: "Secure sharing code not found." });
+    await db.insert(auditEventsTable).values({
+      actorUserId: req.currentUser!.id,
+      action: "PATIENT_ACCESS_CODE_REJECTED",
+      entityType: "patient_access_code",
+      hospitalName: req.currentUser!.hospitalName,
+    });
+    res.status(404).json({ error: "Patient CM ID not found." });
     return;
   }
   const patient = await ensurePatientIdentifiers(matchedPatient);
@@ -1506,6 +1550,71 @@ router.post("/admin/doctors/:doctorId/revoke", requireAuth("ADMIN"), async (req,
     return;
   }
   res.json(RevokeDoctorResponse.parse(userResponse(doctor)));
+});
+
+router.post("/admin/doctors/:doctorId/verify", requireAuth("ADMIN"), async (req, res): Promise<void> => {
+  const parsed = VerifyDoctorParams.safeParse(req.params);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid doctor" });
+    return;
+  }
+  const [doctor] = await db
+    .update(usersTable)
+    .set({ doctorVerified: true, updatedAt: new Date() })
+    .where(and(
+      eq(usersTable.id, parsed.data.doctorId),
+      or(eq(usersTable.role, "DOCTOR"), eq(usersTable.role, "PENDING_DOCTOR")),
+      sql`${usersTable.professionalMedicalNumber} IS NOT NULL`,
+      ne(usersTable.professionalMedicalNumber, ""),
+    ))
+    .returning();
+  if (!doctor) {
+    res.status(400).json({ error: "Doctor must submit a professional medical number before verification." });
+    return;
+  }
+  res.json(VerifyDoctorResponse.parse(userResponse(doctor)));
+});
+
+router.put("/admin/users/:userId/status", requireAuth("ADMIN"), async (req, res): Promise<void> => {
+  const parsedParams = UpdateAdminUserStatusParams.safeParse(req.params);
+  const parsedBody = UpdateAdminUserStatusBody.safeParse(req.body);
+  if (!parsedParams.success || !parsedBody.success) {
+    invalidBody(res, "Choose a valid account status.");
+    return;
+  }
+  if (parsedParams.data.userId === req.currentUser!.id) {
+    res.status(400).json({ error: "You cannot suspend your own administrator account." });
+    return;
+  }
+  const [target] = await db
+    .select({ id: usersTable.id, role: usersTable.role, isActive: usersTable.isActive })
+    .from(usersTable)
+    .where(eq(usersTable.id, parsedParams.data.userId))
+    .limit(1);
+  if (!target) {
+    res.status(404).json({ error: "Account not found." });
+    return;
+  }
+  if (!parsedBody.data.isActive && target.role === "ADMIN" && target.isActive) {
+    const [activeAdmins] = await db
+      .select({ value: count() })
+      .from(usersTable)
+      .where(and(eq(usersTable.role, "ADMIN"), eq(usersTable.isActive, true)));
+    if (activeAdmins.value <= 1) {
+      res.status(409).json({ error: "The last active administrator account cannot be suspended." });
+      return;
+    }
+  }
+  const [updated] = await db
+    .update(usersTable)
+    .set({ isActive: parsedBody.data.isActive, updatedAt: new Date() })
+    .where(eq(usersTable.id, target.id))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "Account not found." });
+    return;
+  }
+  res.json(UpdateAdminUserStatusResponse.parse(userResponse(updated)));
 });
 
 router.get("/admin/search-user", requireAuth("ADMIN"), async (req, res): Promise<void> => {

@@ -31,6 +31,8 @@ export const usersTable = pgTable(
     role: text("role").notNull(),
     name: text("name").notNull(),
     hospitalName: text("hospital_name"),
+    professionalMedicalNumber: text("professional_medical_number"),
+    doctorVerified: boolean("doctor_verified").notNull().default(false),
     patientDisplayId: text("patient_display_id"),
     patientAccessId: text("patient_access_id"),
     dateOfBirth: date("date_of_birth", { mode: "string" }),

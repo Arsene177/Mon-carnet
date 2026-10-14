@@ -170,6 +170,9 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
 .person-cell { display:flex; align-items:center; gap:9px; font-weight:700; color:#36504c; min-width:0; }
 .person-cell span:last-child { overflow:hidden; text-overflow:ellipsis; }
 .tag { border-radius:99px; display:inline-flex; padding:5px 8px; font-size:9px; font-weight:800; color:#467267; background:#eaf3ee; white-space:nowrap; }
+.tag.certified { align-items:center; gap:4px; margin-left:6px; color:#142a3f; background:#fff0d4; vertical-align:middle; }
+.row-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }
+.user-result { flex-wrap:wrap; }
 .tag.warning { color:#9a6d2b; background:#fbf1dc; }
 .tag.red { color:#9e4d44; background:#fae9e5; }
 .security-banner { background:#203e40; color:#d8e8e2; padding:19px 21px; border-radius:14px; display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:20px; }

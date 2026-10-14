@@ -10,5 +10,6 @@ export interface PatientSearchRequest {
   doctorId: number;
   doctorName: string;
   doctorEmail: string;
+  doctorVerified: boolean;
   searchedAt: Date;
 }

@@ -26,6 +26,8 @@ export const registerBodyPasswordMax = 128;
 
 export const registerBodyContactInfoMax = 300;
 
+export const registerBodyProfessionalMedicalNumberMax = 120;
+
 
 
 export const RegisterBody = zod.object({
@@ -34,7 +36,8 @@ export const RegisterBody = zod.object({
   "password": zod.string().min(registerBodyPasswordMin).max(registerBodyPasswordMax),
   "role": zod.enum(['PATIENT', 'DOCTOR']),
   "dateOfBirth": zod.coerce.date().optional(),
-  "contactInfo": zod.string().max(registerBodyContactInfoMax).optional()
+  "contactInfo": zod.string().max(registerBodyContactInfoMax).optional(),
+  "professionalMedicalNumber": zod.string().max(registerBodyProfessionalMedicalNumberMax).optional()
 })
 
 export const RegisterResponse = zod.object({
@@ -44,6 +47,8 @@ export const RegisterResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -70,6 +75,8 @@ export const LoginResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -85,6 +92,8 @@ export const GetMeResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -114,9 +123,11 @@ export const getPatientProfileResponsePatientDisplayIdMax = 8;
 
 
 export const getPatientProfileResponsePatientDisplayIdRegExp = new RegExp('^CM[A-Z0-9]{6}$');
-export const getPatientProfileResponsePatientAccessIdMin = 32;
-export const getPatientProfileResponsePatientAccessIdMax = 32;
+export const getPatientProfileResponsePatientAccessIdMin = 8;
+export const getPatientProfileResponsePatientAccessIdMax = 8;
 
+
+export const getPatientProfileResponsePatientAccessIdRegExp = new RegExp('^CM[A-Z0-9]{6}$');
 
 
 export const GetPatientProfileResponse = zod.object({
@@ -125,6 +136,8 @@ export const GetPatientProfileResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -133,7 +146,7 @@ export const GetPatientProfileResponse = zod.object({
   "createdAt": zod.coerce.date()
 }),
   "patientDisplayId": zod.string().min(getPatientProfileResponsePatientDisplayIdMin).max(getPatientProfileResponsePatientDisplayIdMax).regex(getPatientProfileResponsePatientDisplayIdRegExp),
-  "patientAccessId": zod.string().min(getPatientProfileResponsePatientAccessIdMin).max(getPatientProfileResponsePatientAccessIdMax).describe('Private 128-bit code to share only with a doctor who should access the booklet.'),
+  "patientAccessId": zod.string().min(getPatientProfileResponsePatientAccessIdMin).max(getPatientProfileResponsePatientAccessIdMax).regex(getPatientProfileResponsePatientAccessIdRegExp).describe('Compatibility field containing the same CM ID used to identify the profile and grant booklet access.'),
   "emergencyInfo": zod.union([zod.object({
   "patientId": zod.number().int(),
   "patientName": zod.string(),
@@ -229,6 +242,7 @@ export const GetPatientPermissionsResponseItem = zod.object({
   "doctorId": zod.number().int(),
   "doctorName": zod.string(),
   "doctorEmail": zod.string().email(),
+  "doctorVerified": zod.boolean(),
   "granted": zod.boolean(),
   "grantedAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date().nullable()
@@ -250,6 +264,7 @@ export const GrantPatientPermissionResponse = zod.object({
   "doctorId": zod.number().int(),
   "doctorName": zod.string(),
   "doctorEmail": zod.string().email(),
+  "doctorVerified": zod.boolean(),
   "granted": zod.boolean(),
   "grantedAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date().nullable()
@@ -267,6 +282,7 @@ export const GetPatientPendingRequestsResponseItem = zod.object({
   "doctorId": zod.number().int(),
   "doctorName": zod.string(),
   "doctorEmail": zod.string().email(),
+  "doctorVerified": zod.boolean(),
   "searchedAt": zod.coerce.date()
 })
 export const GetPatientPendingRequestsResponse = zod.array(GetPatientPendingRequestsResponseItem)
@@ -287,6 +303,8 @@ export const GetDoctorProfileResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -298,10 +316,13 @@ export const GetDoctorProfileResponse = zod.object({
 
 export const updateDoctorProfileBodyHospitalNameMax = 180;
 
+export const updateDoctorProfileBodyProfessionalMedicalNumberMax = 120;
+
 
 
 export const UpdateDoctorProfileBody = zod.object({
-  "hospitalName": zod.string().max(updateDoctorProfileBodyHospitalNameMax)
+  "hospitalName": zod.string().max(updateDoctorProfileBodyHospitalNameMax),
+  "professionalMedicalNumber": zod.string().max(updateDoctorProfileBodyProfessionalMedicalNumberMax)
 })
 
 export const UpdateDoctorProfileResponse = zod.object({
@@ -309,6 +330,8 @@ export const UpdateDoctorProfileResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -341,16 +364,16 @@ export const SearchPatientsResponseItem = zod.object({
 export const SearchPatientsResponse = zod.array(SearchPatientsResponseItem)
 
 
-export const grantPatientAccessByIdBodyPatientAccessIdMin = 32;
-export const grantPatientAccessByIdBodyPatientAccessIdMax = 32;
+export const grantPatientAccessByIdBodyPatientDisplayIdMin = 8;
+export const grantPatientAccessByIdBodyPatientDisplayIdMax = 8;
 
 
-export const grantPatientAccessByIdBodyPatientAccessIdRegExp = new RegExp('^[A-Fa-f0-9]{32}$');
+export const grantPatientAccessByIdBodyPatientDisplayIdRegExp = new RegExp('^CM[A-Z0-9]{6}$');
 
 
 export const GrantPatientAccessByIdBody = zod.object({
-  "patientAccessId": zod.string().min(grantPatientAccessByIdBodyPatientAccessIdMin).max(grantPatientAccessByIdBodyPatientAccessIdMax).regex(grantPatientAccessByIdBodyPatientAccessIdRegExp).describe('The patient\'s private 128-bit booklet access code.')
-}).describe('A private access code distinct from the short display Patient ID.')
+  "patientDisplayId": zod.string().min(grantPatientAccessByIdBodyPatientDisplayIdMin).max(grantPatientAccessByIdBodyPatientDisplayIdMax).regex(grantPatientAccessByIdBodyPatientDisplayIdRegExp).describe('The patient\'s CM ID and booklet access code.')
+}).describe('The patient\'s CM ID, which also grants booklet access when entered by a doctor.')
 
 export const grantPatientAccessByIdResponsePatientDisplayIdMin = 8;
 export const grantPatientAccessByIdResponsePatientDisplayIdMax = 8;
@@ -661,6 +684,8 @@ export const GetPendingDoctorsResponseItem = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -680,6 +705,8 @@ export const ApproveDoctorResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -698,6 +725,52 @@ export const RevokeDoctorResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+export const VerifyDoctorParams = zod.object({
+  "doctorId": zod.coerce.number().int()
+})
+
+export const VerifyDoctorResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+export const UpdateAdminUserStatusParams = zod.object({
+  "userId": zod.coerce.number().int()
+})
+
+export const UpdateAdminUserStatusBody = zod.object({
+  "isActive": zod.boolean()
+})
+
+export const UpdateAdminUserStatusResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),
@@ -720,6 +793,8 @@ export const SearchUsersResponseItem = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   "dateOfBirth": zod.coerce.date().nullish(),

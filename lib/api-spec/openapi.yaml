@@ -263,13 +263,15 @@ paths:
               $ref: "#/components/schemas/PatientAccessCodeInput"
       responses:
         "200":
-          description: Patient booklet access granted using the patient's secure sharing code
+          description: Patient booklet access granted using the patient's CM ID
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PatientBookletAccess"
         "404":
-          description: Secure sharing code not found
+          description: Patient CM ID not found
+        "429":
+          description: Too many incorrect CM IDs
   /doctor/patient/{patientId}/attachments/upload-url:
     post:
       operationId: requestPatientAttachmentUpload
@@ -530,6 +532,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /admin/doctors/{doctorId}/verify:
+    post:
+      operationId: verifyDoctor
+      tags: [admin]
+      parameters:
+        - name: doctorId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Doctor medical credentials verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Doctor has not submitted a medical number
+  /admin/users/{userId}/status:
+    put:
+      operationId: updateAdminUserStatus
+      tags: [admin]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserStatusInput"
+      responses:
+        "200":
+          description: Account status updated without deleting account data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid account status change
   /admin/search-user:
     get:
       operationId: searchUsers
@@ -571,12 +617,14 @@ components:
       enum: [PENDING, ACTIVE, INACTIVE]
     User:
       type: object
-      required: [id, email, name, role, status, isActive, createdAt, hospitalName]
+      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified]
       properties:
         id: { type: integer }
         email: { type: string, format: email }
         name: { type: string }
         hospitalName: { type: ["string", "null"] }
+        professionalMedicalNumber: { type: ["string", "null"] }
+        doctorVerified: { type: boolean }
         role: { $ref: "#/components/schemas/Role" }
         status: { $ref: "#/components/schemas/AccountStatus" }
         dateOfBirth: { type: ["string", "null"], format: date }
@@ -599,11 +647,18 @@ components:
         role: { type: string, enum: [PATIENT, DOCTOR] }
         dateOfBirth: { type: string, format: date }
         contactInfo: { type: string, maxLength: 300 }
+        professionalMedicalNumber: { type: string, maxLength: 120 }
     DoctorProfileInput:
       type: object
-      required: [hospitalName]
+      required: [hospitalName, professionalMedicalNumber]
       properties:
         hospitalName: { type: string, maxLength: 180 }
+        professionalMedicalNumber: { type: string, maxLength: 120 }
+    AdminUserStatusInput:
+      type: object
+      required: [isActive]
+      properties:
+        isActive: { type: boolean }
     LoginInput:
       type: object
       required: [email, password]
@@ -645,9 +700,10 @@ components:
         patientDisplayId: { type: string, minLength: 8, maxLength: 8, pattern: "^CM[A-Z0-9]{6}$" }
         patientAccessId:
           type: string
-          minLength: 32
-          maxLength: 32
-          description: Private 128-bit code to share only with a doctor who should access the booklet.
+          minLength: 8
+          maxLength: 8
+          pattern: "^CM[A-Z0-9]{6}$"
+          description: Compatibility field containing the same CM ID used to identify the profile and grant booklet access.
         emergencyInfo: { oneOf: [{ $ref: "#/components/schemas/EmergencyInfo" }, { type: "null" }] }
         recordCount: { type: integer }
         permissionsCount: { type: integer }
@@ -751,12 +807,13 @@ components:
         supportingRecordId: { type: ["integer", "null"] }
     AccessPermission:
       type: object
-      required: [id, doctorId, doctorName, doctorEmail, granted, grantedAt, expiresAt]
+      required: [id, doctorId, doctorName, doctorEmail, doctorVerified, granted, grantedAt, expiresAt]
       properties:
         id: { type: integer }
         doctorId: { type: integer }
         doctorName: { type: string }
         doctorEmail: { type: string, format: email }
+        doctorVerified: { type: boolean }
         granted: { type: boolean }
         grantedAt: { type: string, format: date-time }
         expiresAt: { type: ["string", "null"], format: date-time }
@@ -768,15 +825,15 @@ components:
         durationDays: { type: integer, minimum: 1, maximum: 365 }
     PatientAccessCodeInput:
       type: object
-      description: A private access code distinct from the short display Patient ID.
-      required: [patientAccessId]
+      description: The patient's CM ID, which also grants booklet access when entered by a doctor.
+      required: [patientDisplayId]
       properties:
-        patientAccessId:
+        patientDisplayId:
           type: string
-          minLength: 32
-          maxLength: 32
-          pattern: "^[A-Fa-f0-9]{32}$"
-          description: The patient's private 128-bit booklet access code.
+          minLength: 8
+          maxLength: 8
+          pattern: "^CM[A-Z0-9]{6}$"
+          description: The patient's CM ID and booklet access code.
     PatientBookletAccess:
       type: object
       required: [patientId, patientDisplayId, patientName]
@@ -786,11 +843,12 @@ components:
         patientName: { type: string }
     PatientSearchRequest:
       type: object
-      required: [doctorId, doctorName, doctorEmail, searchedAt]
+      required: [doctorId, doctorName, doctorEmail, doctorVerified, searchedAt]
       properties:
         doctorId: { type: integer }
         doctorName: { type: string }
         doctorEmail: { type: string, format: email }
+        doctorVerified: { type: boolean }
         searchedAt: { type: string, format: date-time }
     PatientSearchResult:
       type: object
