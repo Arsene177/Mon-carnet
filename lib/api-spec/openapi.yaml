@@ -106,6 +106,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PatientProfile"
+    put:
+      operationId: updatePatientLocation
+      tags: [patient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocationProfileInput"
+      responses:
+        "200":
+          description: Updated patient location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
   /patient/emergency-info:
     put:
       operationId: updateEmergencyInfo
@@ -652,6 +668,96 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /admin/directory:
+    get:
+      operationId: getAdminDirectory
+      tags: [admin]
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          schema: { type: string, enum: [PATIENTS, DOCTORS, HOSPITALS] }
+        - name: region
+          in: query
+          schema: { type: string }
+        - name: arrondissement
+          in: query
+          schema: { type: string }
+        - name: uncertified
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Filtered location directory without medical records or patient contact details
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminDirectoryEntry" }
+  /admin/directory/export:
+    get:
+      operationId: exportAdminDirectory
+      tags: [admin]
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          schema: { type: string, enum: [PATIENTS, DOCTORS, HOSPITALS] }
+        - name: region
+          in: query
+          schema: { type: string }
+        - name: arrondissement
+          in: query
+          schema: { type: string }
+        - name: uncertified
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: CSV export of the filtered directory
+          content:
+            text/csv:
+              schema: { type: string }
+  /admin/notifications:
+    post:
+      operationId: sendAdminNotification
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminNotificationInput" }
+      responses:
+        "201":
+          description: Notification delivered to a snapshotted audience
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminNotificationResult" }
+  /notifications:
+    get:
+      operationId: getNotificationInbox
+      tags: [auth]
+      responses:
+        "200":
+          description: Current user's in-app notifications
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationInbox" }
+  /notifications/{notificationId}/read:
+    put:
+      operationId: markNotificationRead
+      tags: [auth]
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Notification marked as read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
 components:
   securitySchemes:
     bearerAuth:
@@ -673,12 +779,14 @@ components:
       enum: [PENDING, ACTIVE, INACTIVE]
     User:
       type: object
-      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified]
+      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement]
       properties:
         id: { type: integer }
         email: { type: string, format: email }
         name: { type: string }
         hospitalName: { type: ["string", "null"] }
+        locationRegion: { type: ["string", "null"] }
+        locationArrondissement: { type: ["string", "null"] }
         professionalMedicalNumber: { type: ["string", "null"] }
         doctorVerified: { type: boolean }
         role: { $ref: "#/components/schemas/Role" }
@@ -710,6 +818,60 @@ components:
       properties:
         hospitalName: { type: string, maxLength: 180 }
         professionalMedicalNumber: { type: string, maxLength: 120 }
+        locationRegion: { type: ["string", "null"] }
+        locationArrondissement: { type: ["string", "null"] }
+    LocationProfileInput:
+      type: object
+      required: [locationRegion, locationArrondissement]
+      properties:
+        locationRegion: { type: ["string", "null"] }
+        locationArrondissement: { type: ["string", "null"] }
+    AdminDirectoryEntry:
+      type: object
+      required: [userId, name, kind, region, arrondissement, hospitalName, doctorVerified]
+      properties:
+        userId: { type: ["integer", "null"] }
+        name: { type: string }
+        kind: { type: string, enum: [PATIENTS, DOCTORS, HOSPITALS] }
+        region: { type: ["string", "null"] }
+        arrondissement: { type: ["string", "null"] }
+        hospitalName: { type: ["string", "null"] }
+        doctorVerified: { type: boolean }
+    AdminNotificationInput:
+      type: object
+      required: [title, body, targetType]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        targetType: { type: string, enum: [ALL, REGION, ARRONDISSEMENT, USERS] }
+        region: { type: ["string", "null"] }
+        arrondissement: { type: ["string", "null"] }
+        userIds:
+          type: array
+          maxItems: 500
+          items: { type: integer, minimum: 1 }
+    AdminNotificationResult:
+      type: object
+      required: [recipientCount]
+      properties:
+        recipientCount: { type: integer }
+    Notification:
+      type: object
+      required: [id, title, body, createdAt, readAt]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: ["string", "null"], format: date-time }
+    NotificationInbox:
+      type: object
+      required: [items, unreadCount]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+        unreadCount: { type: integer }
     AdminUserStatusInput:
       type: object
       required: [isActive]

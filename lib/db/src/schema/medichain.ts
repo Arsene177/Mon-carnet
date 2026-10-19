@@ -31,6 +31,8 @@ export const usersTable = pgTable(
     role: text("role").notNull(),
     name: text("name").notNull(),
     hospitalName: text("hospital_name"),
+    locationRegion: text("location_region"),
+    locationArrondissement: text("location_arrondissement"),
     professionalMedicalNumber: text("professional_medical_number"),
     doctorVerified: boolean("doctor_verified").notNull().default(false),
     patientDisplayId: text("patient_display_id"),
@@ -67,6 +69,28 @@ export const bookletExportsTable = pgTable(
     issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("medichain_booklet_exports_patient_index").on(table.patientId, table.issuedAt)],
+);
+
+export const notificationsTable = pgTable(
+  "medichain_notifications",
+  {
+    id: serial("id").primaryKey(),
+    batchId: text("batch_id").notNull(),
+    senderId: integer("sender_id").references(() => usersTable.id, { onDelete: "set null" }),
+    recipientId: integer("recipient_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("medichain_notifications_recipient_created_index").on(table.recipientId, table.createdAt),
+    index("medichain_notifications_batch_index").on(table.batchId),
+  ],
 );
 
 export const emergencyInfoTable = pgTable(

@@ -11,4 +11,8 @@ export interface DoctorProfileInput {
   hospitalName: string;
   /** @maxLength 120 */
   professionalMedicalNumber: string;
+  /** @nullable */
+  locationRegion?: string | null;
+  /** @nullable */
+  locationArrondissement?: string | null;
 }

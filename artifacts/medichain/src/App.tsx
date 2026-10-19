@@ -3,19 +3,20 @@ import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
 import {
-  Activity, AlertCircle, ArrowRight, BadgeCheck, BookOpen, CalendarDays, Check,
+  Activity, AlertCircle, ArrowRight, BadgeCheck, Bell, BookOpen, CalendarDays, Check,
   ChevronRight, ClipboardList, Clock3, Download, FileHeart, FilePlus2, HeartPulse, KeyRound,
   LockKeyhole, LogOut, Plus, Printer,
   Search, Shield, ShieldCheck, Stethoscope, Trash2, UserRound, Users, X,
 } from 'lucide-react';
 import {
   getGetAdminAnalyticsQueryKey, getGetAdminStatsQueryKey, getGetDoctorProfileQueryKey, getGetMeQueryKey,
+  getGetNotificationInboxQueryKey,
   getGetPatientPendingRequestsQueryKey, getGetPatientPermissionsQueryKey,
   getGetPatientProfileQueryKey, getGetPatientRecordsQueryKey, getGetPendingDoctorsQueryKey,
   getGetDoctorPatientRecordsQueryKey, getGetDoctorStatsQueryKey,
   getSearchDiseaseCodesQueryKey, getSearchPatientsQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
   useAddDoctorPatientRecord, useApproveDoctor, useChangePassword, useCreateBookletVerification, useGetAdminAnalytics, useGetAdminStats,
-  useGetDoctorPatientRecords, useGetDoctorProfile, useGetDoctorStats, useGetMe,
+  useGetDoctorPatientRecords, useGetDoctorProfile, useGetDoctorStats, useGetMe, useGetNotificationInbox,
   useGetPatientPendingRequests, useGetPatientPermissions,
   useGetPatientProfile, useGetPatientRecords, useGetPendingDoctors, useGrantPatientPermission,
   useGrantPatientAccessById, useLogin, useRegister, useRevokePatientPermission, useSearchPatients,
@@ -25,6 +26,7 @@ import type {
   AdminEpidemicMetric, BookletVerificationIssue, DiseaseCode, EmergencyInfo, EmergencyInfoInput,
   MedicalRecord, MedicalRecordInput, MedicalRecordRecordType, PatientProfile, User,
 } from '@workspace/api-client-react';
+import { CAMEROON_ARRONDISSEMENTS, CAMEROON_REGIONS } from '@workspace/api-zod';
 import { Form } from '@/components/ui/form';
 import { useLocation } from 'wouter';
 import { OnboardingGuide } from '@/components/onboarding-guide';
@@ -35,9 +37,9 @@ const queryClient = new QueryClient();
 setAuthTokenGetter(() => typeof localStorage === 'undefined' ? null : localStorage.getItem('medichain_token'));
 
 type Tab = WorkspaceTab;
-const patientTabs: Tab[] = ['Overview', 'Profile', 'Records', 'Access control', 'Emergency info'];
-const doctorTabs: Tab[] = ['Patients', 'Record entry', 'Profile'];
-const adminTabs: Tab[] = ['System overview', 'Doctor approvals', 'User search', 'Analytics', 'Profile'];
+const patientTabs: Tab[] = ['Overview', 'Profile', 'Records', 'Access control', 'Emergency info', 'Inbox'];
+const doctorTabs: Tab[] = ['Patients', 'Record entry', 'Profile', 'Inbox'];
+const adminTabs: Tab[] = ['System overview', 'Doctor approvals', 'User search', 'Directories & notices', 'Analytics', 'Profile', 'Inbox'];
 const dateLabel = (date?: string | null) => date ? new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not provided';
 const initials = (name?: string) => (name || 'MC').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
 const errText = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
@@ -132,6 +134,38 @@ const recordSpecificFields: Record<string, Array<{ key: string; label: string; t
 function localDateInputValue() {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+function LocationFields({ idPrefix, region, arrondissement, onRegionChange, onArrondissementChange }: {
+  idPrefix: string;
+  region: string | null;
+  arrondissement: string | null;
+  onRegionChange: (region: string | null) => void;
+  onArrondissementChange: (arrondissement: string | null) => void;
+}) {
+  const arrondissements = CAMEROON_ARRONDISSEMENTS
+    .filter((location) => location.region === region)
+    .map((location) => location.arrondissement);
+  return <div className="form-grid">
+    <div className="field">
+      <label htmlFor={`${idPrefix}-region`}>Region (optional)</label>
+      <select id={`${idPrefix}-region`} value={region ?? ''} onChange={(event) => {
+        onRegionChange(event.target.value || null);
+        onArrondissementChange(null);
+      }} data-testid={`${idPrefix}-region`}>
+        <option value="">Choose a region</option>
+        {CAMEROON_REGIONS.map((item) => <option value={item} key={item}>{item}</option>)}
+      </select>
+    </div>
+    <div className="field">
+      <label htmlFor={`${idPrefix}-arrondissement`}>Arrondissement (optional)</label>
+      <select id={`${idPrefix}-arrondissement`} value={arrondissement ?? ''} disabled={!region} onChange={(event) => onArrondissementChange(event.target.value || null)} data-testid={`${idPrefix}-arrondissement`}>
+        <option value="">Choose an arrondissement</option>
+        {arrondissements.map((item) => <option value={item} key={item}>{item}</option>)}
+      </select>
+    </div>
+    <p className="field-note full">Location helps regional directories and notices. The list contains 360 OCHA/HDX arrondissement entries; it is not a commune list.</p>
+  </div>;
 }
 
 function NotebookLogo() {
@@ -318,6 +352,7 @@ function AuthPage() {
 
 function Workspace({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>(user.role === 'ADMIN' ? 'System overview' : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? 'Patients' : 'Overview');
+  const notificationInbox = useGetNotificationInbox({ query: { queryKey: getGetNotificationInboxQueryKey(), refetchInterval: 60_000 } });
   const tabs = user.role === 'ADMIN' ? adminTabs : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? doctorTabs : patientTabs;
   const base = user.role === 'ADMIN' ? '/admin' : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? '/doctor' : '/patient';
   const [, setLocation] = useLocation();
@@ -325,18 +360,19 @@ function Workspace({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const iconFor: Record<string, typeof HeartPulse> = {
     Overview: Activity, Records: FileHeart, 'Access control': KeyRound, 'Emergency info': HeartPulse,
     Patients: Search, 'Record entry': FilePlus2, Profile: UserRound, 'System overview': Activity,
-    'Doctor approvals': BadgeCheck, 'User search': Users, Analytics: ClipboardList,
+    'Doctor approvals': BadgeCheck, 'User search': Users, 'Directories & notices': ClipboardList,
+    Analytics: ClipboardList, Inbox: Bell,
   };
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
       <div className="nav-label">Workspace</div>
-      <nav className="nav-list" aria-label="Main navigation" data-tour="workspace-navigation">{tabs.map((item) => { const Icon = iconFor[item]; return <button key={item} className={`nav-item ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)} data-tour={`nav-${item.toLowerCase().replaceAll(' ', '-')}`} data-testid={`nav-${item.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{item}</span></button>; })}</nav>
+      <nav className="nav-list" aria-label="Main navigation" data-tour="workspace-navigation">{tabs.map((item) => { const Icon = iconFor[item]; return <button key={item} className={`nav-item ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)} data-tour={`nav-${item.toLowerCase().replaceAll(' ', '-')}`} data-testid={`nav-${item.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{item}{item === 'Inbox' && Boolean(notificationInbox.data?.unreadCount) && <span className="tag warning" style={{marginLeft:8}}>{notificationInbox.data?.unreadCount}</span>}</span></button>; })}</nav>
       <div className="sidebar-bottom"><div className="privacy-note"><b><ShieldCheck size={14} style={{verticalAlign:'-3px',marginRight:6}}/>Your care stays yours</b>Access is granted by you and can be changed at any time.</div><div className="profile-mini"><div className="avatar">{initials(user.name)}</div><div style={{flex:1,minWidth:0}}><strong>{user.name}</strong><span>{user.role === 'PENDING_DOCTOR' ? 'Doctor · pending review' : user.role.toLowerCase()}</span></div><button className="icon-button" onClick={onSignOut} aria-label="Sign out" data-testid="button-signout"><LogOut size={15}/></button></div></div>
     </aside>
     <main className="main-area">
       <header className="topbar"><div className="crumb"><span>Mon carnet</span><ChevronRight size={13}/><strong>{tab}</strong></div><div className="top-actions"><span className="status-pill"><i className="status-dot"/> Secure workspace</span><OnboardingGuide user={user} activeTab={tab} onTabChange={setTab}/><button className="icon-button" aria-label="Sign out" onClick={onSignOut} data-testid="button-signout-top"><LogOut size={15}/></button>{user.role === 'PATIENT' && <PatientIdIndicator onOpenProfile={() => setTab('Profile')}/>}</div></header>
-      {user.role === 'ADMIN' ? <AdminView user={user} tab={tab} onTab={setTab}/> : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? <DoctorView user={user} tab={tab}/> : <PatientView user={user} tab={tab} onTab={setTab}/>}
+      {tab === 'Inbox' ? <InboxView/> : user.role === 'ADMIN' ? <AdminView user={user} tab={tab} onTab={setTab}/> : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? <DoctorView user={user} tab={tab}/> : <PatientView user={user} tab={tab} onTab={setTab}/>}
     </main>
   </div>;
 }
@@ -468,6 +504,8 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const [grantOpen, setGrantOpen] = useState(false);
   const [grantEmail, setGrantEmail] = useState('');
   const [grantDays, setGrantDays] = useState('30');
+  const [locationRegion, setLocationRegion] = useState<string | null>(null);
+  const [locationArrondissement, setLocationArrondissement] = useState<string | null>(null);
   const [accessHistory, setAccessHistory] = useState<AccessHistoryEntry[]>([]);
   const [accessHistoryLoading, setAccessHistoryLoading] = useState(false);
   const [accessHistoryError, setAccessHistoryError] = useState('');
@@ -483,6 +521,10 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const updateEmergency = useUpdateEmergencyInfo();
   const createBookletVerification = useCreateBookletVerification();
   const emergency = profile.data?.emergencyInfo;
+  useEffect(() => {
+    setLocationRegion(profile.data?.user.locationRegion ?? null);
+    setLocationArrondissement(profile.data?.user.locationArrondissement ?? null);
+  }, [profile.data?.user.locationRegion, profile.data?.user.locationArrondissement]);
   useEffect(() => {
     if (tab !== 'Access control') return;
     let active = true;
@@ -523,6 +565,23 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     qc.invalidateQueries({ queryKey: getGetPatientPendingRequestsQueryKey() });
   };
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
+  const savePatientLocation = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      const response = await fetch('/api/patient/profile', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locationRegion, locationArrondissement }),
+      });
+      const body = await response.json() as User & { error?: string };
+      if (!response.ok) throw new Error(body.error || 'Could not save your location.');
+      const currentProfile = qc.getQueryData<PatientProfile>(getGetPatientProfileQueryKey());
+      if (currentProfile) qc.setQueryData(getGetPatientProfileQueryKey(), { ...currentProfile, user: body });
+      notify('Location saved.');
+    } catch (error) {
+      notify(errText(error));
+    }
+  };
   const submitGrant = (event: FormEvent) => {
     event.preventDefault();
     grant.mutate({ data: { doctorEmail: grantEmail.trim(), durationDays: Number(grantDays) } }, { onSuccess: () => { invalidate(); setGrantOpen(false); setGrantEmail(''); notify('Access updated.'); }, onError: (e) => notify(errText(e)) });
@@ -592,6 +651,15 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
             <div className="data-row"><span className="data-key">Date of birth</span><span className="data-value">{dateLabel(profile.data?.user.dateOfBirth)}</span></div>
             <div className="data-row"><span className="data-key">Contact</span><span className="data-value">{profile.data?.user.contactInfo || 'Not provided'}</span></div>
             <div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(profile.data?.user.createdAt)}</span></div>
+          </div>
+        </section>
+        <section className="panel" style={{marginTop:17}}>
+          <div className="panel-head"><div><h2 className="panel-title">Location</h2><p className="panel-caption">Optional. Add or update this later to appear in regional directories.</p></div></div>
+          <div className="panel-body">
+            <form onSubmit={savePatientLocation}>
+              <LocationFields idPrefix="patient-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/>
+              <div className="form-actions"><button className="btn" type="submit" data-testid="button-save-patient-location">Save location</button></div>
+            </form>
           </div>
         </section>
         <PasswordChangeCard/>
@@ -730,6 +798,8 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [hospitalName, setHospitalName] = useState(user.hospitalName ?? '');
   const [professionalMedicalNumber, setProfessionalMedicalNumber] = useState(user.professionalMedicalNumber ?? '');
+  const [locationRegion, setLocationRegion] = useState<string | null>(user.locationRegion ?? null);
+  const [locationArrondissement, setLocationArrondissement] = useState<string | null>(user.locationArrondissement ?? null);
   const [savingHospital, setSavingHospital] = useState(false);
   const [toast, setToast] = useState('');
   const recordForm = useForm<DoctorRecordFormValues>({
@@ -772,7 +842,9 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   useEffect(() => {
     if (profile.data?.hospitalName !== undefined) setHospitalName(profile.data.hospitalName ?? '');
     if (profile.data?.professionalMedicalNumber !== undefined) setProfessionalMedicalNumber(profile.data.professionalMedicalNumber ?? '');
-  }, [profile.data?.hospitalName, profile.data?.professionalMedicalNumber]);
+    if (profile.data?.locationRegion !== undefined) setLocationRegion(profile.data.locationRegion ?? null);
+    if (profile.data?.locationArrondissement !== undefined) setLocationArrondissement(profile.data.locationArrondissement ?? null);
+  }, [profile.data?.hospitalName, profile.data?.professionalMedicalNumber, profile.data?.locationRegion, profile.data?.locationArrondissement]);
   const uploadLabDocument = async (file: File) => {
     if (patientId === null) return;
     if (pendingAttachments.length >= 5) {
@@ -864,12 +936,14 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       const response = await fetch('/api/doctor/profile', {
         method: 'PUT',
         headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hospitalName: hospitalName.trim(), professionalMedicalNumber: professionalMedicalNumber.trim() }),
+        body: JSON.stringify({ hospitalName: hospitalName.trim(), professionalMedicalNumber: professionalMedicalNumber.trim(), locationRegion, locationArrondissement }),
       });
       const body = await response.json() as User & { error?: string };
       if (!response.ok) throw new Error(body.error || 'Could not save the hospital or clinic.');
       setHospitalName(body.hospitalName ?? '');
       setProfessionalMedicalNumber(body.professionalMedicalNumber ?? '');
+      setLocationRegion(body.locationRegion ?? null);
+      setLocationArrondissement(body.locationArrondissement ?? null);
       qc.setQueryData(getGetDoctorProfileQueryKey(), body);
       notify('Professional profile saved.');
     } catch (error) {
@@ -1099,7 +1173,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         </div>}
       </div></section>
     </>}
-    {tab === 'Profile' && <><Heading eyebrow="Clinician account" title="Your profile" subtitle="Your account identity for patients and the Mon carnet care network."/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Professional profile</h2><p className="panel-caption">Your hospital or clinic is shown in patient access logs.</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">Name</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">Email address</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">Account status</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">Credential status</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> Certified doctor</span>:<span className="tag warning">Manual verification pending</span>}</span></div><div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">Contact</span><span className="data-value">{profile.data?.contactInfo || 'Not provided'}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">Hospital or clinic</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder="Your hospital or clinic name" data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">Professional medical number</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder="License or registration number" data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?'Changing this number will remove your certified badge until an administrator verifies it again.':'An administrator manually checks this number before awarding your certified badge.'}</small></div><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?'Saving…':'Save professional profile'}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your impact</h2><p className="panel-caption">Stats from your clinical activity</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">Patients treated</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">Records added</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">This month</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/></>}
+    {tab === 'Profile' && <><Heading eyebrow="Clinician account" title="Your profile" subtitle="Your account identity for patients and the Mon carnet care network."/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Professional profile</h2><p className="panel-caption">Your hospital or clinic is shown in patient access logs.</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">Name</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">Email address</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">Account status</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">Credential status</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> Certified doctor</span>:<span className="tag warning">Manual verification pending</span>}</span></div><div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">Contact</span><span className="data-value">{profile.data?.contactInfo || 'Not provided'}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">Hospital or clinic</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder="Your hospital or clinic name" data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">Professional medical number</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder="License or registration number" data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?'Changing this number will remove your certified badge until an administrator verifies it again.':'An administrator manually checks this number before awarding your certified badge.'}</small></div><LocationFields idPrefix="doctor-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?'Saving…':'Save professional profile'}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your impact</h2><p className="panel-caption">Stats from your clinical activity</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">Patients treated</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">Records added</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">This month</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/></>}
     {toast && <div className="toast-message" role="status">{toast}</div>}
   </>;
 }
@@ -1171,7 +1245,253 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
       <div style={{marginTop:18}}><EpidemicThresholds metrics={analytics.data?.epidemicMetrics ?? []} savingDiseaseCodeId={savingThresholdId} onSave={saveEpidemicThreshold}/></div>
       <div className="grid dashboard-grid" style={{marginTop:18}}><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Records over time</h2><p className="panel-caption">Monthly records added to patient files</p></div></div><div className="panel-body">{analytics.data?.monthlyRecords?.length?<div className="bar-list">{analytics.data.monthlyRecords.map((month,index)=>{const max=Math.max(...analytics.data!.monthlyRecords.map(i=>i.count),1);return <div className="bar-line" key={`${month.month}-${index}`}><span>{month.month}</span><div className="bar-track"><div className="bar-fill" style={{width:`${Math.max(month.count/max*100,2)}%`}}/></div><b style={{textAlign:'right',color:'#58716b'}}>{month.count}</b></div>})}</div>:<EmptyState icon={ClipboardList} title="No analytics to display" children="Monthly record activity will appear here as care records are added."/>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Network summary</h2><p className="panel-caption">Current active footprint</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">Patients</span><span className="data-value">{stats.data?.totalPatients??0}</span></div><div className="data-row"><span className="data-key">Active doctors</span><span className="data-value">{stats.data?.activeDoctors??0}</span></div><div className="data-row"><span className="data-key">Active permissions</span><span className="data-value">{stats.data?.activePermissions??0}</span></div><div className="data-row"><span className="data-key">Consultations</span><span className="data-value">{stats.data?.totalConsultations??0}</span></div></>}</div></section></div>
       </>}</>}
+    {tab==='Directories & notices' && <AdminDirectoryNotices/>}
     {toast&&<div className="toast-message" role="status">{toast}</div>}
+  </>;
+}
+
+type DirectoryEntry = {
+  userId: number | null;
+  name: string;
+  kind: 'PATIENTS' | 'DOCTORS' | 'HOSPITALS';
+  region: string | null;
+  arrondissement: string | null;
+  hospitalName: string | null;
+  doctorVerified: boolean;
+};
+type NotificationEntry = {
+  id: number;
+  title: string;
+  body: string;
+  createdAt: string;
+  readAt: string | null;
+};
+type NotificationInboxData = { items: NotificationEntry[]; unreadCount: number };
+type NoticeTarget = 'ALL' | 'REGION' | 'ARRONDISSEMENT' | 'USERS';
+
+function InboxView() {
+  const qc = useQueryClient();
+  const [inbox, setInbox] = useState<NotificationInboxData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [markingId, setMarkingId] = useState<number | null>(null);
+  const loadInbox = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/notifications', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
+      });
+      const body = await response.json() as NotificationInboxData & { error?: string };
+      if (!response.ok) throw new Error(body.error || 'Could not load your inbox.');
+      setInbox(body);
+    } catch (cause) {
+      setError(errText(cause));
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { void loadInbox(); }, []);
+  const markRead = async (notificationId: number) => {
+    setMarkingId(notificationId);
+    setError('');
+    try {
+      const response = await fetch(`/api/notifications/${notificationId}/read`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
+      });
+      const body = await response.json() as NotificationEntry & { error?: string };
+      if (!response.ok) throw new Error(body.error || 'Could not mark this notice as read.');
+      setInbox((current) => current ? {
+        ...current,
+        items: current.items.map((item) => item.id === notificationId ? body : item),
+        unreadCount: Math.max(0, current.unreadCount - (current.items.some((item) => item.id === notificationId && !item.readAt) ? 1 : 0)),
+      } : current);
+      qc.invalidateQueries({ queryKey: getGetNotificationInboxQueryKey() });
+    } catch (cause) {
+      setError(errText(cause));
+    } finally {
+      setMarkingId(null);
+    }
+  };
+  return <>
+    <Heading eyebrow="In-app messages" title="Notification inbox" subtitle="Notices sent to you by Mon carnet administrators." action={<button className="btn secondary" onClick={() => void loadInbox()} disabled={loading}><Activity size={14}/> Refresh</button>}/>
+    {loading ? <div className="skeleton"/> : error && !inbox ? <ErrorState error={error} retry={() => void loadInbox()}/> : <>
+      {error && <div className="error-state" role="alert">{error}</div>}
+      <section className="panel">
+        <div className="panel-head"><div><h2 className="panel-title">Your notices</h2><p className="panel-caption">Messages remain in your inbox until your account is removed.</p></div><span className="tag">{inbox?.unreadCount ?? 0} unread</span></div>
+        <div className="panel-body">
+          {inbox?.items.length ? inbox.items.map((item) => <article className="data-row" key={item.id}>
+            <div className="person-cell"><span className="record-icon"><Bell size={15}/></span><span><strong>{item.title}</strong><small style={{display:'block',whiteSpace:'pre-wrap',fontWeight:400,color:'#687b8d',marginTop:4}}>{item.body}</small><small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:5}}>{new Date(item.createdAt).toLocaleString()}</small></span></div>
+            {item.readAt ? <span className="tag">Read</span> : <button className="btn small secondary" onClick={() => void markRead(item.id)} disabled={markingId === item.id} data-testid={`button-mark-notification-read-${item.id}`}>{markingId === item.id ? 'Saving…' : 'Mark read'}</button>}
+          </article>) : <EmptyState icon={Bell} title="Your inbox is clear" children="Administrator notices sent to you will appear here."/>}
+        </div>
+      </section>
+    </>}
+  </>;
+}
+
+function AdminDirectoryNotices() {
+  const [kind, setKind] = useState<DirectoryEntry['kind']>('PATIENTS');
+  const [region, setRegion] = useState<string | null>(null);
+  const [arrondissement, setArrondissement] = useState<string | null>(null);
+  const [uncertifiedOnly, setUncertifiedOnly] = useState(false);
+  const [entries, setEntries] = useState<DirectoryEntry[]>([]);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState('');
+  const [directoryReload, setDirectoryReload] = useState(0);
+  const [selectedUsers, setSelectedUsers] = useState<Set<number>>(() => new Set());
+  const [target, setTarget] = useState<NoticeTarget>('ALL');
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [status, setStatus] = useState('');
+  const [statusError, setStatusError] = useState(false);
+  const locationParams = useMemo(() => ({ region, arrondissement }), [region, arrondissement]);
+  const queryString = (includeKind: boolean) => {
+    const params = new URLSearchParams();
+    if (includeKind) params.set('kind', kind);
+    if (locationParams.region) params.set('region', locationParams.region);
+    if (locationParams.arrondissement) params.set('arrondissement', locationParams.arrondissement);
+    if (kind === 'DOCTORS' && uncertifiedOnly) params.set('uncertified', 'true');
+    return params.toString();
+  };
+  useEffect(() => {
+    let active = true;
+    setDirectoryLoading(true);
+    setDirectoryError('');
+    setSelectedUsers(new Set());
+    void fetch(`/api/admin/directory?${queryString(true)}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
+    }).then(async (response) => {
+      const body = await response.json() as DirectoryEntry[] & { error?: string };
+      if (!response.ok) throw new Error(body.error || 'Could not load this directory.');
+      return body;
+    }).then((data) => {
+      if (active) setEntries(data);
+    }).catch((cause: unknown) => {
+      if (active) setDirectoryError(errText(cause));
+    }).finally(() => {
+      if (active) setDirectoryLoading(false);
+    });
+    return () => { active = false; };
+  }, [kind, region, arrondissement, uncertifiedOnly, directoryReload]);
+  const downloadCsv = async () => {
+    setExporting(true);
+    setStatus('');
+    setStatusError(false);
+    try {
+      const response = await fetch(`/api/admin/directory/export?${queryString(true)}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
+      });
+      if (!response.ok) {
+        const body = await response.json() as { error?: string };
+        throw new Error(body.error || 'Could not export this directory.');
+      }
+      const csv = await response.blob();
+      const url = URL.createObjectURL(csv);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `mon-carnet-${kind.toLowerCase()}-directory.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setStatus('Directory CSV downloaded. Exports are limited to 5,000 entries.');
+    } catch (cause) {
+      setStatus(errText(cause));
+      setStatusError(true);
+    } finally {
+      setExporting(false);
+    }
+  };
+  const sendNotice = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSending(true);
+    setStatus('');
+    setStatusError(false);
+    try {
+      const payload: {
+        title: string;
+        body: string;
+        targetType: NoticeTarget;
+        region?: string;
+        arrondissement?: string;
+        userIds?: number[];
+      } = { title: title.trim(), body: message.trim(), targetType: target };
+      if (target === 'REGION' || target === 'ARRONDISSEMENT') {
+        if (!region) throw new Error('Choose a region for location-based notices.');
+        payload.region = region;
+      }
+      if (target === 'ARRONDISSEMENT') {
+        if (!arrondissement) throw new Error('Choose an arrondissement for this notice.');
+        payload.arrondissement = arrondissement;
+      }
+      if (target === 'USERS') {
+        if (selectedUsers.size === 0) throw new Error('Select one or more users from the directory first.');
+        payload.userIds = [...selectedUsers];
+      }
+      const response = await fetch('/api/admin/notifications', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json() as { recipientCount?: number; error?: string };
+      if (!response.ok) throw new Error(body.error || 'Could not send this notice.');
+      setStatus(`Notice delivered to ${body.recipientCount ?? 0} users. Recipients were saved when the notice was sent.`);
+      setTitle('');
+      setMessage('');
+    } catch (cause) {
+      setStatus(errText(cause));
+      setStatusError(true);
+    } finally {
+      setSending(false);
+    }
+  };
+  const toggleSelectedUser = (userId: number) => {
+    setSelectedUsers((current) => {
+      const next = new Set(current);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+  return <>
+    <Heading eyebrow="Network directory" title="Directories & notices" subtitle="Export regional lists, identify doctors awaiting credential verification, and send in-app notices."/>
+    <section className="panel">
+      <div className="panel-head"><div><h2 className="panel-title">Location directories</h2><p className="panel-caption">Patient lists omit email, contact, date of birth, and all medical-record details. Results show up to 500 entries; CSV exports up to 5,000.</p></div><button className="btn secondary" onClick={() => void downloadCsv()} disabled={exporting} data-testid="button-export-directory"><Download size={14}/>{exporting ? 'Preparing…' : 'Download CSV'}</button></div>
+      <div className="panel-body">
+        <div className="form-grid">
+          <div className="field"><label htmlFor="directory-kind">Directory</label><select id="directory-kind" value={kind} onChange={(event) => { setKind(event.target.value as DirectoryEntry['kind']); setUncertifiedOnly(false); }} data-testid="select-directory-kind"><option value="PATIENTS">Patients</option><option value="DOCTORS">Doctors</option><option value="HOSPITALS">Hospitals / clinics</option></select></div>
+          <div className="field"><label htmlFor="directory-uncertified">Doctor certification</label><select id="directory-uncertified" value={uncertifiedOnly ? 'uncertified' : 'all'} onChange={(event) => setUncertifiedOnly(event.target.value === 'uncertified')} disabled={kind !== 'DOCTORS'} data-testid="select-uncertified-doctors"><option value="all">All doctors</option><option value="uncertified">Uncertified only</option></select></div>
+        </div>
+        <LocationFields idPrefix="directory-location" region={region} arrondissement={arrondissement} onRegionChange={setRegion} onArrondissementChange={setArrondissement}/>
+        {directoryLoading ? <div className="skeleton" style={{marginTop:16}}/> : directoryError ? <ErrorState error={directoryError} retry={() => setDirectoryReload((current) => current + 1)}/> : entries.length ? <div style={{marginTop:16}}>
+          {entries.map((entry, index) => <div className="data-row" key={`${entry.userId ?? entry.name}-${entry.region}-${entry.arrondissement}-${index}`}>
+            {entry.userId !== null && kind !== 'HOSPITALS' && <input type="checkbox" checked={selectedUsers.has(entry.userId)} onChange={() => toggleSelectedUser(entry.userId!)} aria-label={`Select ${entry.name} for a notice`} data-testid={`checkbox-directory-user-${entry.userId}`}/>}
+            <div className="person-cell"><span className="record-icon">{entry.kind === 'HOSPITALS' ? <Activity size={15}/> : entry.kind === 'DOCTORS' ? <Stethoscope size={15}/> : <UserRound size={15}/>}</span><span>{entry.name}{entry.kind === 'DOCTORS' && <small style={{display:'block',fontWeight:400,color:entry.doctorVerified?'#267b62':'#9a6d2e',marginTop:3}}>{entry.doctorVerified ? 'Certified doctor' : 'Not certified'}</small>}</span></div>
+            <span className="data-value">{[entry.arrondissement, entry.region].filter(Boolean).join(', ') || 'Location not provided'}</span>
+            {entry.hospitalName && <span className="data-value">{entry.hospitalName}</span>}
+          </div>)}
+          <p className="field-note">{kind === 'HOSPITALS' ? 'Hospitals are deduplicated by name and location from doctor profiles.' : `Showing up to 500 matching accounts. ${selectedUsers.size} selected for a possible notice.`}</p>
+        </div> : <EmptyState icon={Users} title="No matching entries" children="Try another region, arrondissement, or directory type."/>}
+      </div>
+    </section>
+    <section className="panel" style={{marginTop:18}}>
+      <div className="panel-head"><div><h2 className="panel-title">Send an in-app notice</h2><p className="panel-caption">The audience is snapshotted when sent, so later location changes do not change past recipients.</p></div></div>
+      <div className="panel-body">
+        <form onSubmit={sendNotice}>
+          <div className="form-grid">
+            <div className="field"><label htmlFor="notice-audience">Audience</label><select id="notice-audience" value={target} onChange={(event) => setTarget(event.target.value as NoticeTarget)} data-testid="select-notice-audience"><option value="ALL">All active users</option><option value="REGION">A region</option><option value="ARRONDISSEMENT">An arrondissement</option><option value="USERS">Selected users from the directory</option></select></div>
+            {(target === 'REGION' || target === 'ARRONDISSEMENT') && <div className="field"><label>Selected location</label><span className="data-value">{[arrondissement, region].filter(Boolean).join(', ') || 'Choose a location above'}</span></div>}
+            {target === 'USERS' && <div className="field"><label>Selected recipients</label><span className="data-value">{selectedUsers.size} selected in the directory above</span></div>}
+            <div className="field full"><label htmlFor="notice-title">Title</label><input id="notice-title" required maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} data-testid="input-notice-title"/></div>
+            <div className="field full"><label htmlFor="notice-message">Message</label><textarea id="notice-message" required maxLength={2000} value={message} onChange={(event) => setMessage(event.target.value)} data-testid="input-notice-message"/></div>
+          </div>
+          <div className="form-actions"><button className="btn" type="submit" disabled={sending} data-testid="button-send-notice"><Bell size={14}/>{sending ? 'Sending…' : 'Send notice'}</button></div>
+        </form>
+        {status && <div className={statusError ? 'error-state' : 'notice'} role={statusError ? 'alert' : 'status'} style={{marginTop:12}}>{status}</div>}
+      </div>
+    </section>
   </>;
 }
 

@@ -47,6 +47,8 @@ export const RegisterResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -75,6 +77,8 @@ export const LoginResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -92,6 +96,8 @@ export const GetMeResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -136,6 +142,8 @@ export const GetPatientProfileResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -159,6 +167,29 @@ export const GetPatientProfileResponse = zod.object({
 }),zod.null()]),
   "recordCount": zod.number().int(),
   "permissionsCount": zod.number().int()
+})
+
+
+export const UpdatePatientLocationBody = zod.object({
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable()
+})
+
+export const UpdatePatientLocationResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
 })
 
 
@@ -322,6 +353,8 @@ export const GetDoctorProfileResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -341,7 +374,9 @@ export const updateDoctorProfileBodyProfessionalMedicalNumberMax = 120;
 
 export const UpdateDoctorProfileBody = zod.object({
   "hospitalName": zod.string().max(updateDoctorProfileBodyHospitalNameMax),
-  "professionalMedicalNumber": zod.string().max(updateDoctorProfileBodyProfessionalMedicalNumberMax)
+  "professionalMedicalNumber": zod.string().max(updateDoctorProfileBodyProfessionalMedicalNumberMax),
+  "locationRegion": zod.string().nullish(),
+  "locationArrondissement": zod.string().nullish()
 })
 
 export const UpdateDoctorProfileResponse = zod.object({
@@ -349,6 +384,8 @@ export const UpdateDoctorProfileResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -731,6 +768,8 @@ export const GetPendingDoctorsResponseItem = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -752,6 +791,8 @@ export const ApproveDoctorResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -772,6 +813,8 @@ export const RevokeDoctorResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -792,6 +835,8 @@ export const VerifyDoctorResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -816,6 +861,8 @@ export const UpdateAdminUserStatusResponse = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -840,6 +887,8 @@ export const SearchUsersResponseItem = zod.object({
   "email": zod.string().email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
   "professionalMedicalNumber": zod.string().nullable(),
   "doctorVerified": zod.boolean(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
@@ -850,5 +899,85 @@ export const SearchUsersResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const SearchUsersResponse = zod.array(SearchUsersResponseItem)
+
+
+export const GetAdminDirectoryQueryParams = zod.object({
+  "kind": zod.enum(['PATIENTS', 'DOCTORS', 'HOSPITALS']),
+  "region": zod.coerce.string().optional(),
+  "arrondissement": zod.coerce.string().optional(),
+  "uncertified": zod.coerce.boolean().optional()
+})
+
+export const GetAdminDirectoryResponseItem = zod.object({
+  "userId": zod.number().int().nullable(),
+  "name": zod.string(),
+  "kind": zod.enum(['PATIENTS', 'DOCTORS', 'HOSPITALS']),
+  "region": zod.string().nullable(),
+  "arrondissement": zod.string().nullable(),
+  "hospitalName": zod.string().nullable(),
+  "doctorVerified": zod.boolean()
+})
+export const GetAdminDirectoryResponse = zod.array(GetAdminDirectoryResponseItem)
+
+
+export const ExportAdminDirectoryQueryParams = zod.object({
+  "kind": zod.enum(['PATIENTS', 'DOCTORS', 'HOSPITALS']),
+  "region": zod.coerce.string().optional(),
+  "arrondissement": zod.coerce.string().optional(),
+  "uncertified": zod.coerce.boolean().optional()
+})
+
+export const ExportAdminDirectoryResponse = zod.unknown()
+
+
+export const sendAdminNotificationBodyTitleMax = 120;
+
+export const sendAdminNotificationBodyBodyMax = 2000;
+
+
+export const sendAdminNotificationBodyUserIdsMax = 500;
+
+
+
+export const SendAdminNotificationBody = zod.object({
+  "title": zod.string().min(1).max(sendAdminNotificationBodyTitleMax),
+  "body": zod.string().min(1).max(sendAdminNotificationBodyBodyMax),
+  "targetType": zod.enum(['ALL', 'REGION', 'ARRONDISSEMENT', 'USERS']),
+  "region": zod.string().nullish(),
+  "arrondissement": zod.string().nullish(),
+  "userIds": zod.array(zod.number().int().min(1)).max(sendAdminNotificationBodyUserIdsMax).optional()
+})
+
+export const SendAdminNotificationResponse = zod.object({
+  "recipientCount": zod.number().int()
+})
+
+
+export const GetNotificationInboxResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "readAt": zod.coerce.date().nullable()
+})),
+  "unreadCount": zod.number().int()
+})
+
+
+
+
+
+export const MarkNotificationReadParams = zod.object({
+  "notificationId": zod.coerce.number().int().min(1)
+})
+
+export const MarkNotificationReadResponse = zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "readAt": zod.coerce.date().nullable()
+})
 
 

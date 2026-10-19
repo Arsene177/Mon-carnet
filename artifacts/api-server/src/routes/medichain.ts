@@ -66,11 +66,23 @@ import {
   UpdateAdminEpidemicThresholdBody,
   UpdateAdminEpidemicThresholdParams,
   UpdateAdminEpidemicThresholdResponse,
+  GetAdminDirectoryQueryParams,
+  GetAdminDirectoryResponse,
+  ExportAdminDirectoryQueryParams,
+  SendAdminNotificationBody,
+  SendAdminNotificationResponse,
+  GetNotificationInboxResponse,
+  MarkNotificationReadParams,
+  MarkNotificationReadResponse,
+  UpdateDoctorProfileBody,
+  UpdatePatientLocationBody,
+  UpdatePatientLocationResponse,
   UpdateEmergencyInfoBody,
   UpdateEmergencyInfoResponse,
   VerifyDoctorParams,
   VerifyDoctorResponse,
 } from "@workspace/api-zod";
+import { isValidCameroonLocation } from "@workspace/api-zod";
 import {
   auditEventsTable,
   bookletExportsTable,
@@ -83,6 +95,7 @@ import {
   medicalRecordsTable,
   accessPermissionsTable,
   patientSearchesTable,
+  notificationsTable,
 } from "@workspace/db";
 import { createAccessToken, hashPassword, publicUser, requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
 
@@ -188,6 +201,90 @@ async function purgeExpiredMedicalAttachments() {
 
 function invalidBody(res: Response, message: string) {
   res.status(400).json({ error: message });
+}
+
+type AdminDirectoryKind = "PATIENTS" | "DOCTORS" | "HOSPITALS";
+
+type AdminDirectoryFilters = {
+  kind: AdminDirectoryKind;
+  region?: string;
+  arrondissement?: string;
+  uncertified?: boolean;
+};
+
+function validDirectoryFilters(filters: AdminDirectoryFilters) {
+  if (filters.region !== undefined && !isValidCameroonLocation(filters.region, filters.arrondissement ?? null)) return false;
+  if (filters.arrondissement !== undefined && filters.region === undefined) return false;
+  return !filters.uncertified || filters.kind === "DOCTORS";
+}
+
+async function adminDirectoryEntries(filters: AdminDirectoryFilters, limit: number) {
+  const conditions = [];
+  if (filters.kind === "PATIENTS") {
+    conditions.push(eq(usersTable.role, "PATIENT"));
+  } else {
+    conditions.push(or(eq(usersTable.role, "DOCTOR"), eq(usersTable.role, "PENDING_DOCTOR"))!);
+  }
+  if (filters.region) conditions.push(eq(usersTable.locationRegion, filters.region));
+  if (filters.arrondissement) conditions.push(eq(usersTable.locationArrondissement, filters.arrondissement));
+  if (filters.uncertified) conditions.push(eq(usersTable.doctorVerified, false));
+  if (filters.kind === "HOSPITALS") {
+    conditions.push(sql`${usersTable.hospitalName} IS NOT NULL AND btrim(${usersTable.hospitalName}) <> ''`);
+  }
+
+  const users = await db.select({
+    userId: usersTable.id,
+    name: usersTable.name,
+    locationRegion: usersTable.locationRegion,
+    locationArrondissement: usersTable.locationArrondissement,
+    hospitalName: usersTable.hospitalName,
+    doctorVerified: usersTable.doctorVerified,
+  }).from(usersTable).where(and(...conditions)).orderBy(asc(usersTable.name)).limit(limit);
+
+  if (filters.kind === "HOSPITALS") {
+    const hospitals = new Map<string, {
+      userId: null;
+      name: string;
+      kind: "HOSPITALS";
+      region: string | null;
+      arrondissement: string | null;
+      hospitalName: string;
+      doctorVerified: boolean;
+    }>();
+    for (const user of users) {
+      const hospitalName = user.hospitalName?.trim();
+      if (!hospitalName) continue;
+      const key = [hospitalName.toLocaleLowerCase(), user.locationRegion ?? "", user.locationArrondissement ?? ""].join("\u0000");
+      if (!hospitals.has(key)) {
+        hospitals.set(key, {
+          userId: null,
+          name: hospitalName,
+          kind: "HOSPITALS",
+          region: user.locationRegion,
+          arrondissement: user.locationArrondissement,
+          hospitalName,
+          doctorVerified: false,
+        });
+      }
+    }
+    return [...hospitals.values()].slice(0, limit);
+  }
+
+  return users.map((user) => ({
+    userId: user.userId,
+    name: user.name,
+    kind: filters.kind,
+    region: user.locationRegion,
+    arrondissement: user.locationArrondissement,
+    hospitalName: filters.kind === "DOCTORS" ? user.hospitalName : null,
+    doctorVerified: filters.kind === "DOCTORS" && user.doctorVerified,
+  }));
+}
+
+function csvCell(value: string | number | boolean | null) {
+  let text = value === null ? "" : String(value);
+  if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function diseaseCodeResponse(code: typeof diseaseCodesTable.$inferSelect) {
@@ -487,6 +584,27 @@ router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise
   );
 });
 
+router.put("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const parsed = UpdatePatientLocationBody.safeParse(req.body);
+  if (!parsed.success || !isValidCameroonLocation(parsed.data?.locationRegion, parsed.data?.locationArrondissement)) {
+    invalidBody(res, "Choose a valid Cameroon region and arrondissement.");
+    return;
+  }
+  const [updated] = await db.update(usersTable)
+    .set({
+      locationRegion: parsed.data.locationRegion,
+      locationArrondissement: parsed.data.locationArrondissement,
+      updatedAt: new Date(),
+    })
+    .where(eq(usersTable.id, req.currentUser!.id))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "Profile not found." });
+    return;
+  }
+  res.json(UpdatePatientLocationResponse.parse(userResponse(updated)));
+});
+
 router.put("/patient/emergency-info", requireAuth("PATIENT"), async (req, res): Promise<void> => {
   const parsed = UpdateEmergencyInfoBody.safeParse(req.body);
   if (!parsed.success) {
@@ -751,19 +869,34 @@ router.get("/doctor/profile", requireAuth("DOCTOR"), async (req, res): Promise<v
 });
 
 router.put("/doctor/profile", requireAuth("DOCTOR"), async (req, res): Promise<void> => {
-  const hospitalName = typeof req.body?.hospitalName === "string" ? req.body.hospitalName.trim() : null;
-  const professionalMedicalNumber = typeof req.body?.professionalMedicalNumber === "string"
-    ? req.body.professionalMedicalNumber.trim()
-    : null;
-  if (hospitalName === null || hospitalName.length > 180 || professionalMedicalNumber === null || professionalMedicalNumber.length > 120) {
-    invalidBody(res, "Enter a hospital or clinic name and professional medical number within the allowed lengths.");
+  const parsed = UpdateDoctorProfileBody.safeParse(req.body);
+  if (!parsed.success) {
+    invalidBody(res, "Enter valid professional details and a valid Cameroon location.");
     return;
   }
+  const [current] = await db.select({
+    locationRegion: usersTable.locationRegion,
+    locationArrondissement: usersTable.locationArrondissement,
+  }).from(usersTable).where(eq(usersTable.id, req.currentUser!.id)).limit(1);
+  if (!current) {
+    res.status(404).json({ error: "Doctor profile not found." });
+    return;
+  }
+  const locationRegion = parsed.data.locationRegion === undefined ? current.locationRegion : parsed.data.locationRegion;
+  const locationArrondissement = parsed.data.locationArrondissement === undefined ? current.locationArrondissement : parsed.data.locationArrondissement;
+  if (!isValidCameroonLocation(locationRegion, locationArrondissement)) {
+    invalidBody(res, "Enter valid professional details and a valid Cameroon location.");
+    return;
+  }
+  const hospitalName = parsed.data.hospitalName.trim();
+  const professionalMedicalNumber = parsed.data.professionalMedicalNumber.trim();
   const numberChanged = professionalMedicalNumber !== (req.currentUser!.professionalMedicalNumber ?? "");
   const [updated] = await db.update(usersTable)
     .set({
       hospitalName: hospitalName || null,
       professionalMedicalNumber: professionalMedicalNumber || null,
+      locationRegion,
+      locationArrondissement,
       ...(numberChanged ? { doctorVerified: false } : {}),
     })
     .where(eq(usersTable.id, req.currentUser!.id))
@@ -1796,6 +1929,174 @@ router.get("/admin/search-user", requireAuth("ADMIN"), async (req, res): Promise
     .orderBy(desc(usersTable.createdAt))
     .limit(50);
   res.json(SearchUsersResponse.parse(users.map(userResponse)));
+});
+
+router.get("/admin/directory", requireAuth("ADMIN"), async (req, res): Promise<void> => {
+  const uncertified = req.query.uncertified;
+  const invalidFlag = uncertified !== undefined && uncertified !== "true" && uncertified !== "false";
+  const parsed = GetAdminDirectoryQueryParams.safeParse({
+    ...req.query,
+    uncertified: uncertified === undefined ? undefined : uncertified === "true",
+  });
+  if (invalidFlag || !parsed.success || !validDirectoryFilters(parsed.data)) {
+    invalidBody(res, "Choose a valid directory type and Cameroon location.");
+    return;
+  }
+  const entries = await adminDirectoryEntries(parsed.data, 500);
+  res.json(GetAdminDirectoryResponse.parse(entries));
+});
+
+router.get("/admin/directory/export", requireAuth("ADMIN"), async (req, res): Promise<void> => {
+  const uncertified = req.query.uncertified;
+  const invalidFlag = uncertified !== undefined && uncertified !== "true" && uncertified !== "false";
+  const parsed = ExportAdminDirectoryQueryParams.safeParse({
+    ...req.query,
+    uncertified: uncertified === undefined ? undefined : uncertified === "true",
+  });
+  if (invalidFlag || !parsed.success || !validDirectoryFilters(parsed.data)) {
+    invalidBody(res, "Choose a valid directory type and Cameroon location.");
+    return;
+  }
+  const entries = await adminDirectoryEntries(parsed.data, 5000);
+  const headers = ["Name", "Directory type", "Region", "Arrondissement", "Hospital or clinic", "Doctor certified"];
+  const rows = entries.map((entry) => [
+    entry.name,
+    entry.kind,
+    entry.region,
+    entry.arrondissement,
+    entry.hospitalName,
+    entry.kind === "DOCTORS" ? entry.doctorVerified : null,
+  ]);
+  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const filename = `mon-carnet-${parsed.data.kind.toLowerCase()}-directory.csv`;
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(`\uFEFF${csv}`);
+});
+
+router.post("/admin/notifications", requireAuth("ADMIN"), async (req, res): Promise<void> => {
+  const parsed = SendAdminNotificationBody.safeParse(req.body);
+  if (!parsed.success) {
+    invalidBody(res, "Enter a title and message, then select a valid audience.");
+    return;
+  }
+  const notice = {
+    ...parsed.data,
+    title: parsed.data.title.trim(),
+    body: parsed.data.body.trim(),
+  };
+  if (!notice.title || !notice.body) {
+    invalidBody(res, "Enter a title and message, then select a valid audience.");
+    return;
+  }
+
+  let recipientIds: number[];
+  if (notice.targetType === "ALL") {
+    const users = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+      eq(usersTable.isActive, true),
+    ));
+    recipientIds = users.map((user) => user.id);
+  } else if (notice.targetType === "REGION" || notice.targetType === "ARRONDISSEMENT") {
+    const region = notice.region;
+    const arrondissement = notice.targetType === "ARRONDISSEMENT" ? notice.arrondissement : null;
+    if (typeof region !== "string" || !isValidCameroonLocation(region, arrondissement)
+      || (notice.targetType === "REGION" && notice.arrondissement)
+      || (notice.targetType === "ARRONDISSEMENT" && !arrondissement)) {
+      invalidBody(res, "Choose a valid region and arrondissement audience.");
+      return;
+    }
+    const users = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+      eq(usersTable.isActive, true),
+      eq(usersTable.locationRegion, region!),
+      ...(arrondissement ? [eq(usersTable.locationArrondissement, arrondissement)] : []),
+    ));
+    recipientIds = users.map((user) => user.id);
+  } else {
+    const requestedIds = [...new Set(notice.userIds ?? [])];
+    if (requestedIds.length === 0) {
+      invalidBody(res, "Select one or more active users for this notification.");
+      return;
+    }
+    const users = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+      inArray(usersTable.id, requestedIds),
+      eq(usersTable.isActive, true),
+    ));
+    if (users.length !== requestedIds.length) {
+      invalidBody(res, "One or more selected users are unavailable or are not eligible to receive notices.");
+      return;
+    }
+    recipientIds = users.map((user) => user.id);
+  }
+
+  if (recipientIds.length === 0) {
+    invalidBody(res, "No active users match the selected audience.");
+    return;
+  }
+  const batchId = randomUUID();
+  await db.transaction(async (transaction) => {
+    for (let offset = 0; offset < recipientIds.length; offset += 500) {
+      await transaction.insert(notificationsTable).values(recipientIds.slice(offset, offset + 500).map((recipientId) => ({
+        batchId,
+        senderId: req.currentUser!.id,
+        recipientId,
+        title: notice.title,
+        body: notice.body,
+      })));
+    }
+  });
+  res.status(201).json(SendAdminNotificationResponse.parse({ recipientCount: recipientIds.length }));
+});
+
+router.get("/notifications", requireAuth(), async (req, res): Promise<void> => {
+  const recipientId = req.currentUser!.id;
+  const [unread] = await db.select({ value: count() }).from(notificationsTable).where(and(
+    eq(notificationsTable.recipientId, recipientId),
+    isNull(notificationsTable.readAt),
+  ));
+  const items = await db.select({
+    id: notificationsTable.id,
+    title: notificationsTable.title,
+    body: notificationsTable.body,
+    createdAt: notificationsTable.createdAt,
+    readAt: notificationsTable.readAt,
+  }).from(notificationsTable)
+    .where(eq(notificationsTable.recipientId, recipientId))
+    .orderBy(desc(notificationsTable.createdAt), desc(notificationsTable.id))
+    .limit(100);
+  res.json(GetNotificationInboxResponse.parse({
+    items: items.map((item) => ({
+      ...item,
+      createdAt: item.createdAt.toISOString(),
+      readAt: item.readAt?.toISOString() ?? null,
+    })),
+    unreadCount: unread.value,
+  }));
+});
+
+router.put("/notifications/:notificationId/read", requireAuth(), async (req, res): Promise<void> => {
+  const parsed = MarkNotificationReadParams.safeParse(req.params);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid notification." });
+    return;
+  }
+  const [notification] = await db.update(notificationsTable)
+    .set({ readAt: sql`coalesce(${notificationsTable.readAt}, now())` })
+    .where(and(
+      eq(notificationsTable.id, parsed.data.notificationId),
+      eq(notificationsTable.recipientId, req.currentUser!.id),
+    ))
+    .returning();
+  if (!notification) {
+    res.status(404).json({ error: "Notification not found." });
+    return;
+  }
+  res.json(MarkNotificationReadResponse.parse({
+    id: notification.id,
+    title: notification.title,
+    body: notification.body,
+    createdAt: notification.createdAt.toISOString(),
+    readAt: notification.readAt?.toISOString() ?? null,
+  }));
 });
 
 export default router;

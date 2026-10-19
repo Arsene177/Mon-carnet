@@ -22,8 +22,11 @@ import type {
 import type {
   AccessPermission,
   AdminAnalytics,
+  AdminDirectoryEntry,
   AdminEpidemicThreshold,
   AdminEpidemicThresholdInput,
+  AdminNotificationInput,
+  AdminNotificationResult,
   AdminStats,
   AdminUserStatusInput,
   AttachmentDownloadResponse,
@@ -39,11 +42,16 @@ import type {
   DoctorStats,
   EmergencyInfo,
   EmergencyInfoInput,
+  ExportAdminDirectoryParams,
+  GetAdminDirectoryParams,
   GetMedicalAttachmentDownloadUrlParams,
   HealthStatus,
+  LocationProfileInput,
   LoginInput,
   MedicalRecord,
   MedicalRecordInput,
+  Notification,
+  NotificationInbox,
   PatientAccessCodeInput,
   PatientAccessEvent,
   PatientBookletAccess,
@@ -550,6 +558,88 @@ export function useGetPatientProfile<TData = Awaited<ReturnType<typeof getPatien
 
 
 
+
+export const getUpdatePatientLocationUrl = () => {
+
+
+
+
+  return `/api/patient/profile`
+}
+
+export const updatePatientLocation = async (locationProfileInput: LocationProfileInput, options?: Parameters<typeof customFetch>[1]): Promise<User> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<User>(getUpdatePatientLocationUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(locationProfileInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePatientLocationMutationKey = () => ['updatePatientLocation'] as const;
+
+export const getUpdatePatientLocationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePatientLocation>>, TError,UpdatePatientLocationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePatientLocation>>, TError,UpdatePatientLocationMutationVariables, TContext> => {
+
+const mutationKey = getUpdatePatientLocationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePatientLocation>>, UpdatePatientLocationMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updatePatientLocation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePatientLocationMutationResult = NonNullable<Awaited<ReturnType<typeof updatePatientLocation>>>
+    export type UpdatePatientLocationMutationBody = BodyType<LocationProfileInput>
+    export type UpdatePatientLocationMutationError = ErrorType<unknown>
+    export type UpdatePatientLocationMutationVariables = {data: BodyType<LocationProfileInput>}
+
+    export const useUpdatePatientLocation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePatientLocation>>, TError,UpdatePatientLocationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePatientLocation>>,
+        TError,
+        UpdatePatientLocationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdatePatientLocationMutationOptions(options));
+    }
 
 export const getUpdateEmergencyInfoUrl = () => {
 
@@ -2925,4 +3015,381 @@ export function useSearchUsers<TData = Awaited<ReturnType<typeof searchUsers>>, 
 
 
 
+
+export const getGetAdminDirectoryUrl = (params: GetAdminDirectoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/directory?${stringifiedParams}` : `/api/admin/directory`
+}
+
+export const getAdminDirectory = async (params: GetAdminDirectoryParams, options?: Parameters<typeof customFetch>[1]): Promise<AdminDirectoryEntry[]> => {
+
+  return customFetch<AdminDirectoryEntry[]>(getGetAdminDirectoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminDirectoryQueryKey = (params?: GetAdminDirectoryParams,) => {
+    return [
+    `/api/admin/directory`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAdminDirectoryQueryOptions = <TData = Awaited<ReturnType<typeof getAdminDirectory>>, TError = ErrorType<unknown>>(params: GetAdminDirectoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminDirectory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminDirectoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminDirectory>>> = ({ signal }) => getAdminDirectory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminDirectory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminDirectoryQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminDirectory>>>
+export type GetAdminDirectoryQueryError = ErrorType<unknown>
+
+
+
+export function useGetAdminDirectory<TData = Awaited<ReturnType<typeof getAdminDirectory>>, TError = ErrorType<unknown>>(
+ params: GetAdminDirectoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminDirectory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminDirectoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getExportAdminDirectoryUrl = (params: ExportAdminDirectoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/directory/export?${stringifiedParams}` : `/api/admin/directory/export`
+}
+
+export const exportAdminDirectory = async (params: ExportAdminDirectoryParams, options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getExportAdminDirectoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportAdminDirectoryQueryKey = (params?: ExportAdminDirectoryParams,) => {
+    return [
+    `/api/admin/directory/export`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportAdminDirectoryQueryOptions = <TData = Awaited<ReturnType<typeof exportAdminDirectory>>, TError = ErrorType<unknown>>(params: ExportAdminDirectoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminDirectory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportAdminDirectoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportAdminDirectory>>> = ({ signal }) => exportAdminDirectory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportAdminDirectory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportAdminDirectoryQueryResult = NonNullable<Awaited<ReturnType<typeof exportAdminDirectory>>>
+export type ExportAdminDirectoryQueryError = ErrorType<unknown>
+
+
+
+export function useExportAdminDirectory<TData = Awaited<ReturnType<typeof exportAdminDirectory>>, TError = ErrorType<unknown>>(
+ params: ExportAdminDirectoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminDirectory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportAdminDirectoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendAdminNotificationUrl = () => {
+
+
+
+
+  return `/api/admin/notifications`
+}
+
+export const sendAdminNotification = async (adminNotificationInput: AdminNotificationInput, options?: Parameters<typeof customFetch>[1]): Promise<AdminNotificationResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AdminNotificationResult>(getSendAdminNotificationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(adminNotificationInput)
+  }
+);}
+
+
+
+
+
+export const getSendAdminNotificationMutationKey = () => ['sendAdminNotification'] as const;
+
+export const getSendAdminNotificationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAdminNotification>>, TError,SendAdminNotificationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendAdminNotification>>, TError,SendAdminNotificationMutationVariables, TContext> => {
+
+const mutationKey = getSendAdminNotificationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAdminNotification>>, SendAdminNotificationMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendAdminNotification(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendAdminNotificationMutationResult = NonNullable<Awaited<ReturnType<typeof sendAdminNotification>>>
+    export type SendAdminNotificationMutationBody = BodyType<AdminNotificationInput>
+    export type SendAdminNotificationMutationError = ErrorType<unknown>
+    export type SendAdminNotificationMutationVariables = {data: BodyType<AdminNotificationInput>}
+
+    export const useSendAdminNotification = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAdminNotification>>, TError,SendAdminNotificationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendAdminNotification>>,
+        TError,
+        SendAdminNotificationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendAdminNotificationMutationOptions(options));
+    }
+
+export const getGetNotificationInboxUrl = () => {
+
+
+
+
+  return `/api/notifications`
+}
+
+export const getNotificationInbox = async ( options?: Parameters<typeof customFetch>[1]): Promise<NotificationInbox> => {
+
+  return customFetch<NotificationInbox>(getGetNotificationInboxUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNotificationInboxQueryKey = () => {
+    return [
+    `/api/notifications`
+    ] as const;
+    }
+
+
+export const getGetNotificationInboxQueryOptions = <TData = Awaited<ReturnType<typeof getNotificationInbox>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotificationInbox>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNotificationInboxQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNotificationInbox>>> = ({ signal }) => getNotificationInbox({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNotificationInbox>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNotificationInboxQueryResult = NonNullable<Awaited<ReturnType<typeof getNotificationInbox>>>
+export type GetNotificationInboxQueryError = ErrorType<unknown>
+
+
+
+export function useGetNotificationInbox<TData = Awaited<ReturnType<typeof getNotificationInbox>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotificationInbox>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNotificationInboxQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getMarkNotificationReadUrl = (notificationId: number,) => {
+
+
+
+
+  return `/api/notifications/${notificationId}/read`
+}
+
+export const markNotificationRead = async (notificationId: number, options?: Parameters<typeof customFetch>[1]): Promise<Notification> => {
+
+  return customFetch<Notification>(getMarkNotificationReadUrl(notificationId),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkNotificationReadMutationKey = () => ['markNotificationRead'] as const;
+
+export const getMarkNotificationReadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,MarkNotificationReadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,MarkNotificationReadMutationVariables, TContext> => {
+
+const mutationKey = getMarkNotificationReadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markNotificationRead>>, MarkNotificationReadMutationVariables> = (props) => {
+          const {notificationId} = props ?? {};
+
+          return  markNotificationRead(notificationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkNotificationReadMutationResult = NonNullable<Awaited<ReturnType<typeof markNotificationRead>>>
+
+    export type MarkNotificationReadMutationError = ErrorType<unknown>
+    export type MarkNotificationReadMutationVariables = {notificationId: number}
+
+    export const useMarkNotificationRead = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,MarkNotificationReadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markNotificationRead>>,
+        TError,
+        MarkNotificationReadMutationVariables,
+        TContext
+      > => {
+      return useMutation(getMarkNotificationReadMutationOptions(options));
+    }
 

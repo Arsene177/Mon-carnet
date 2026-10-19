@@ -9,4 +9,6 @@ export type WorkspaceTab =
   | 'System overview'
   | 'Doctor approvals'
   | 'User search'
+  | 'Directories & notices'
+  | 'Inbox'
   | 'Analytics';

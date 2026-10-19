@@ -135,6 +135,8 @@ export function userResponse(user: typeof usersTable.$inferSelect) {
     dateOfBirth: user.dateOfBirth ?? null,
     contactInfo: user.contactInfo ?? null,
     hospitalName: user.hospitalName ?? null,
+    locationRegion: user.locationRegion ?? null,
+    locationArrondissement: user.locationArrondissement ?? null,
     professionalMedicalNumber: user.professionalMedicalNumber ?? null,
     doctorVerified: user.doctorVerified,
     isActive: user.isActive,

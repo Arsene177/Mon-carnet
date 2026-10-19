@@ -1,0 +1,1802 @@
+[
+    {
+        "region":  "Littoral",
+        "code":  "CM005001008",
+        "arrondissement":  "Mombo"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002002006",
+        "arrondissement":  "Monatele"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003001002",
+        "arrondissement":  "Moloundou"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004006005",
+        "arrondissement":  "Mogode"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004006006",
+        "arrondissement":  "Mokolo"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004005002",
+        "arrondissement":  "Mora"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010006008",
+        "arrondissement":  "Mundemba"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010001005",
+        "arrondissement":  "Muyuka"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004004005",
+        "arrondissement":  "Moutourwa"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003006",
+        "arrondissement":  "Mouanko"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004004004",
+        "arrondissement":  "Moulvoudaye"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008008",
+        "arrondissement":  "Messondo"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009001003",
+        "arrondissement":  "Meyomessala"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002011",
+        "arrondissement":  "Messok"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004001007",
+        "arrondissement":  "Meri"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002010",
+        "arrondissement":  "Messamena"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009001004",
+        "arrondissement":  "Meyomessi"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009001005",
+        "arrondissement":  "Mintom"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007003002",
+        "arrondissement":  "Misaje"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002001004",
+        "arrondissement":  "Minta"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002005006",
+        "arrondissement":  "Mfou"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004004003",
+        "arrondissement":  "Mindif"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009002007",
+        "arrondissement":  "Mvangane"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001005005",
+        "arrondissement":  "Ngaoundere 1er"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001005006",
+        "arrondissement":  "Ngaoundere 2e"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001001001",
+        "arrondissement":  "Ngaoundal"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001005004",
+        "arrondissement":  "Nganha"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001004004",
+        "arrondissement":  "Ngaoui"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001005007",
+        "arrondissement":  "Ngaoundere 3e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002004003",
+        "arrondissement":  "Ngoro"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009002008",
+        "arrondissement":  "Ngoulemakong"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002010005",
+        "arrondissement":  "Ngomedzap"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007006003",
+        "arrondissement":  "Ngie"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008009",
+        "arrondissement":  "Ngog-Mapubi"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003003007",
+        "arrondissement":  "Ndem Nam"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002003007",
+        "arrondissement":  "Ndikinimeki"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003003006",
+        "arrondissement":  "Ndelele"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009003008",
+        "arrondissement":  "Mvengue"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002001005",
+        "arrondissement":  "Nanga-Eboko"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003007",
+        "arrondissement":  "Ndom"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003008",
+        "arrondissement":  "Ngambe"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002004002",
+        "arrondissement":  "Ngambe-Tikar"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007003003",
+        "arrondissement":  "Ndu"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007007003",
+        "arrondissement":  "Ndop"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004001008",
+        "arrondissement":  "Ndoukoula"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004001005",
+        "arrondissement":  "Maroua 2e"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004001006",
+        "arrondissement":  "Maroua 3e"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004001004",
+        "arrondissement":  "Maroua 1er"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003004007",
+        "arrondissement":  "Mandjou"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001005",
+        "arrondissement":  "Manjo"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001005002",
+        "arrondissement":  "Martap"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001002003",
+        "arrondissement":  "Mayo-Baleo"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001003003",
+        "arrondissement":  "Mayo-Darle"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008007",
+        "arrondissement":  "Matomb"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008008008",
+        "arrondissement":  "Massangam"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003005",
+        "arrondissement":  "Massock-Songloulou"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006004001",
+        "arrondissement":  "Madingring"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003007",
+        "arrondissement":  "Maga"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009004003",
+        "arrondissement":  "Maan"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002007",
+        "arrondissement":  "Lomie"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001004",
+        "arrondissement":  "Loum"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008008006",
+        "arrondissement":  "Magba"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008008007",
+        "arrondissement":  "Malantouen"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010004003",
+        "arrondissement":  "Mamfe"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002003006",
+        "arrondissement":  "Makenene"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008006",
+        "arrondissement":  "Makak"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002008",
+        "arrondissement":  "Makary"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001009",
+        "arrondissement":  "Mayo-Hourna"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008001004",
+        "arrondissement":  "Mbouda"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007002003",
+        "arrondissement":  "Mbven"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003003005",
+        "arrondissement":  "Mbotoro"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002009",
+        "arrondissement":  "Mboma"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010005005",
+        "arrondissement":  "Mbonge"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001004003",
+        "arrondissement":  "Meiganga"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009002006",
+        "arrondissement":  "Mengong"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002010004",
+        "arrondissement":  "Mengueme"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002009004",
+        "arrondissement":  "Mengang"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001007",
+        "arrondissement":  "Melong"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007004003",
+        "arrondissement":  "Menchum-Valley"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002001003",
+        "arrondissement":  "Mbandjock"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003003004",
+        "arrondissement":  "Mbang"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002010003",
+        "arrondissement":  "Mbalmayo"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004006004",
+        "arrondissement":  "Mayo-Moskota"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006003003",
+        "arrondissement":  "Mayo-Oulo"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001006",
+        "arrondissement":  "Mbanga"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007006002",
+        "arrondissement":  "Mbengwi"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002008",
+        "arrondissement":  "Mboanz"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001005003",
+        "arrondissement":  "Mbe"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002004001",
+        "arrondissement":  "Mbangassina"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002006003",
+        "arrondissement":  "Mbankomo"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001002004",
+        "arrondissement":  "Tignere"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010001006",
+        "arrondissement":  "Tiko"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001001002",
+        "arrondissement":  "Tibati"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001011",
+        "arrondissement":  "Tcheboa"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006004003",
+        "arrondissement":  "Tchollire"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010006009",
+        "arrondissement":  "Toko"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006004004",
+        "arrondissement":  "Touboro"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001012",
+        "arrondissement":  "Touroua"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008007004",
+        "arrondissement":  "Tonga"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004005003",
+        "arrondissement":  "Tokombere"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010002003",
+        "arrondissement":  "Tombel"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009001007",
+        "arrondissement":  "Sangmelima"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007005006",
+        "arrondissement":  "Santa"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003001003",
+        "arrondissement":  "Salapoumbe"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006004002",
+        "arrondissement":  "Rey-Bouba"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002002009",
+        "arrondissement":  "Saa"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008005006",
+        "arrondissement":  "Santchou"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004004007",
+        "arrondissement":  "Taibong"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003008",
+        "arrondissement":  "Tchatibali"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004006007",
+        "arrondissement":  "Soulede-Roua"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002005008",
+        "arrondissement":  "Soa"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002014",
+        "arrondissement":  "Somalomo"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007005007",
+        "arrondissement":  "Tubah"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002007005",
+        "arrondissement":  "Yaounde 5e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002007006",
+        "arrondissement":  "Yaounde 6e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002007004",
+        "arrondissement":  "Yaounde 4e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002007002",
+        "arrondissement":  "Yaounde 2e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002007003",
+        "arrondissement":  "Yaounde 3e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002007007",
+        "arrondissement":  "Yaounde 7e"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002010",
+        "arrondissement":  "Zina"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009001008",
+        "arrondissement":  "Zoetele"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002004005",
+        "arrondissement":  "Yoko"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005002004",
+        "arrondissement":  "Yingui"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003001004",
+        "arrondissement":  "Yokadouma"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002009",
+        "arrondissement":  "Waza"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010001007",
+        "arrondissement":  "West-Coast"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010003003",
+        "arrondissement":  "Wabane"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010004004",
+        "arrondissement":  "Upper Bayang"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003009",
+        "arrondissement":  "Vele"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007006005",
+        "arrondissement":  "Widikum"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003011",
+        "arrondissement":  "Yagoua"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002007001",
+        "arrondissement":  "Yaounde 1er"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005002003",
+        "arrondissement":  "Yabassi"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003010",
+        "arrondissement":  "Wina"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007004004",
+        "arrondissement":  "Wum"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002005007",
+        "arrondissement":  "Nkolafamba"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002010006",
+        "arrondissement":  "Nkolmetet"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007003004",
+        "arrondissement":  "Nkambe"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007001004",
+        "arrondissement":  "Njinikom"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001009",
+        "arrondissement":  "Njombe-Penja"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005002001",
+        "arrondissement":  "Nkondjock"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001012",
+        "arrondissement":  "Nkongsamba 3e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002001006",
+        "arrondissement":  "Nkoteng"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001011",
+        "arrondissement":  "Nkongsamba 2e"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008005004",
+        "arrondissement":  "Nkong-Ni"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001010",
+        "arrondissement":  "Nkongsamba 1er"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002013",
+        "arrondissement":  "Nguelemendouka"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008010",
+        "arrondissement":  "Nguibassal"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002012",
+        "arrondissement":  "Ngoyla"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002006004",
+        "arrondissement":  "Ngoumou"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003004008",
+        "arrondissement":  "Ngoura"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010002002",
+        "arrondissement":  "Nguti"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007006004",
+        "arrondissement":  "Njikwa"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008008009",
+        "arrondissement":  "Njimom"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002003008",
+        "arrondissement":  "Nitoukou"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003009",
+        "arrondissement":  "Ngwei"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009003009",
+        "arrondissement":  "Niete"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007002004",
+        "arrondissement":  "Nkum"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009001006",
+        "arrondissement":  "Oveng"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008005005",
+        "arrondissement":  "Penka-Michel"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002003009",
+        "arrondissement":  "Ombessa"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007002006",
+        "arrondissement":  "Oku"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009004004",
+        "arrondissement":  "Olamze"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004001009",
+        "arrondissement":  "Pette"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003011",
+        "arrondissement":  "Pouma"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008004003",
+        "arrondissement":  "Poumougne"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004004006",
+        "arrondissement":  "Porhi"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001010",
+        "arrondissement":  "Pitoa"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006002002",
+        "arrondissement":  "Poli"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002001007",
+        "arrondissement":  "Nsem"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002004004",
+        "arrondissement":  "Ntui"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005002002",
+        "arrondissement":  "Nord-Makombe"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001013",
+        "arrondissement":  "Nlonako"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007002005",
+        "arrondissement":  "Noni"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007003005",
+        "arrondissement":  "Nwa"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002002007",
+        "arrondissement":  "Obala"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002002008",
+        "arrondissement":  "Okola"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003010",
+        "arrondissement":  "Nyanon"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002009005",
+        "arrondissement":  "Nyakokombo"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001005008",
+        "arrondissement":  "Nyambaka"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001002",
+        "arrondissement":  "Bibemi"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002001001",
+        "arrondissement":  "Bibey"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003004004",
+        "arrondissement":  "Betare-Oya"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003004002",
+        "arrondissement":  "Bertoua 1er"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003004003",
+        "arrondissement":  "Bertoua 2e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002006002",
+        "arrondissement":  "Bikok"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008001",
+        "arrondissement":  "Biyouha"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002001",
+        "arrondissement":  "Blangoua"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009002002",
+        "arrondissement":  "Biwong-Bulu"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009003002",
+        "arrondissement":  "Bipindi"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009002001",
+        "arrondissement":  "Biwong-Bane"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008004001",
+        "arrondissement":  "Bayangam"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008007003",
+        "arrondissement":  "Bazou"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003003001",
+        "arrondissement":  "Batouri"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007006001",
+        "arrondissement":  "Batibo"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008003004",
+        "arrondissement":  "Batie"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002002",
+        "arrondissement":  "Bebend"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007001001",
+        "arrondissement":  "Belo"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009001001",
+        "arrondissement":  "Bengbis"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001005001",
+        "arrondissement":  "Belel"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006002001",
+        "arrondissement":  "Beka"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003004001",
+        "arrondissement":  "Belabo"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004001001",
+        "arrondissement":  "Bogo"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003004005",
+        "arrondissement":  "Diang"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003001",
+        "arrondissement":  "Dibamba"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002003003",
+        "arrondissement":  "Deuk"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001003",
+        "arrondissement":  "Dembo"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001004",
+        "arrondissement":  "Demsa"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008004",
+        "arrondissement":  "Dibang"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001004001",
+        "arrondissement":  "Dir"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003002",
+        "arrondissement":  "Dizangue"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002003",
+        "arrondissement":  "Dimako"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001002",
+        "arrondissement":  "Dibombari"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010006002",
+        "arrondissement":  "Dikome Balue"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008003",
+        "arrondissement":  "Bot-Makak"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004006001",
+        "arrondissement":  "Bourrha"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008002",
+        "arrondissement":  "Bondjock"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002003002",
+        "arrondissement":  "Bokito"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003003002",
+        "arrondissement":  "Bombe"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010001001",
+        "arrondissement":  "Buea"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004001002",
+        "arrondissement":  "Dargala"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003001",
+        "arrondissement":  "Datcheka"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002002",
+        "arrondissement":  "Darak"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007001002",
+        "arrondissement":  "Bum"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009003003",
+        "arrondissement":  "Campo"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007007001",
+        "arrondissement":  "Babessi"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008002001",
+        "arrondissement":  "Bafang"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008001001",
+        "arrondissement":  "Babadjou"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002005003",
+        "arrondissement":  "Awae"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002009002",
+        "arrondissement":  "Ayos"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002003001",
+        "arrondissement":  "Bafia"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007005001",
+        "arrondissement":  "Bafut"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008003001",
+        "arrondissement":  "Baham"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008006003",
+        "arrondissement":  "Bafoussam 3e"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008006001",
+        "arrondissement":  "Bafoussam 1er"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008006002",
+        "arrondissement":  "Bafoussam 2e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002010001",
+        "arrondissement":  "Akoeman"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009003001",
+        "arrondissement":  "Akom 2"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007003001",
+        "arrondissement":  "Ako"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002001",
+        "arrondissement":  "Abong-Mbang"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002005001",
+        "arrondissement":  "Afanloum"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002006001",
+        "arrondissement":  "Akono"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009004001",
+        "arrondissement":  "Ambam"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002005002",
+        "arrondissement":  "Assamba"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010003001",
+        "arrondissement":  "Alou"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002009001",
+        "arrondissement":  "Akonolinga"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010004001",
+        "arrondissement":  "Akwaya"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008002002",
+        "arrondissement":  "Bakou"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001003001",
+        "arrondissement":  "Bankim"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008002006",
+        "arrondissement":  "Banwa"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008002005",
+        "arrondissement":  "Banka"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008003003",
+        "arrondissement":  "Bangou"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008008001",
+        "arrondissement":  "Bangourain"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001003002",
+        "arrondissement":  "Banyo"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008001002",
+        "arrondissement":  "Batcham"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002002001",
+        "arrondissement":  "Batchenga"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008007002",
+        "arrondissement":  "Bassamba"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001001",
+        "arrondissement":  "Bare-Bakem"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001001",
+        "arrondissement":  "Bascheo"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007005004",
+        "arrondissement":  "Bamenda 2nd"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007005005",
+        "arrondissement":  "Bamenda 3rd"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007005003",
+        "arrondissement":  "Bamenda 1st"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007005002",
+        "arrondissement":  "Bali"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007007002",
+        "arrondissement":  "Balikumbat"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008003002",
+        "arrondissement":  "Bamendjou"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008007001",
+        "arrondissement":  "Bangangte"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010002001",
+        "arrondissement":  "Bangem"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008002004",
+        "arrondissement":  "Bandja"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010006001",
+        "arrondissement":  "Bamusso"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008002003",
+        "arrondissement":  "Bana"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003005",
+        "arrondissement":  "Kalfou"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003006",
+        "arrondissement":  "Kar-Hay"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003004",
+        "arrondissement":  "Kai-Kai"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007002001",
+        "arrondissement":  "Jakiri"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004004002",
+        "arrondissement":  "Kaele"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008002007",
+        "arrondissement":  "Kekem"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010006006",
+        "arrondissement":  "Kombo Abedimo"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010006007",
+        "arrondissement":  "Kombo Itindi"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004005001",
+        "arrondissement":  "Kolofata"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003003003",
+        "arrondissement":  "Kette"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002003004",
+        "arrondissement":  "Kiiki"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002004",
+        "arrondissement":  "Goulfey"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003003",
+        "arrondissement":  "Guere"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004003002",
+        "arrondissement":  "Gobo"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001007",
+        "arrondissement":  "Garoua 3e"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004001003",
+        "arrondissement":  "Gazawa"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006003002",
+        "arrondissement":  "Guider"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010006004",
+        "arrondissement":  "Idabato"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010006005",
+        "arrondissement":  "Isangele"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004006002",
+        "arrondissement":  "Hina"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004004001",
+        "arrondissement":  "Guidiguis"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002005",
+        "arrondissement":  "Hile-Alifa"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002003005",
+        "arrondissement":  "Kon Yambetta"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002001002",
+        "arrondissement":  "Lembe Yezoum"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010001002",
+        "arrondissement":  "Limbe 1st"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001008",
+        "arrondissement":  "Lagdo"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007002002",
+        "arrondissement":  "Kumbo"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009004002",
+        "arrondissement":  "Kye-Ossi"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010001003",
+        "arrondissement":  "Limbe 2nd"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009003006",
+        "arrondissement":  "Lokoundje"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009003007",
+        "arrondissement":  "Lolodorf"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002007",
+        "arrondissement":  "Logone-Birni"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010001004",
+        "arrondissement":  "Limbe 3rd"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002002005",
+        "arrondissement":  "Lobo"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002006",
+        "arrondissement":  "Kousseri"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008008005",
+        "arrondissement":  "Koutaba"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008008004",
+        "arrondissement":  "Kouoptamo"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001002002",
+        "arrondissement":  "Kontcha"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010005001",
+        "arrondissement":  "Konye"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004006003",
+        "arrondissement":  "Koza"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010005003",
+        "arrondissement":  "Kumba 2nd"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010005004",
+        "arrondissement":  "Kumba 3rd"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010005002",
+        "arrondissement":  "Kumba 1st"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009003004",
+        "arrondissement":  "Kribi 1er"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009003005",
+        "arrondissement":  "Kribi 2e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002002002",
+        "arrondissement":  "Ebebda"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009002003",
+        "arrondissement":  "Ebolowa 1er"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002010002",
+        "arrondissement":  "Dzeng"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002006",
+        "arrondissement":  "Doume"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008005001",
+        "arrondissement":  "Dschang"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009002004",
+        "arrondissement":  "Ebolowa 2e"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009002005",
+        "arrondissement":  "Efoulan"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010006003",
+        "arrondissement":  "Ekondo Titi"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002005004",
+        "arrondissement":  "Edzendouan"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003003",
+        "arrondissement":  "Edea 1er"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005003004",
+        "arrondissement":  "Edea 2e"
+    },
+    {
+        "region":  "South",
+        "code":  "CM009001002",
+        "arrondissement":  "Djoum"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005004001",
+        "arrondissement":  "Douala 1er"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001004002",
+        "arrondissement":  "Djohong"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002004",
+        "arrondissement":  "Dja"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008004002",
+        "arrondissement":  "Djebem"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005004002",
+        "arrondissement":  "Douala 2e"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005004006",
+        "arrondissement":  "Douala 6e"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003002005",
+        "arrondissement":  "Doumaintang"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005004005",
+        "arrondissement":  "Douala 5e"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005004003",
+        "arrondissement":  "Douala 3e"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005004004",
+        "arrondissement":  "Douala 4e"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002002003",
+        "arrondissement":  "Elig-Mfomo"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007004001",
+        "arrondissement":  "Fungom"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007004002",
+        "arrondissement":  "Furu-Awa"
+    },
+    {
+        "region":  "North-West",
+        "code":  "CM007001003",
+        "arrondissement":  "Fundong"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008008002",
+        "arrondissement":  "Foumban"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008008003",
+        "arrondissement":  "Foumbot"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008001003",
+        "arrondissement":  "Galim"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001005",
+        "arrondissement":  "Garoua 1er"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006001006",
+        "arrondissement":  "Garoua 2e"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003004006",
+        "arrondissement":  "Garoua-Boulai"
+    },
+    {
+        "region":  "Adamawa",
+        "code":  "CM001002001",
+        "arrondissement":  "Galim-Tignere"
+    },
+    {
+        "region":  "East",
+        "code":  "CM003001001",
+        "arrondissement":  "Gari Gombo"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002002004",
+        "arrondissement":  "Evodoula"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010004002",
+        "arrondissement":  "Eyumodjock"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002005005",
+        "arrondissement":  "Esse"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002009003",
+        "arrondissement":  "Endom"
+    },
+    {
+        "region":  "Centre",
+        "code":  "CM002008005",
+        "arrondissement":  "Eseka"
+    },
+    {
+        "region":  "North",
+        "code":  "CM006003001",
+        "arrondissement":  "Figuil"
+    },
+    {
+        "region":  "South-West",
+        "code":  "CM010003002",
+        "arrondissement":  "Fontem"
+    },
+    {
+        "region":  "Far-North",
+        "code":  "CM004002003",
+        "arrondissement":  "Fotokol"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008005003",
+        "arrondissement":  "Fongo-Tongo"
+    },
+    {
+        "region":  "Littoral",
+        "code":  "CM005001003",
+        "arrondissement":  "Fiko"
+    },
+    {
+        "region":  "West",
+        "code":  "CM008005002",
+        "arrondissement":  "Fokoue"
+    }
+]

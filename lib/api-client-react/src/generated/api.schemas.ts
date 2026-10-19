@@ -35,6 +35,10 @@ export interface User {
   /** @nullable */
   hospitalName: string | null;
   /** @nullable */
+  locationRegion: string | null;
+  /** @nullable */
+  locationArrondissement: string | null;
+  /** @nullable */
   professionalMedicalNumber: string | null;
   doctorVerified: boolean;
   role: Role;
@@ -86,6 +90,91 @@ export interface DoctorProfileInput {
   hospitalName: string;
   /** @maxLength 120 */
   professionalMedicalNumber: string;
+  /** @nullable */
+  locationRegion?: string | null;
+  /** @nullable */
+  locationArrondissement?: string | null;
+}
+
+export interface LocationProfileInput {
+  /** @nullable */
+  locationRegion: string | null;
+  /** @nullable */
+  locationArrondissement: string | null;
+}
+
+export type AdminDirectoryEntryKind = typeof AdminDirectoryEntryKind[keyof typeof AdminDirectoryEntryKind];
+
+
+export const AdminDirectoryEntryKind = {
+  PATIENTS: 'PATIENTS',
+  DOCTORS: 'DOCTORS',
+  HOSPITALS: 'HOSPITALS',
+} as const;
+
+export interface AdminDirectoryEntry {
+  /** @nullable */
+  userId: number | null;
+  name: string;
+  kind: AdminDirectoryEntryKind;
+  /** @nullable */
+  region: string | null;
+  /** @nullable */
+  arrondissement: string | null;
+  /** @nullable */
+  hospitalName: string | null;
+  doctorVerified: boolean;
+}
+
+export type AdminNotificationInputTargetType = typeof AdminNotificationInputTargetType[keyof typeof AdminNotificationInputTargetType];
+
+
+export const AdminNotificationInputTargetType = {
+  ALL: 'ALL',
+  REGION: 'REGION',
+  ARRONDISSEMENT: 'ARRONDISSEMENT',
+  USERS: 'USERS',
+} as const;
+
+export interface AdminNotificationInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  body: string;
+  targetType: AdminNotificationInputTargetType;
+  /** @nullable */
+  region?: string | null;
+  /** @nullable */
+  arrondissement?: string | null;
+  /**
+     * @maxItems 500
+     * @items.minimum 1
+     */
+  userIds?: number[];
+}
+
+export interface AdminNotificationResult {
+  recipientCount: number;
+}
+
+export interface Notification {
+  id: number;
+  title: string;
+  body: string;
+  createdAt: string;
+  /** @nullable */
+  readAt: string | null;
+}
+
+export interface NotificationInbox {
+  items: Notification[];
+  unreadCount: number;
 }
 
 export interface AdminUserStatusInput {
@@ -587,4 +676,36 @@ export type SearchUsersParams = {
  */
 query: string;
 };
+
+export type GetAdminDirectoryParams = {
+kind: GetAdminDirectoryKind;
+region?: string;
+arrondissement?: string;
+uncertified?: boolean;
+};
+
+export type GetAdminDirectoryKind = typeof GetAdminDirectoryKind[keyof typeof GetAdminDirectoryKind];
+
+
+export const GetAdminDirectoryKind = {
+  PATIENTS: 'PATIENTS',
+  DOCTORS: 'DOCTORS',
+  HOSPITALS: 'HOSPITALS',
+} as const;
+
+export type ExportAdminDirectoryParams = {
+kind: ExportAdminDirectoryKind;
+region?: string;
+arrondissement?: string;
+uncertified?: boolean;
+};
+
+export type ExportAdminDirectoryKind = typeof ExportAdminDirectoryKind[keyof typeof ExportAdminDirectoryKind];
+
+
+export const ExportAdminDirectoryKind = {
+  PATIENTS: 'PATIENTS',
+  DOCTORS: 'DOCTORS',
+  HOSPITALS: 'HOSPITALS',
+} as const;
 

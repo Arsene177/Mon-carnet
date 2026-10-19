@@ -15,6 +15,10 @@ export interface User {
   /** @nullable */
   hospitalName: string | null;
   /** @nullable */
+  locationRegion: string | null;
+  /** @nullable */
+  locationArrondissement: string | null;
+  /** @nullable */
   professionalMedicalNumber: string | null;
   doctorVerified: boolean;
   role: Role;
