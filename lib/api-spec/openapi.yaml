@@ -1176,7 +1176,7 @@ components:
         activePermissions: { type: integer }
     AdminAnalytics:
       type: object
-      required: [stats, monthlyRecords, systemStatus, epidemicMetrics]
+      required: [stats, monthlyRecords, systemStatus, epidemicMetrics, recordsByType, regionalActivity, clinicActivity]
       properties:
         stats: { $ref: "#/components/schemas/AdminStats" }
         monthlyRecords:
@@ -1187,6 +1187,33 @@ components:
             properties:
               month: { type: string }
               count: { type: integer }
+        recordsByType:
+          type: array
+          items:
+            type: object
+            required: [recordType, count]
+            properties:
+              recordType: { type: string }
+              count: { type: integer }
+        regionalActivity:
+          type: array
+          items:
+            type: object
+            required: [region, patientCount, recordCount]
+            properties:
+              region: { type: string }
+              patientCount: { type: integer }
+              recordCount: { type: integer }
+        clinicActivity:
+          type: array
+          items:
+            type: object
+            required: [hospitalName, region, patientCount, recordCount]
+            properties:
+              hospitalName: { type: string }
+              region: { type: ["string", "null"] }
+              patientCount: { type: integer }
+              recordCount: { type: integer }
         systemStatus:
           type: array
           items:

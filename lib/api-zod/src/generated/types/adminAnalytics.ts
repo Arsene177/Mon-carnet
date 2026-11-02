@@ -5,7 +5,10 @@
  * Medichain secure medical records API
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminAnalyticsClinicActivityItem } from './adminAnalyticsClinicActivityItem';
 import type { AdminAnalyticsMonthlyRecordsItem } from './adminAnalyticsMonthlyRecordsItem';
+import type { AdminAnalyticsRecordsByTypeItem } from './adminAnalyticsRecordsByTypeItem';
+import type { AdminAnalyticsRegionalActivityItem } from './adminAnalyticsRegionalActivityItem';
 import type { AdminAnalyticsSystemStatusItem } from './adminAnalyticsSystemStatusItem';
 import type { AdminEpidemicMetric } from './adminEpidemicMetric';
 import type { AdminStats } from './adminStats';
@@ -13,6 +16,9 @@ import type { AdminStats } from './adminStats';
 export interface AdminAnalytics {
   stats: AdminStats;
   monthlyRecords: AdminAnalyticsMonthlyRecordsItem[];
+  recordsByType: AdminAnalyticsRecordsByTypeItem[];
+  regionalActivity: AdminAnalyticsRegionalActivityItem[];
+  clinicActivity: AdminAnalyticsClinicActivityItem[];
   systemStatus: AdminAnalyticsSystemStatusItem[];
   epidemicMetrics: AdminEpidemicMetric[];
 }

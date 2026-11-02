@@ -44,6 +44,31 @@ Admins can filter patient, doctor, and hospital/clinic directories by region and
 Admin analytics count distinct patients with suspected, probable, or confirmed structured diagnoses for epidemic-relevant diseases, using onset date (or diagnosis date when onset is missing). It compares the rolling seven-day count with the previous seven days, shows a watch signal from 80% of a per-disease threshold, and raises an in-app alert at the threshold (default: 5). Counts are network-wide because location fields are optional and may be missing; these are review signals, not confirmed outbreaks or public-health diagnoses. Analytics refresh every minute while the admin workspace is open.
 Patients can print or save a complete booklet PDF from the Records page. It includes profile and emergency details plus all clinical records, and lists attached files for separate download. Each page repeats the Mon carnet watermark and a server-issued verification reference; the reference confirms issuance and the record count, not that a PDF is unaltered. The browser print dialog must be used to save the PDF.
 Every signed-in account can change its password from the dashboard Profile page using the current password.
+The signed-in web workspace signs out after 30 minutes without pointer, keyboard, touch, or scroll activity and synchronizes explicit sign-out across browser tabs. This is a client-side unattended-screen safeguard, not server-side token revocation: issued bearer tokens still have a seven-day expiry.
+The patient overview includes an optional profile setup checklist for emergency information, date of birth, contact information, and region. Its progress is not a clinical completeness score.
+
+## Product improvement backlog
+
+The following proposals were reviewed for implementation. Existing foundations (expiring patient grants, access history, linked immutable follow-up records, admin inbox notices and aggregate epidemic signals, and the complete booklet PDF) should be extended rather than duplicated.
+
+### Deferred by request
+
+- Two-factor authentication (2FA): not implemented; plan separately with recovery, enrollment, and account-support flows.
+- AI-assisted clinical summaries or recommendations: not implemented; defer until privacy, clinical validation, consent, and provider choices are designed.
+- Cryptographically signed PDFs: not implemented. Patient-friendly summaries and the full booklet use server-issued verification references, but the browser print-to-PDF file itself is not digitally signed and its contents are not cryptographically bound to that reference. A true signed PDF needs a server-side PDF pipeline, protected signing-key lifecycle, signature validation UX, and review of legal acceptance.
+
+### Not implemented in this pass
+
+- Granular consent by record type, declared purpose, and per-record access audit. Current patient grants still cover the existing clinical record scope; add this only with a reviewed database/API migration, clear consent UX, and access-control tests.
+- Appointments, medication adherence, patient/doctor follow-up tasks, and scheduled reminders. Linked follow-up records are clinical records, not task or appointment reminders. These features need a persistent workflow model, notification delivery/retry rules, and role-specific controls.
+- Patient-doctor secure messaging. The inbox currently contains administrator notices only; do not treat it as a private conversation channel.
+- Re-authentication prompts, device/session management, login alerts, and server-side session revocation. Current idle sign-out is browser-side only.
+- Offline/PWA support, clinic/hospital integrations, white-label deployments, richer longitudinal doctor-facing patient summaries, and further operational analytics. Offline health-data storage needs an explicit encrypted storage and conflict-resolution design before implementation.
+- Privacy, retention, access/deletion request procedures, legal terms, and regulatory compliance. These require an identified operating jurisdiction, retention and incident policies, and qualified legal/compliance review; do not present the app as certified or compliant until that work is complete.
+
+Patient care summary export, structured doctor note templates, a factual summary of records visible to an authorized clinician, and aggregate network analytics by record type, region, and clinic are now implemented. Regional and clinic activity is suppressed below five distinct patients. Analytics are operational counts, not measures of care quality, and clinic names/locations depend on current clinician profile information.
+
+The delivered improvements across the previous and current implementation passes are the optional patient setup checklist, keyboard skip navigation and focus visibility, reduced-motion support, 30-minute browser idle sign-out with cross-tab sign-out synchronization, patient-friendly care summary printing, structured clinician note templates, a factual doctor-facing patient record summary, and expanded privacy-thresholded aggregate analytics. The 2FA and AI items above are intentionally preserved as future work.
 
 ## User preferences
 

@@ -35,6 +35,9 @@ import type { WorkspaceTab } from '@/lib/navigation';
 
 const queryClient = new QueryClient();
 setAuthTokenGetter(() => typeof localStorage === 'undefined' ? null : localStorage.getItem('medichain_token'));
+const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const SESSION_LAST_ACTIVITY_KEY = 'medichain_last_activity';
+const minimumAggregateGroupSize = 5;
 
 type Tab = WorkspaceTab;
 const patientTabs: Tab[] = ['Overview', 'Profile', 'Records', 'Access control', 'Emergency info', 'Inbox'];
@@ -65,6 +68,12 @@ type DoctorRecordFormValues = {
   weightKg: string;
   recordSpecific: Record<string, string>;
   codedDiagnoses: CodedDiagnosisDraft[];
+};
+type PatientBookletExport = {
+  mode: 'booklet' | 'summary';
+  verification: BookletVerificationIssue;
+  profile: PatientProfile;
+  records: MedicalRecord[];
 };
 type AccessHistoryEntry = {
   id: number;
@@ -256,6 +265,21 @@ function defaultDoctorRecordForm(recordType: MedicalRecordRecordType = 'Consulta
   };
 }
 
+function recordNoteTemplate(recordType: MedicalRecordRecordType): string {
+  const templates: Partial<Record<MedicalRecordRecordType, string>> = {
+    Consultation: 'Reason for visit:\nRelevant history:\nExamination findings:\nAssessment:\nPlan:\nFollow-up:',
+    Diagnosis: 'Diagnostic basis:\nDifferential considerations:\nSeverity / stage:\nPlan:',
+    Treatment: 'Treatment goal:\nPlan and instructions:\nMonitoring:\nReview date:',
+    'Lab Results': 'Test / panel:\nResult summary:\nReference range:\nInterpretation:\nRecommended next step:',
+    Prescription: 'Medication:\nDose and route:\nFrequency:\nDuration:\nCounselling / precautions:',
+    Surgery: 'Procedure:\nIndication:\nOutcome:\nPost-procedure plan:',
+    Emergency: 'Triage level:\nPresenting concern:\nImmediate care:\nDisposition:',
+    'Follow-up': 'Progress since last record:\nResponse to plan:\nOutstanding concerns:\nNext steps:',
+    Other: 'Record title:\nRelevant details:\nNext steps:',
+  };
+  return templates[recordType] ?? '';
+}
+
 function App() {
   return <QueryClientProvider client={queryClient}><Router /></QueryClientProvider>;
 }
@@ -266,9 +290,53 @@ function Router() {
   const me = useGetMe({ query: { enabled: Boolean(token), queryKey: getGetMeQueryKey(), retry: false } });
   const signOut = () => {
     localStorage.removeItem('medichain_token');
+    localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
     queryClient.clear();
     setLocation('/');
   };
+  useEffect(() => {
+    if (!token) return;
+
+    let lastPersistedActivity = Number(localStorage.getItem(SESSION_LAST_ACTIVITY_KEY)) || Date.now();
+    localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(lastPersistedActivity));
+    const expireSession = () => {
+      localStorage.removeItem('medichain_token');
+      localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
+      queryClient.clear();
+      setLocation('/login');
+    };
+    const recordActivity = () => {
+      const now = Date.now();
+      if (now - lastPersistedActivity >= 60_000) {
+        lastPersistedActivity = now;
+        localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(now));
+      }
+    };
+    const checkSession = () => {
+      const lastActivity = Number(localStorage.getItem(SESSION_LAST_ACTIVITY_KEY)) || lastPersistedActivity;
+      if (Date.now() - lastActivity >= SESSION_IDLE_TIMEOUT_MS) expireSession();
+    };
+    const activityEvents: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+    activityEvents.forEach((event) => window.addEventListener(event, recordActivity, { passive: true }));
+    const syncSession = (event: StorageEvent) => {
+      if (event.key === 'medichain_token' && !event.newValue) {
+        queryClient.clear();
+        setLocation('/login');
+        return;
+      }
+      checkSession();
+    };
+    window.addEventListener('storage', syncSession);
+    document.addEventListener('visibilitychange', checkSession);
+    const interval = window.setInterval(checkSession, 15_000);
+    checkSession();
+    return () => {
+      activityEvents.forEach((event) => window.removeEventListener(event, recordActivity));
+      window.removeEventListener('storage', syncSession);
+      document.removeEventListener('visibilitychange', checkSession);
+      window.clearInterval(interval);
+    };
+  }, [token, setLocation]);
   if (location === '/' || location === '/login' || location === '/register' || !token) {
     if (token && me.data) {
       const target = me.data.role === 'ADMIN' ? '/admin' : me.data.role === 'DOCTOR' || me.data.role === 'PENDING_DOCTOR' ? '/doctor' : '/patient';
@@ -309,6 +377,7 @@ function AuthPage() {
     setFeedback('');
     const onSession = (session: { token: string; user: User }) => {
       localStorage.setItem('medichain_token', session.token);
+      localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
       qc.setQueryData(getGetMeQueryKey(), session.user);
       const destination = session.user.role === 'ADMIN' ? '/admin' : session.user.role === 'DOCTOR' || session.user.role === 'PENDING_DOCTOR' ? '/doctor' : '/patient';
       setLocation(destination);
@@ -364,14 +433,15 @@ function Workspace({ user, onSignOut }: { user: User; onSignOut: () => void }) {
     Analytics: ClipboardList, Inbox: Bell,
   };
   return <div className="app-shell">
+    <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar">
       <div className="brand"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
       <div className="nav-label">Workspace</div>
-      <nav className="nav-list" aria-label="Main navigation" data-tour="workspace-navigation">{tabs.map((item) => { const Icon = iconFor[item]; return <button key={item} className={`nav-item ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)} data-tour={`nav-${item.toLowerCase().replaceAll(' ', '-')}`} data-testid={`nav-${item.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{item}{item === 'Inbox' && Boolean(notificationInbox.data?.unreadCount) && <span className="tag warning" style={{marginLeft:8}}>{notificationInbox.data?.unreadCount}</span>}</span></button>; })}</nav>
+      <nav className="nav-list" aria-label="Main navigation" data-tour="workspace-navigation">{tabs.map((item) => { const Icon = iconFor[item]; return <button key={item} className={`nav-item ${tab === item ? 'active' : ''}`} aria-current={tab === item ? 'page' : undefined} onClick={() => setTab(item)} data-tour={`nav-${item.toLowerCase().replaceAll(' ', '-')}`} data-testid={`nav-${item.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{item}{item === 'Inbox' && Boolean(notificationInbox.data?.unreadCount) && <span className="tag warning" style={{marginLeft:8}}>{notificationInbox.data?.unreadCount}</span>}</span></button>; })}</nav>
       <div className="sidebar-bottom"><div className="privacy-note"><b><ShieldCheck size={14} style={{verticalAlign:'-3px',marginRight:6}}/>Your care stays yours</b>Access is granted by you and can be changed at any time.</div><div className="profile-mini"><div className="avatar">{initials(user.name)}</div><div style={{flex:1,minWidth:0}}><strong>{user.name}</strong><span>{user.role === 'PENDING_DOCTOR' ? 'Doctor · pending review' : user.role.toLowerCase()}</span></div><button className="icon-button" onClick={onSignOut} aria-label="Sign out" data-testid="button-signout"><LogOut size={15}/></button></div></div>
     </aside>
-    <main className="main-area">
-      <header className="topbar"><div className="crumb"><span>Mon carnet</span><ChevronRight size={13}/><strong>{tab}</strong></div><div className="top-actions"><span className="status-pill"><i className="status-dot"/> Secure workspace</span><OnboardingGuide user={user} activeTab={tab} onTabChange={setTab}/><button className="icon-button" aria-label="Sign out" onClick={onSignOut} data-testid="button-signout-top"><LogOut size={15}/></button>{user.role === 'PATIENT' && <PatientIdIndicator onOpenProfile={() => setTab('Profile')}/>}</div></header>
+    <main className="main-area" id="main-content" tabIndex={-1}>
+      <header className="topbar"><div className="crumb"><span>Mon carnet</span><ChevronRight size={13}/><strong>{tab}</strong></div><div className="top-actions"><span className="status-pill" aria-label="Secure workspace. Automatically signs out after 30 minutes of inactivity." title="Automatically signs out after 30 minutes of inactivity."><i className="status-dot"/> Secure · 30 min idle sign-out</span><OnboardingGuide user={user} activeTab={tab} onTabChange={setTab}/><button className="icon-button" aria-label="Sign out" onClick={onSignOut} data-testid="button-signout-top"><LogOut size={15}/></button>{user.role === 'PATIENT' && <PatientIdIndicator onOpenProfile={() => setTab('Profile')}/>}</div></header>
       {tab === 'Inbox' ? <InboxView/> : user.role === 'ADMIN' ? <AdminView user={user} tab={tab} onTab={setTab}/> : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? <DoctorView user={user} tab={tab}/> : <PatientView user={user} tab={tab} onTab={setTab}/>}
     </main>
   </div>;
@@ -460,6 +530,56 @@ function PatientBookletPrint({ user, patientDisplayId, emergency, records, verif
   </article>;
 }
 
+function PatientCareSummaryPrint({ user, patientDisplayId, emergency, records, verification }: {
+  user: User;
+  patientDisplayId: string;
+  emergency: EmergencyInfo | null;
+  records: MedicalRecord[];
+  verification: BookletVerificationIssue;
+}) {
+  const verificationUrl = `${window.location.origin}/api/booklet-verification/${verification.verificationCode}`;
+  return <article className="booklet-print care-summary-print" aria-hidden="true">
+    <header className="booklet-cover">
+      <p className="booklet-brand">MON CARNET</p>
+      <h1>My care summary</h1>
+      <p>Prepared {new Date(verification.issuedAt).toLocaleString()}</p>
+      <dl className="booklet-patient">
+        <div><dt>Name</dt><dd>{user.name}</dd></div>
+        <div><dt>Patient ID</dt><dd>{patientDisplayId}</dd></div>
+        <div><dt>Date of birth</dt><dd>{dateLabel(user.dateOfBirth)}</dd></div>
+        <div><dt>Contact</dt><dd>{user.contactInfo || 'Not provided'}</dd></div>
+        <div><dt>Records on file</dt><dd>{records.length}</dd></div>
+      </dl>
+      <section className="booklet-section">
+        <h2>Emergency information</h2>
+        {emergency ? <>
+          <p><strong>Blood group:</strong> {emergency.bloodGroup}</p>
+          <p><strong>Allergies:</strong> {emergency.allergies || 'None listed'}</p>
+          <p><strong>Emergency contact:</strong> {emergency.emergencyContact || 'Not provided'}</p>
+          <p><strong>Height / weight:</strong> {emergency.heightCm} cm / {emergency.weightKg} kg</p>
+        </> : <p>No emergency information has been saved.</p>}
+      </section>
+    </header>
+    <section className="booklet-records">
+      <h2>Recent care entries</h2>
+      {records.length ? records.slice(0, 5).map((record) => (
+        <article className="booklet-record" key={record.id}>
+          <h3>{record.recordType} · {dateLabel(record.createdAt)}</h3>
+          <p className="booklet-record-byline">Recorded by {record.doctorName}</p>
+          {record.diagnosis && <p><strong>Diagnosis recorded:</strong> {record.diagnosis}</p>}
+          {record.treatment && <p><strong>Plan recorded:</strong> {record.treatment}</p>}
+          {record.medications.length > 0 && <p><strong>Medications recorded in this entry:</strong> {record.medications.join(', ')}</p>}
+          {record.codedDiagnoses.map((diagnosis) => <p key={diagnosis.id}>
+            <strong>Structured diagnosis:</strong> {diagnosis.diseaseCode.diseaseName} ({diagnosis.status.replaceAll('_', ' ')})
+          </p>)}
+        </article>
+      )) : <p>No medical records are currently available.</p>}
+      {records.length > 5 && <p>Showing the five most recent entries. The complete booklet includes all {records.length} records.</p>}
+      <p className="booklet-verification-note">This summary repeats information recorded by your care team and is not medical advice. Medication entries reflect what was documented in each record; they are not a reconciled current medication list. Verification reference {verification.verificationCode} confirms issuance and the record count, not that this printout has not been edited. Verify at {verificationUrl}.</p>
+    </section>
+  </article>;
+}
+
 function EpidemicAlerts({ metrics }: { metrics: AdminEpidemicMetric[] }) {
   const concerningMetrics = metrics.filter((metric) => metric.alertLevel !== 'NORMAL');
   return <section className="panel epidemic-alert-panel" aria-live="polite">
@@ -495,6 +615,24 @@ function EpidemicThresholds({ metrics, savingDiseaseCodeId, onSave }: {
   </section>;
 }
 
+function AnalyticsBarList({ items, emptyTitle, emptyDescription }: {
+  items: Array<{ label: string; value: number; detail?: string }>;
+  emptyTitle: string;
+  emptyDescription: string;
+}) {
+  if (items.length === 0) {
+    return <EmptyState icon={ClipboardList} title={emptyTitle} children={emptyDescription}/>;
+  }
+  const maximum = Math.max(...items.map((item) => item.value), 1);
+  return <div className="bar-list">{items.map((item) => (
+    <div className="bar-line" key={item.label}>
+      <span className="bar-label">{item.label}{item.detail && <small>{item.detail}</small>}</span>
+      <div className="bar-track" aria-hidden="true"><div className="bar-fill" style={{width:`${Math.max(item.value / maximum * 100, item.value ? 2 : 0)}%`}}/></div>
+      <b className="bar-value">{item.value}</b>
+    </div>
+  ))}</div>;
+}
+
 function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Tab) => void }) {
   const profile = useGetPatientProfile();
   const records = useGetPatientRecords();
@@ -511,16 +649,19 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const [accessHistoryError, setAccessHistoryError] = useState('');
   const [toast, setToast] = useState('');
   const [bookletPreparing, setBookletPreparing] = useState(false);
-  const [bookletExport, setBookletExport] = useState<{
-    verification: BookletVerificationIssue;
-    profile: PatientProfile;
-    records: MedicalRecord[];
-  } | null>(null);
+  const [bookletExport, setBookletExport] = useState<PatientBookletExport | null>(null);
   const grant = useGrantPatientPermission();
   const revoke = useRevokePatientPermission();
   const updateEmergency = useUpdateEmergencyInfo();
   const createBookletVerification = useCreateBookletVerification();
   const emergency = profile.data?.emergencyInfo;
+  const setupItems = [
+    { title: 'Save emergency information', complete: Boolean(emergency), tab: 'Emergency info' as Tab },
+    { title: 'Add your date of birth', complete: Boolean(user.dateOfBirth), tab: 'Profile' as Tab },
+    { title: 'Add a contact number', complete: Boolean(user.contactInfo), tab: 'Profile' as Tab },
+    { title: 'Add your region', complete: Boolean(profile.data?.user.locationRegion), tab: 'Profile' as Tab },
+  ];
+  const completedSetupItems = setupItems.filter((item) => item.complete).length;
   useEffect(() => {
     setLocationRegion(profile.data?.user.locationRegion ?? null);
     setLocationArrondissement(profile.data?.user.locationArrondissement ?? null);
@@ -547,7 +688,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   useEffect(() => {
     if (!bookletExport) return;
     const previousTitle = document.title;
-    document.title = `Mon carnet - ${bookletExport.profile.patientDisplayId} booklet`;
+    document.title = `Mon carnet - ${bookletExport.profile.patientDisplayId} ${bookletExport.mode}`;
     document.body.classList.add('booklet-printing');
     const afterPrint = () => setBookletExport(null);
     window.addEventListener('afterprint', afterPrint);
@@ -600,7 +741,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     };
     updateEmergency.mutate({ data: payload }, { onSuccess: () => { invalidate(); notify('Emergency information saved.'); }, onError: (e) => notify(errText(e)) });
   };
-  const prepareBookletDownload = async () => {
+  const prepareBookletDownload = async (mode: PatientBookletExport['mode']) => {
     if (bookletPreparing) return;
     setBookletPreparing(true);
     try {
@@ -612,7 +753,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
       if (verification.recordCount !== freshRecords.data.length) {
         throw new Error('Your record history changed during export. Please try again.');
       }
-      setBookletExport({ verification, profile: freshProfile.data, records: freshRecords.data });
+      setBookletExport({ mode, verification, profile: freshProfile.data, records: freshRecords.data });
     } catch (error) {
       notify(`Could not prepare booklet: ${errText(error)}`);
     } finally {
@@ -630,6 +771,13 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
           </div>
         </section>
         <div className="grid stats-grid"><Stat label="Medical records" value={profile.data?.recordCount ?? 0} note="Records in your secure file" icon={FileHeart}/><Stat label="Doctors with access" value={profile.data?.permissionsCount ?? 0} note="You control every connection" icon={Users}/><Stat label="Date of birth" value={user.dateOfBirth ? new Date(user.dateOfBirth).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : '—'} note={user.dateOfBirth ? dateLabel(user.dateOfBirth) : 'Add details to your profile'} icon={CalendarDays}/><Stat label="Emergency details" value={emergency ? 'Ready' : 'Add now'} note={emergency ? 'Available to your care team' : 'Help clinicians act with confidence'} icon={HeartPulse}/></div>
+        <section className="panel setup-panel" aria-labelledby="setup-checklist-title">
+          <div className="panel-head"><div><h2 className="panel-title" id="setup-checklist-title">Suggested account setup</h2><p className="panel-caption">Optional details can help your care team. This checklist is not a measure of your health record’s completeness.</p></div><span className="tag">{completedSetupItems} of {setupItems.length}</span></div>
+          <div className="panel-body">
+            <div className="setup-progress" role="progressbar" aria-label="Suggested account setup" aria-valuemin={0} aria-valuemax={setupItems.length} aria-valuenow={completedSetupItems}><span style={{width:`${completedSetupItems / setupItems.length * 100}%`}}/></div>
+            <ul className="setup-list">{setupItems.map((item) => <li key={item.title}><span className={`setup-state ${item.complete ? 'complete' : ''}`} aria-hidden="true">{item.complete ? <Check size={13}/> : <Plus size={13}/>}</span><span className="setup-item-title">{item.title}{!item.complete && <small>Optional</small>}</span><button type="button" className="btn ghost small" onClick={()=>onTab(item.tab)} aria-label={`${item.complete ? 'Review' : 'Add'} ${item.title.toLowerCase()}`}>{item.complete ? 'Review' : 'Add'}</button></li>)}</ul>
+          </div>
+        </section>
         <div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Recent records</h2><p className="panel-caption">A view of your latest care history</p></div><button className="btn ghost small" onClick={()=>onTab('Records')} data-testid="button-all-records">All records <ArrowRight size={13}/></button></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.slice(0,4).map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []} patientDisplayId={profile.data?.patientDisplayId}/>) : <EmptyState icon={FileHeart} title="Your record begins here" children="When a clinician adds a visit or result, it will appear in this timeline."/>}</div></section>
           <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Care essentials</h2><p className="panel-caption">Useful in a moment that matters</p></div><Shield size={17} color="#69a293"/></div><div className="panel-body"><div className="callout"><div className="callout-head"><HeartPulse size={16}/> Emergency summary</div><p>{emergency ? `${emergency.bloodGroup} blood group · ${emergency.allergies ? `Allergies: ${emergency.allergies}` : 'No allergies listed'}` : 'Add your blood group, allergies and an emergency contact.'}</p><button className="btn small secondary" onClick={()=>onTab('Emergency info')} data-testid="button-update-emergency">Review details <ArrowRight size={13}/></button></div><div style={{height:15}}/><div className="data-row"><span className="data-key">Contact</span><span className="data-value">{user.contactInfo || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Pending requests</span><span className="data-value">{requests.data?.length ?? '—'}</span></div></div></section></div>
       </>}
@@ -665,7 +813,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
         <PasswordChangeCard/>
       </>}
     </>}
-    {tab === 'Records' && <><Heading eyebrow="Your health history" title="Medical records" subtitle="Visits, diagnoses, prescriptions and test results shared with your care team." action={<button className="btn secondary" onClick={prepareBookletDownload} disabled={bookletPreparing || profile.isLoading || records.isLoading || Boolean(profile.error || records.error)} data-testid="button-print-records"><Printer size={15}/>{bookletPreparing ? 'Preparing booklet…' : 'Download / print booklet'}</button>}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your record timeline</h2><p className="panel-caption">The booklet includes your full history and emergency information. Choose “Save as PDF” in the print dialog. Attached files are listed but remain separately downloadable.</p></div><span className="tag">{records.data?.length ?? 0} records</span></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []} patientDisplayId={profile.data?.patientDisplayId}/>) : <EmptyState icon={FileHeart} title="No records yet" children="Your medical records will appear here when a clinician adds them to your care history."/>}</div></section></>}
+    {tab === 'Records' && <><Heading eyebrow="Your health history" title="Medical records" subtitle="Visits, diagnoses, prescriptions and test results shared with your care team." action={<div className="export-actions"><button className="btn secondary" onClick={()=>void prepareBookletDownload('summary')} disabled={bookletPreparing || profile.isLoading || records.isLoading || Boolean(profile.error || records.error)} data-testid="button-print-care-summary"><Printer size={15}/>{bookletPreparing ? 'Preparing…' : 'Print care summary'}</button><button className="btn" onClick={()=>void prepareBookletDownload('booklet')} disabled={bookletPreparing || profile.isLoading || records.isLoading || Boolean(profile.error || records.error)} data-testid="button-print-records"><Printer size={15}/>{bookletPreparing ? 'Preparing…' : 'Print full booklet'}</button></div>}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your record timeline</h2><p className="panel-caption">The booklet includes your full history and emergency information. Choose “Save as PDF” in the print dialog. Attached files are listed but remain separately downloadable.</p></div><span className="tag">{records.data?.length ?? 0} records</span></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []} patientDisplayId={profile.data?.patientDisplayId}/>) : <EmptyState icon={FileHeart} title="No records yet" children="Your medical records will appear here when a clinician adds them to your care history."/>}</div></section></>}
     {tab === 'Access control' && <><Heading eyebrow="Your permissions" title="Who can see your records?" subtitle="Grant access to a clinician, choose how long it lasts, or remove access at any time." action={<button className="btn" onClick={()=>setGrantOpen(true)} data-testid="button-grant-access"><Plus size={15}/> Grant access</button>}/>
       <div className="security-banner"><div><h3>You’re in control of your care circle.</h3><p>Clinicians can view your information only while access is active. You can revoke it whenever you need.</p></div><ShieldCheck size={34} className="security-symbol"/></div>
       {requests.isLoading || permissions.isLoading ? <div className="skeleton"/> : requests.error ? <ErrorState error={requests.error} retry={()=>requests.refetch()}/> : permissions.error ? <ErrorState error={permissions.error} retry={()=>permissions.refetch()}/> : <>
@@ -686,7 +834,9 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     {tab === 'Emergency info' && <><Heading eyebrow="Critical care details" title="Emergency information" subtitle="Keep important details current. Approved doctors can use this information to act quickly." action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-emergency"><Printer size={15}/> Print summary</button>}/><div className="security-banner"><div><h3>Made for the moments that matter.</h3><p>This concise summary supports safer urgent care when you cannot speak for yourself.</p></div><HeartPulse size={34} className="security-symbol"/></div>
       {profile.isLoading ? <div className="skeleton"/> : profile.error ? <ErrorState error={profile.error} retry={()=>profile.refetch()}/> : <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your emergency card</h2><p className="panel-caption">{emergency ? `Last updated ${dateLabel(emergency.updatedAt)}` : 'No details saved yet'}</p></div><span className="tag">{user.name}</span></div><div className="panel-body"><form onSubmit={updateEmergencySubmit}><div className="form-grid"><div className="field"><label htmlFor="blood-group">Blood group</label><select id="blood-group" name="bloodGroup" defaultValue={emergency?.bloodGroup || 'Unknown'} data-testid="select-blood-group">{['A+','A-','B+','B-','AB+','AB-','O+','O-','Unknown'].map(g=><option value={g} key={g}>{g}</option>)}</select></div><div className="field"><label htmlFor="weight">Weight (kg)</label><input id="weight" name="weightKg" type="number" min="1" max="500" step="0.1" defaultValue={emergency?.weightKg ?? ''} required data-testid="input-weight"/></div><div className="field"><label htmlFor="height">Height (cm)</label><input id="height" name="heightCm" type="number" min="30" max="260" step="0.1" defaultValue={emergency?.heightCm ?? ''} required data-testid="input-height"/></div><div className="field"><label htmlFor="emergency-contact">Emergency contact</label><input id="emergency-contact" name="emergencyContact" defaultValue={emergency?.emergencyContact ?? ''} required maxLength={300} data-testid="input-emergency-contact" placeholder="Name and phone number"/></div><div className="field full"><label htmlFor="allergies">Allergies and critical notes</label><textarea id="allergies" name="allergies" defaultValue={emergency?.allergies ?? ''} maxLength={2000} data-testid="input-allergies" placeholder="List allergies, reactions, or important information. Write “None known” if applicable."/></div></div><div className="form-actions"><button className="btn" type="submit" disabled={updateEmergency.isPending} data-testid="button-save-emergency">{updateEmergency.isPending?'Saving…':<><Check size={15}/> Save emergency info</>}</button></div></form></div></section>}</>}
     {toast && <div className="toast-message no-print" role="status">{toast}</div>}
-    {bookletExport && <PatientBookletPrint user={bookletExport.profile.user} patientDisplayId={bookletExport.profile.patientDisplayId} emergency={bookletExport.profile.emergencyInfo} records={bookletExport.records} verification={bookletExport.verification}/>}
+    {bookletExport && (bookletExport.mode === 'summary'
+      ? <PatientCareSummaryPrint user={bookletExport.profile.user} patientDisplayId={bookletExport.profile.patientDisplayId} emergency={bookletExport.profile.emergencyInfo} records={bookletExport.records} verification={bookletExport.verification}/>
+      : <PatientBookletPrint user={bookletExport.profile.user} patientDisplayId={bookletExport.profile.patientDisplayId} emergency={bookletExport.profile.emergencyInfo} records={bookletExport.records} verification={bookletExport.verification}/>)}
   </>;
 }
 
@@ -702,6 +852,39 @@ function RecordRow({ record, records, onOpen, allowDownload = !onOpen, patientDi
     </button>
     {viewingRecord && !onOpen && <RecordDetailsModal record={viewingRecord} records={history} onClose={() => setViewingRecord(null)} onOpenRecord={setViewingRecord} allowDownload={allowDownload} patientDisplayId={patientDisplayId}/>}
   </>;
+}
+
+function DoctorPatientSummary({ records }: { records: MedicalRecord[] }) {
+  const latestRecord = records.reduce<MedicalRecord | null>((latest, record) => (
+    !latest || new Date(record.createdAt).getTime() > new Date(latest.createdAt).getTime() ? record : latest
+  ), null);
+  const recordTypes = records.reduce<Record<string, number>>((counts, record) => {
+    counts[record.recordType] = (counts[record.recordType] ?? 0) + 1;
+    return counts;
+  }, {});
+  const typeSummary = Object.entries(recordTypes)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([type, count]) => `${type}: ${count}`)
+    .join(' · ');
+  return <section className="panel doctor-patient-summary" aria-labelledby="doctor-patient-summary-title">
+    <div className="panel-head"><div><h3 className="panel-title" id="doctor-patient-summary-title">Patient record summary</h3><p className="panel-caption">Factual overview of the records available under this active access grant.</p></div><span className="tag">{records.length} records</span></div>
+    <div className="panel-body">
+      {latestRecord ? <>
+        <div className="data-row"><span className="data-key">Latest entry</span><span className="data-value">{latestRecord.recordType} · {dateLabel(latestRecord.createdAt)}</span></div>
+        <div className="data-row"><span className="data-key">Latest documented diagnosis</span><span className="data-value">{latestRecord.diagnosis || latestRecord.codedDiagnoses.map((item)=>item.diseaseCode.diseaseName).join(', ') || 'Not documented in the latest entry'}</span></div>
+        <div className="data-row"><span className="data-key">Latest recorded vitals</span><span className="data-value">{[
+          latestRecord.vitals.bloodPressure && `BP ${latestRecord.vitals.bloodPressure}`,
+          latestRecord.vitals.heartRate && `${latestRecord.vitals.heartRate} bpm`,
+          latestRecord.vitals.temperature && `${latestRecord.vitals.temperature} °C`,
+          latestRecord.vitals.weightKg && `${latestRecord.vitals.weightKg} kg`,
+        ].filter(Boolean).join(' · ') || 'Not recorded in the latest entry'}</span></div>
+        {latestRecord.treatment && <div className="data-row"><span className="data-key">Latest recorded plan</span><span className="data-value">{latestRecord.treatment}</span></div>}
+        {latestRecord.medications.length > 0 && <div className="data-row"><span className="data-key">Medications in latest entry</span><span className="data-value">{latestRecord.medications.join(', ')}</span></div>}
+        <div className="data-row"><span className="data-key">Record types on file</span><span className="data-value">{typeSummary}</span></div>
+      </> : <p className="field-note">No clinical entries have been added to this record yet.</p>}
+      <p className="field-note summary-caveat">This is a factual summary of saved entries, not a medical assessment. Medication details are not reconciled against an external medication list.</p>
+    </div>
+  </section>;
 }
 
 function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFollowUp, allowDownload = false, patientDisplayId }: { record: MedicalRecord; records: MedicalRecord[]; onClose: () => void; onOpenRecord: (record: MedicalRecord) => void; onCreateFollowUp?: (record: MedicalRecord) => void; allowDownload?: boolean; patientDisplayId?: string }) {
@@ -1151,7 +1334,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
             <div className="field"><label htmlFor="record-hr">Heart rate (bpm)</label><input id="record-hr" {...recordForm.register('heartRate')} type="number" min="30" max="200" data-testid="input-vital-heart-rate"/></div>
             <div className="field"><label htmlFor="record-temp">Temperature (°C)</label><input id="record-temp" {...recordForm.register('temperature')} type="number" step=".1" min="30" max="45" data-testid="input-vital-temp"/></div>
             <div className="field"><label htmlFor="record-weight">Weight (kg)</label><input id="record-weight" {...recordForm.register('weightKg')} type="number" step=".1" min="1" max="500" data-testid="input-vital-weight"/></div>
-            <div className="field full"><label htmlFor="record-notes">Clinical notes</label><textarea id="record-notes" {...recordForm.register('notes')} maxLength={10000} data-testid="input-record-notes"/></div>
+            <div className="field full"><div className="template-field-heading"><label htmlFor="record-notes">Clinical notes</label><button className="btn ghost small" type="button" onClick={()=>{const notes=recordForm.getValues('notes');if(notes.trim()&&!window.confirm('Replace the current clinical notes with a structured template?'))return;recordForm.setValue('notes',recordNoteTemplate(recordForm.getValues('recordType')),{shouldDirty:true});}} data-testid="button-insert-record-template">Insert {recordForm.watch('recordType')} template</button></div><textarea id="record-notes" {...recordForm.register('notes')} maxLength={10000} data-testid="input-record-notes"/></div>
           </div>
           <div className="form-actions"><button className="btn ghost" type="button" onClick={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>Cancel</button><button className="btn" type="submit" disabled={addRecord.isPending} data-testid="button-save-record">{addRecord.isPending?'Saving…':'Save record'}</button></div>
         </form>
@@ -1169,6 +1352,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
           <div className="panel-head" style={{padding:'12px 0'}}><div><h2 className="panel-title">{patientDisplayId ?? 'Patient'} · Medical history</h2><p className="panel-caption">Read-only history. Add new information as a separate record or linked follow-up.</p></div>
             {canAccessSelectedPatient && <button className="btn small" onClick={()=>{setFollowUpSource(null);setEntryOpen(true);}} data-testid="button-add-record"><Plus size={14}/> New record</button>}
           </div>
+          {canAccessSelectedPatient && patientRecords.data && <DoctorPatientSummary records={patientRecords.data}/>}
           {patientRecords.isLoading ? <div className="skeleton"/> : patientRecords.error ? <ErrorState error={patientRecords.error} retry={()=>patientRecords.refetch()}/> : patientRecords.data?.length ? patientRecords.data.map((record)=><RecordRow key={record.id} record={record} records={patientRecords.data ?? []} onOpen={setViewingRecord} patientDisplayId={patientDisplayId ?? undefined}/>) : <EmptyState icon={FileHeart} title="No records yet" children="This patient has granted access, but no clinician has added a record yet."/>}
         </div>}
       </div></section>
@@ -1240,10 +1424,21 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
       <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2 className="panel-title">Doctor credential verification</h2><p className="panel-caption">Review the submitted medical number and award the certified badge after manual validation.</p></div></div><div className="panel-body"><SearchField value={doctorQuery} onChange={setDoctorQuery} placeholder="Doctor name or email" testId="input-doctor-approval-search"/>{doctorQuery.trim().length>=2&&(doctorSearch.isLoading?<div className="skeleton" style={{marginTop:14}}/>:doctorSearch.error?<ErrorState error={doctorSearch.error} retry={()=>doctorSearch.refetch()}/>:doctorSearch.data?.filter(d=>d.role==='DOCTOR'||d.role==='PENDING_DOCTOR').map(d=><UserResult key={d.id} user={d} action={<div className="row-actions">{!d.doctorVerified&&<button className="btn small secondary" onClick={()=>verifyOne(d)} disabled={!d.professionalMedicalNumber||verifyDoctor.isPending} data-testid={`button-verify-doctor-${d.id}`}><BadgeCheck size={13}/> Verify number</button>}<button className={`btn small ${d.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(d,!d.isActive)} disabled={updateUserStatus.isPending} data-testid={`button-toggle-doctor-${d.id}`}>{d.isActive?'Suspend':'Restore'}</button></div>}/>))}</div></section></>}
     {tab==='User search' && <><Heading eyebrow="Network directory" title="User search" subtitle="Search all accounts, view account and doctor credential status, and suspend or restore accounts without deleting data."/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Search accounts</h2><p className="panel-caption">Search by name or email address</p></div></div><div className="panel-body"><SearchField value={userQuery} onChange={setUserQuery} placeholder="Name or email" testId="input-user-search"/>{userQuery.trim().length<2?<EmptyState icon={Users} title="Search the network" children="Enter at least two characters to find an account."/>:userSearch.isLoading?<div className="skeleton" style={{marginTop:15}}/>:userSearch.error?<ErrorState error={userSearch.error} retry={()=>userSearch.refetch()}/>:userSearch.data?.length?userSearch.data.map(u=><UserResult key={u.id} user={u} action={<button className={`btn small ${u.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(u,!u.isActive)} disabled={updateUserStatus.isPending||u.id===user.id} data-testid={`button-toggle-user-${u.id}`}>{u.isActive?'Suspend':'Restore'}</button>}/>):<EmptyState icon={Users} title="No matching accounts" children="Try a different spelling or email address."/>}</div></section></>}
     {tab==='Profile' && <><Heading eyebrow="Administrator account" title="Your profile" subtitle="Manage your administrator account and password."/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Account information</h2><p className="panel-caption">Current signed-in account</p></div><div className="avatar">{initials(user.name)}</div></div><div className="panel-body"><div className="data-row"><span className="data-key">Name</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">Email address</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">Role</span><span className="data-value">{user.role}</span></div><div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/></>}
-    {tab==='Analytics' && <><Heading eyebrow="Network insights" title="Care network analytics" subtitle="Network-wide coded case trends, potential epidemic signals, and care activity." action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-analytics"><Printer size={15}/> Export report</button>}/>{analytics.isLoading?<div className="skeleton"/>:analytics.error?<ErrorState error={analytics.error} retry={()=>analytics.refetch()}/>:<>
+    {tab==='Analytics' && <><Heading eyebrow="Network insights" title="Care network analytics" subtitle="Aggregate care activity, service use by region and clinic, and potential epidemic signals. Small location cohorts are suppressed." action={<button className="btn secondary no-print" onClick={()=>window.print()} data-testid="button-print-analytics"><Printer size={15}/> Export report</button>}/>{analytics.isLoading?<div className="skeleton"/>:analytics.error?<ErrorState error={analytics.error} retry={()=>analytics.refetch()}/>:<>
+      <div className="analytics-report-note">Operational report · Activity totals are not measures of care quality or health outcomes. Regional and clinic activity is shown only for groups with at least {minimumAggregateGroupSize} distinct patients.</div>
       <EpidemicAlerts metrics={analytics.data?.epidemicMetrics ?? []}/>
-      <div style={{marginTop:18}}><EpidemicThresholds metrics={analytics.data?.epidemicMetrics ?? []} savingDiseaseCodeId={savingThresholdId} onSave={saveEpidemicThreshold}/></div>
-      <div className="grid dashboard-grid" style={{marginTop:18}}><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Records over time</h2><p className="panel-caption">Monthly records added to patient files</p></div></div><div className="panel-body">{analytics.data?.monthlyRecords?.length?<div className="bar-list">{analytics.data.monthlyRecords.map((month,index)=>{const max=Math.max(...analytics.data!.monthlyRecords.map(i=>i.count),1);return <div className="bar-line" key={`${month.month}-${index}`}><span>{month.month}</span><div className="bar-track"><div className="bar-fill" style={{width:`${Math.max(month.count/max*100,2)}%`}}/></div><b style={{textAlign:'right',color:'#58716b'}}>{month.count}</b></div>})}</div>:<EmptyState icon={ClipboardList} title="No analytics to display" children="Monthly record activity will appear here as care records are added."/>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Network summary</h2><p className="panel-caption">Current active footprint</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">Patients</span><span className="data-value">{stats.data?.totalPatients??0}</span></div><div className="data-row"><span className="data-key">Active doctors</span><span className="data-value">{stats.data?.activeDoctors??0}</span></div><div className="data-row"><span className="data-key">Active permissions</span><span className="data-value">{stats.data?.activePermissions??0}</span></div><div className="data-row"><span className="data-key">Consultations</span><span className="data-value">{stats.data?.totalConsultations??0}</span></div></>}</div></section></div>
+      <div className="no-print" style={{marginTop:18}}><EpidemicThresholds metrics={analytics.data?.epidemicMetrics ?? []} savingDiseaseCodeId={savingThresholdId} onSave={saveEpidemicThreshold}/></div>
+      <div className="grid analytics-grid">
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Records over time</h2><p className="panel-caption">Monthly records added to patient files</p></div></div><div className="panel-body"><AnalyticsBarList items={(analytics.data?.monthlyRecords ?? []).map((item)=>({label:item.month,value:item.count}))} emptyTitle="No monthly activity" emptyDescription="Monthly record activity will appear here as care records are added."/></div></section>
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Record types</h2><p className="panel-caption">All-time clinical records by entry type</p></div></div><div className="panel-body"><AnalyticsBarList items={(analytics.data?.recordsByType ?? []).map((item)=>({label:item.recordType,value:item.count}))} emptyTitle="No record types" emptyDescription="Record type activity will appear as clinicians add records."/></div></section>
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Regional care activity</h2><p className="panel-caption">Distinct patients and records grouped by patient region; groups smaller than {minimumAggregateGroupSize} patients are hidden.</p></div></div><div className="panel-body">
+          {analytics.data?.regionalActivity.length ? <div className="analytics-table"><div className="analytics-table-head"><span>Region</span><span>Patients</span><span>Records</span></div>{analytics.data.regionalActivity.map((item)=><div className="analytics-table-row" key={item.region}><strong>{item.region}</strong><span>{item.patientCount}</span><span>{item.recordCount}</span></div>)}</div> : <EmptyState icon={Users} title="No reportable regional groups" children={`Regions with fewer than ${minimumAggregateGroupSize} distinct patients are suppressed.`}/>}
+        </div></section>
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Clinic activity</h2><p className="panel-caption">Distinct patients and records by clinician-reported clinic; groups smaller than {minimumAggregateGroupSize} patients are hidden.</p></div></div><div className="panel-body">
+          {analytics.data?.clinicActivity.length ? <div className="analytics-table"><div className="analytics-table-head"><span>Clinic</span><span>Patients</span><span>Records</span></div>{analytics.data.clinicActivity.map((item)=><div className="analytics-table-row" key={`${item.hospitalName}-${item.region ?? ''}`}><strong>{item.hospitalName}<small>{item.region ?? 'Region not provided'}</small></strong><span>{item.patientCount}</span><span>{item.recordCount}</span></div>)}</div> : <EmptyState icon={Stethoscope} title="No reportable clinic groups" children={`Clinics with fewer than ${minimumAggregateGroupSize} distinct patients are suppressed.`}/>}
+        </div></section>
+      </div>
+      <div className="grid dashboard-grid analytics-summary-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Network summary</h2><p className="panel-caption">Current active footprint</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">Patients</span><span className="data-value">{stats.data?.totalPatients??0}</span></div><div className="data-row"><span className="data-key">Active doctors</span><span className="data-value">{stats.data?.activeDoctors??0}</span></div><div className="data-row"><span className="data-key">Active permissions</span><span className="data-value">{stats.data?.activePermissions??0}</span></div><div className="data-row"><span className="data-key">Consultations</span><span className="data-value">{stats.data?.totalConsultations??0}</span></div></>}</div></section></div>
       </>}</>}
     {tab==='Directories & notices' && <AdminDirectoryNotices/>}
     {toast&&<div className="toast-message" role="status">{toast}</div>}

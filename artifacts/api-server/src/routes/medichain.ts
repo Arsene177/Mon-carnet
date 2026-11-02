@@ -1691,6 +1691,39 @@ router.get("/admin/analytics", requireAuth("ADMIN"), async (_req, res): Promise<
       count: byMonth.get(key)?.count ?? 0,
     };
   });
+  const recordsByType = await db
+    .select({
+      recordType: medicalRecordsTable.recordType,
+      count: count(),
+    })
+    .from(medicalRecordsTable)
+    .groupBy(medicalRecordsTable.recordType)
+    .orderBy(desc(count()), asc(medicalRecordsTable.recordType));
+  const regionalActivity = await db
+    .select({
+      region: usersTable.locationRegion,
+      patientCount: countDistinct(medicalRecordsTable.patientId),
+      recordCount: count(),
+    })
+    .from(medicalRecordsTable)
+    .innerJoin(usersTable, eq(medicalRecordsTable.patientId, usersTable.id))
+    .where(sql`${usersTable.locationRegion} IS NOT NULL`)
+    .groupBy(usersTable.locationRegion)
+    .having(sql`count(distinct ${medicalRecordsTable.patientId}) >= 5`)
+    .orderBy(desc(countDistinct(medicalRecordsTable.patientId)), asc(usersTable.locationRegion));
+  const clinicActivity = await db
+    .select({
+      hospitalName: usersTable.hospitalName,
+      region: usersTable.locationRegion,
+      patientCount: countDistinct(medicalRecordsTable.patientId),
+      recordCount: count(),
+    })
+    .from(medicalRecordsTable)
+    .innerJoin(usersTable, eq(medicalRecordsTable.doctorId, usersTable.id))
+    .where(sql`${usersTable.hospitalName} IS NOT NULL AND btrim(${usersTable.hospitalName}) <> ''`)
+    .groupBy(usersTable.hospitalName, usersTable.locationRegion)
+    .having(sql`count(distinct ${medicalRecordsTable.patientId}) >= 5`)
+    .orderBy(desc(countDistinct(medicalRecordsTable.patientId)), asc(usersTable.hospitalName));
   const todayUtc = new Date();
   todayUtc.setUTCHours(0, 0, 0, 0);
   const dateOffset = (days: number) =>
@@ -1768,6 +1801,9 @@ router.get("/admin/analytics", requireAuth("ADMIN"), async (_req, res): Promise<
         activePermissions: permissions.value,
       },
       monthlyRecords,
+      recordsByType,
+      regionalActivity,
+      clinicActivity,
       systemStatus: [
         { name: "API services", status: "Operational" },
         { name: "Database", status: "Operational" },

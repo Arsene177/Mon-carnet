@@ -728,6 +728,21 @@ export const GetAdminAnalyticsResponse = zod.object({
   "month": zod.string(),
   "count": zod.number().int()
 })),
+  "recordsByType": zod.array(zod.object({
+  "recordType": zod.string(),
+  "count": zod.number().int()
+})),
+  "regionalActivity": zod.array(zod.object({
+  "region": zod.string(),
+  "patientCount": zod.number().int(),
+  "recordCount": zod.number().int()
+})),
+  "clinicActivity": zod.array(zod.object({
+  "hospitalName": zod.string(),
+  "region": zod.string().nullable(),
+  "patientCount": zod.number().int(),
+  "recordCount": zod.number().int()
+})),
   "systemStatus": zod.array(zod.object({
   "name": zod.string(),
   "status": zod.enum(['Operational', 'Attention'])

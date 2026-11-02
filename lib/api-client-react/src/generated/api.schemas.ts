@@ -619,6 +619,25 @@ export type AdminAnalyticsMonthlyRecordsItem = {
   count: number;
 };
 
+export type AdminAnalyticsRecordsByTypeItem = {
+  recordType: string;
+  count: number;
+};
+
+export type AdminAnalyticsRegionalActivityItem = {
+  region: string;
+  patientCount: number;
+  recordCount: number;
+};
+
+export type AdminAnalyticsClinicActivityItem = {
+  hospitalName: string;
+  /** @nullable */
+  region: string | null;
+  patientCount: number;
+  recordCount: number;
+};
+
 export type AdminAnalyticsSystemStatusItemStatus = typeof AdminAnalyticsSystemStatusItemStatus[keyof typeof AdminAnalyticsSystemStatusItemStatus];
 
 
@@ -635,6 +654,9 @@ export type AdminAnalyticsSystemStatusItem = {
 export interface AdminAnalytics {
   stats: AdminStats;
   monthlyRecords: AdminAnalyticsMonthlyRecordsItem[];
+  recordsByType: AdminAnalyticsRecordsByTypeItem[];
+  regionalActivity: AdminAnalyticsRegionalActivityItem[];
+  clinicActivity: AdminAnalyticsClinicActivityItem[];
   systemStatus: AdminAnalyticsSystemStatusItem[];
   epidemicMetrics: AdminEpidemicMetric[];
 }
