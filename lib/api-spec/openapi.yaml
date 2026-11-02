@@ -69,6 +69,24 @@ paths:
                 $ref: "#/components/schemas/AuthSession"
         "401":
           description: Invalid credentials
+  /auth/password-reset-requests:
+    post:
+      operationId: requestPasswordReset
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequestInput"
+      responses:
+        "202":
+          description: Request received
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetRequestAccepted"
   /auth/me:
     get:
       operationId: getMe
@@ -648,6 +666,38 @@ paths:
                 $ref: "#/components/schemas/User"
         "400":
           description: Invalid account status change
+  /admin/password-reset-requests:
+    get:
+      operationId: getAdminPasswordResetRequests
+      tags: [admin]
+      responses:
+        "200":
+          description: Pending password reset requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminPasswordResetRequest"
+  /admin/password-reset-requests/{requestId}/reset:
+    post:
+      operationId: resetAdminRequestedPassword
+      tags: [admin]
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Password reset with a temporary password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPasswordResetResult"
+        "404":
+          description: Request is no longer pending or account no longer exists
   /admin/search-user:
     get:
       operationId: searchUsers
@@ -883,6 +933,29 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 1, maxLength: 128 }
+    PasswordResetRequestInput:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+    PasswordResetRequestAccepted:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    AdminPasswordResetRequest:
+      type: object
+      required: [id, email, requestedAt]
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        requestedAt: { type: string, format: date-time }
+    AdminPasswordResetResult:
+      type: object
+      required: [email, temporaryPassword]
+      properties:
+        email: { type: string, format: email }
+        temporaryPassword: { type: string }
     ChangePasswordInput:
       type: object
       required: [currentPassword, newPassword]

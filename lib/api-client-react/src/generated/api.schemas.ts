@@ -190,6 +190,26 @@ export interface LoginInput {
   password: string;
 }
 
+export interface PasswordResetRequestInput {
+  /** @maxLength 254 */
+  email: string;
+}
+
+export interface PasswordResetRequestAccepted {
+  message: string;
+}
+
+export interface AdminPasswordResetRequest {
+  id: number;
+  email: string;
+  requestedAt: string;
+}
+
+export interface AdminPasswordResetResult {
+  email: string;
+  temporaryPassword: string;
+}
+
 export interface ChangePasswordInput {
   /**
      * @minLength 1

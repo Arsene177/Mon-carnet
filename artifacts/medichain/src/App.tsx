@@ -11,7 +11,7 @@ import {
 import {
   getGetAdminAnalyticsQueryKey, getGetAdminStatsQueryKey, getGetDoctorProfileQueryKey, getGetMeQueryKey,
   getGetNotificationInboxQueryKey,
-  getGetPatientPendingRequestsQueryKey, getGetPatientPermissionsQueryKey,
+  getGetPatientPendingRequestsQueryKey, getGetPatientPermissionsQueryKey, getGetAdminPasswordResetRequestsQueryKey,
   getGetPatientProfileQueryKey, getGetPatientRecordsQueryKey, getGetPendingDoctorsQueryKey,
   getGetDoctorPatientRecordsQueryKey, getGetDoctorStatsQueryKey,
   getSearchDiseaseCodesQueryKey, getSearchPatientsQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
@@ -21,6 +21,7 @@ import {
   useGetPatientProfile, useGetPatientRecords, useGetPendingDoctors, useGrantPatientPermission,
   useGrantPatientAccessById, useLogin, useRegister, useRevokePatientPermission, useSearchPatients,
   useSearchDiseaseCodes, useSearchUsers, useUpdateAdminEpidemicThreshold, useUpdateAdminUserStatus, useUpdateEmergencyInfo, useVerifyDoctor,
+  useRequestPasswordReset, useGetAdminPasswordResetRequests, useResetAdminRequestedPassword,
 } from '@workspace/api-client-react';
 import type {
   AdminEpidemicMetric, BookletVerificationIssue, DiseaseCode, EmergencyInfo, EmergencyInfoInput,
@@ -42,10 +43,24 @@ const minimumAggregateGroupSize = 5;
 type Tab = WorkspaceTab;
 const patientTabs: Tab[] = ['Overview', 'Profile', 'Records', 'Access control', 'Emergency info', 'Inbox'];
 const doctorTabs: Tab[] = ['Patients', 'Record entry', 'Profile', 'Inbox'];
-const adminTabs: Tab[] = ['System overview', 'Doctor approvals', 'User search', 'Directories & notices', 'Analytics', 'Profile', 'Inbox'];
+const adminTabs: Tab[] = ['System overview', 'Doctor approvals', 'User search', 'Password recovery', 'Directories & notices', 'Analytics', 'Profile', 'Inbox'];
 const dateLabel = (date?: string | null) => date ? new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not provided';
 const initials = (name?: string) => (name || 'MC').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
 const errText = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+const loginErrorText = (error: unknown) => {
+  if (typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number') {
+    if (error.status === 401) return 'Email or password is incorrect. Check your details and try again.';
+    if (error.status >= 500) return 'Sign in is temporarily unavailable. Please try again shortly.';
+  }
+  if (error instanceof Error && /failed to fetch|network/i.test(error.message)) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+  if (typeof error === 'object' && error !== null && 'data' in error && typeof error.data === 'object' && error.data !== null) {
+    if ('error' in error.data && typeof error.data.error === 'string') return error.data.error;
+    if ('message' in error.data && typeof error.data.message === 'string') return error.data.message;
+  }
+  return "We couldn't sign you in. Please try again.";
+};
 
 type CodedDiagnosisStatus = 'suspected' | 'probable' | 'confirmed' | 'ruled_out';
 type CodedDiagnosisDraft = {
@@ -365,16 +380,32 @@ function AuthPage() {
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [mode, setMode] = useState<'login' | 'register'>(location.pathname === '/register' ? 'register' : 'login');
+  const [recoveringPassword, setRecoveringPassword] = useState(false);
+  const [resetSubmitted, setResetSubmitted] = useState(false);
   const [role, setRole] = useState<'PATIENT' | 'DOCTOR'>('PATIENT');
   const [form, setForm] = useState({ name: '', email: '', password: '', dateOfBirth: '', contactInfo: '', professionalMedicalNumber: '' });
   const [feedback, setFeedback] = useState('');
   const login = useLogin();
   const register = useRegister();
-  const busy = login.isPending || register.isPending;
-  const onField = (key: keyof typeof form) => (event: ChangeEvent<HTMLInputElement>) => setForm({ ...form, [key]: event.target.value });
+  const passwordResetRequest = useRequestPasswordReset();
+  const busy = login.isPending || register.isPending || passwordResetRequest.isPending;
+  const onField = (key: keyof typeof form) => (event: ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, [key]: event.target.value });
+    if (key === 'email') setResetSubmitted(false);
+  };
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setFeedback('');
+    if (recoveringPassword) {
+      passwordResetRequest.mutate(
+        { data: { email: form.email.trim() } },
+        {
+          onSuccess: () => setResetSubmitted(true),
+          onError: (error) => setFeedback(errText(error)),
+        },
+      );
+      return;
+    }
     const onSession = (session: { token: string; user: User }) => {
       localStorage.setItem('medichain_token', session.token);
       localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
@@ -383,12 +414,12 @@ function AuthPage() {
       setLocation(destination);
     };
     if (mode === 'login') {
-      login.mutate({ data: { email: form.email.trim(), password: form.password } }, { onSuccess: onSession, onError: (error) => setFeedback(errText(error)) });
+      login.mutate({ data: { email: form.email.trim(), password: form.password } }, { onSuccess: onSession, onError: (error) => setFeedback(loginErrorText(error)) });
     } else {
       register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, ...(form.dateOfBirth ? { dateOfBirth: form.dateOfBirth } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: onSession, onError: (error) => setFeedback(errText(error)) });
     }
   };
-  const flipMode = (next: 'login' | 'register') => { setMode(next); setFeedback(''); setLocation(next === 'login' ? '/login' : '/register'); };
+  const flipMode = (next: 'login' | 'register') => { setMode(next); setRecoveringPassword(false); setResetSubmitted(false); setFeedback(''); setLocation(next === 'login' ? '/login' : '/register'); };
   return <div className="login-page">
     <aside className="login-aside">
       <div className="brand"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
@@ -398,11 +429,12 @@ function AuthPage() {
     <main className="login-main">
       <div className="auth-card">
         <div className="mobile-brand"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
-        <div className="auth-tabs"><button className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => flipMode('login')} data-testid="tab-login">Sign in</button><button className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => flipMode('register')} data-testid="tab-register">Create account</button></div>
-        <h2>{mode === 'login' ? 'Welcome back' : 'Start your record'}</h2><p>{mode === 'login' ? 'Sign in to continue to your secure care workspace.' : 'Create a trusted account for your care journey.'}</p>
-        {feedback && <div className="error-state" role="alert"><span>{feedback}</span><AlertCircle size={17}/></div>}
+        {!recoveringPassword && <div className="auth-tabs"><button className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => flipMode('login')} data-testid="tab-login">Sign in</button><button className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => flipMode('register')} data-testid="tab-register">Create account</button></div>}
+        <h2>{recoveringPassword ? 'Reset your password' : mode === 'login' ? 'Welcome back' : 'Start your record'}</h2><p>{recoveringPassword ? 'Enter your account email. An administrator will review your request.' : mode === 'login' ? 'Sign in to continue to your secure care workspace.' : 'Create a trusted account for your care journey.'}</p>
+        {feedback && <div className="auth-feedback" role="alert"><AlertCircle size={14}/><span>{feedback}</span></div>}
+        {resetSubmitted && <div className="notice" role="status">If an account exists for that email, an administrator will review your request. Please contact them through a trusted channel if you need help.</div>}
         <form onSubmit={submit}>
-          {mode === 'register' && <>
+          {!recoveringPassword && mode === 'register' && <>
             <div className="field"><label htmlFor="auth-name">Full name</label><input id="auth-name" value={form.name} onChange={onField('name')} required minLength={2} autoComplete="name" data-testid="input-name" placeholder="Your name"/></div>
             <div className="field"><label>Account type</label><div className="role-choice"><button type="button" className={`role-option ${role === 'PATIENT' ? 'selected' : ''}`} onClick={() => setRole('PATIENT')} data-testid="role-patient"><UserRound size={15}/> Patient</button><button type="button" className={`role-option ${role === 'DOCTOR' ? 'selected' : ''}`} onClick={() => setRole('DOCTOR')} data-testid="role-doctor"><Stethoscope size={15}/> Doctor</button></div></div>
             {role === 'DOCTOR' && <div className="field"><label htmlFor="auth-medical-number">Professional medical number</label><input id="auth-medical-number" value={form.professionalMedicalNumber} onChange={onField('professionalMedicalNumber')} required maxLength={120} autoComplete="off" data-testid="input-professional-medical-number" placeholder="Enter your license or registration number"/><small className="field-note">An administrator will manually verify this before your certified badge is awarded.</small></div>}
@@ -410,10 +442,11 @@ function AuthPage() {
             <div className="field"><label htmlFor="auth-contact">Contact information <span className="field-note">Optional</span></label><input id="auth-contact" value={form.contactInfo} onChange={onField('contactInfo')} data-testid="input-contact" placeholder="Phone number"/></div>
           </>}
           <div className="field"><label htmlFor="auth-email">Email address</label><input id="auth-email" type="email" value={form.email} onChange={onField('email')} required autoComplete="email" data-testid="input-email" placeholder="you@example.com"/></div>
-          <div className="field"><label htmlFor="auth-password">Password</label><input id="auth-password" type="password" value={form.password} onChange={onField('password')} required minLength={mode === 'register' ? 8 : 1} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} data-testid="input-password" placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'}/></div>
-          <button className="btn auth-submit" type="submit" disabled={busy} data-testid="button-auth-submit">{busy ? 'Please wait…' : mode === 'login' ? <>Sign in <ArrowRight size={15}/></> : <>Create account <ArrowRight size={15}/></>}</button>
+          {!recoveringPassword && <div className="field"><label htmlFor="auth-password">Password</label><input id="auth-password" type="password" value={form.password} onChange={onField('password')} required minLength={mode === 'register' ? 8 : 1} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} data-testid="input-password" placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'}/></div>}
+          {!resetSubmitted && <button className="btn auth-submit" type="submit" disabled={busy} data-testid="button-auth-submit">{busy ? 'Please wait…' : recoveringPassword ? 'Request password reset' : mode === 'login' ? <>Sign in <ArrowRight size={15}/></> : <>Create account <ArrowRight size={15}/></>}</button>}
         </form>
-        <div className="auth-foot"><LockKeyhole size={12}/> Your health information is private and protected. Doctor accounts may require approval.</div>
+        {mode === 'login' && <button className="auth-link" type="button" onClick={() => { setRecoveringPassword(!recoveringPassword); setResetSubmitted(false); setFeedback(''); }}>{recoveringPassword ? 'Back to sign in' : 'Forgot password?'}</button>}
+        {!recoveringPassword && <div className="auth-foot"><LockKeyhole size={12}/> Your health information is private and protected. Doctor accounts may require approval.</div>}
       </div>
     </main>
   </div>;
@@ -430,7 +463,7 @@ function Workspace({ user, onSignOut }: { user: User; onSignOut: () => void }) {
     Overview: Activity, Records: FileHeart, 'Access control': KeyRound, 'Emergency info': HeartPulse,
     Patients: Search, 'Record entry': FilePlus2, Profile: UserRound, 'System overview': Activity,
     'Doctor approvals': BadgeCheck, 'User search': Users, 'Directories & notices': ClipboardList,
-    Analytics: ClipboardList, Inbox: Bell,
+    'Password recovery': KeyRound, Analytics: ClipboardList, Inbox: Bell,
   };
   return <div className="app-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
@@ -1376,9 +1409,19 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
   const approve = useApproveDoctor();
   const verifyDoctor = useVerifyDoctor();
   const updateUserStatus = useUpdateAdminUserStatus();
+  const passwordResetRequests = useGetAdminPasswordResetRequests({
+    query: {
+      queryKey: getGetAdminPasswordResetRequestsQueryKey(),
+      enabled: tab === 'Password recovery',
+      refetchInterval: 60_000,
+      retry: false,
+    },
+  });
+  const resetRequestedPassword = useResetAdminRequestedPassword();
   const updateEpidemicThreshold = useUpdateAdminEpidemicThreshold();
   const [savingThresholdId, setSavingThresholdId] = useState<number | null>(null);
   const [toast, setToast] = useState('');
+  const [temporaryPassword, setTemporaryPassword] = useState<{ email: string; password: string } | null>(null);
   const notify = (message: string) => { setToast(message); window.setTimeout(()=>setToast(''),3000); };
   const refresh = () => {
     qc.invalidateQueries({queryKey:getGetPendingDoctorsQueryKey()});
@@ -1393,6 +1436,18 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
     updateUserStatus.mutate({userId:account.id,data:{isActive}},{
       onSuccess:()=>{refresh();notify(`Account ${isActive?'restored':'suspended'}. Existing account data was kept.`)},
       onError:e=>notify(errText(e)),
+    });
+  };
+  const resetPassword = (requestId: number) => {
+    const request = passwordResetRequests.data?.find((item) => item.id === requestId);
+    if (!request || !window.confirm(`Confirm you have verified ${request.email}'s identity using a trusted contact method before resetting their password.`)) return;
+    resetRequestedPassword.mutate({ requestId }, {
+      onSuccess: (result) => {
+        setTemporaryPassword({ email: result.email, password: result.temporaryPassword });
+        qc.invalidateQueries({ queryKey: getGetAdminPasswordResetRequestsQueryKey() });
+        notify('Temporary password created. Share it only with the verified account owner.');
+      },
+      onError: (error) => notify(errText(error)),
     });
   };
   const saveEpidemicThreshold = (diseaseCodeId: number, threshold: number) => {
@@ -1423,6 +1478,10 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
     {tab==='Doctor approvals' && <><Heading eyebrow="Clinical access" title="Doctor approvals" subtitle="Approve doctor accounts to enable clinical access; medical credential verification is a separate manual review."/><div className="tabs"><span className="tab active">Pending review</span></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Pending clinicians</h2><p className="panel-caption">Approve accounts to enable patient search and care documentation</p></div><span className="tag warning">{pending.data?.length??0} pending</span></div><div className="panel-body">{pending.isLoading?<div className="skeleton"/>:pending.error?<ErrorState error={pending.error} retry={()=>pending.refetch()}/>:pending.data?.length?pending.data.map(d=><div className="data-row" key={d.id}><div className="person-cell"><div className="avatar">{initials(d.name)}</div><span>{d.name}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{d.email} · Registered {dateLabel(d.createdAt)}</small><small style={{display:'block',fontWeight:400,color:'#687b8d',marginTop:3}}>Medical number: {d.professionalMedicalNumber||'Not submitted'}</small></span></div><span className="tag warning">Pending</span><button className="btn small" onClick={()=>approveOne(d.id)} disabled={approve.isPending} data-testid={`button-approve-${d.id}`}><Check size={13}/> Approve account</button></div>):<EmptyState icon={BadgeCheck} title="All caught up" children="There are no clinician accounts waiting for review."/>}</div></section>
       <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2 className="panel-title">Doctor credential verification</h2><p className="panel-caption">Review the submitted medical number and award the certified badge after manual validation.</p></div></div><div className="panel-body"><SearchField value={doctorQuery} onChange={setDoctorQuery} placeholder="Doctor name or email" testId="input-doctor-approval-search"/>{doctorQuery.trim().length>=2&&(doctorSearch.isLoading?<div className="skeleton" style={{marginTop:14}}/>:doctorSearch.error?<ErrorState error={doctorSearch.error} retry={()=>doctorSearch.refetch()}/>:doctorSearch.data?.filter(d=>d.role==='DOCTOR'||d.role==='PENDING_DOCTOR').map(d=><UserResult key={d.id} user={d} action={<div className="row-actions">{!d.doctorVerified&&<button className="btn small secondary" onClick={()=>verifyOne(d)} disabled={!d.professionalMedicalNumber||verifyDoctor.isPending} data-testid={`button-verify-doctor-${d.id}`}><BadgeCheck size={13}/> Verify number</button>}<button className={`btn small ${d.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(d,!d.isActive)} disabled={updateUserStatus.isPending} data-testid={`button-toggle-doctor-${d.id}`}>{d.isActive?'Suspend':'Restore'}</button></div>}/>))}</div></section></>}
     {tab==='User search' && <><Heading eyebrow="Network directory" title="User search" subtitle="Search all accounts, view account and doctor credential status, and suspend or restore accounts without deleting data."/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Search accounts</h2><p className="panel-caption">Search by name or email address</p></div></div><div className="panel-body"><SearchField value={userQuery} onChange={setUserQuery} placeholder="Name or email" testId="input-user-search"/>{userQuery.trim().length<2?<EmptyState icon={Users} title="Search the network" children="Enter at least two characters to find an account."/>:userSearch.isLoading?<div className="skeleton" style={{marginTop:15}}/>:userSearch.error?<ErrorState error={userSearch.error} retry={()=>userSearch.refetch()}/>:userSearch.data?.length?userSearch.data.map(u=><UserResult key={u.id} user={u} action={<button className={`btn small ${u.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(u,!u.isActive)} disabled={updateUserStatus.isPending||u.id===user.id} data-testid={`button-toggle-user-${u.id}`}>{u.isActive?'Suspend':'Restore'}</button>}/>):<EmptyState icon={Users} title="No matching accounts" children="Try a different spelling or email address."/>}</div></section></>}
+    {tab==='Password recovery' && <><Heading eyebrow="Account support" title="Password recovery" subtitle="Review account recovery requests. Verify each requester using a trusted contact method before creating a temporary password."/>
+      {temporaryPassword && <section className="panel" style={{marginBottom:18}}><div className="panel-head"><div><h2 className="panel-title">Temporary password created</h2><p className="panel-caption">Share this once with the verified account owner through a trusted channel.</p></div><button className="btn small secondary" onClick={()=>setTemporaryPassword(null)}>Hide</button></div><div className="panel-body"><div className="data-row"><span className="data-key">Account</span><span className="data-value">{temporaryPassword.email}</span></div><div className="data-row"><span className="data-key">Temporary password</span><span className="data-value" data-testid="temporary-password">{temporaryPassword.password}</span></div></div></section>}
+      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Pending requests</h2><p className="panel-caption">Requests are refreshed automatically every minute.</p></div><span className="tag warning">{passwordResetRequests.data?.length ?? 0} pending</span></div><div className="panel-body">{passwordResetRequests.isLoading?<div className="skeleton"/>:passwordResetRequests.error?<ErrorState error={passwordResetRequests.error} retry={()=>passwordResetRequests.refetch()}/>:passwordResetRequests.data?.length?passwordResetRequests.data.map((request)=><div className="data-row" key={request.id}><div><strong>{request.email}</strong><small style={{display:'block',color:'#92a09a',marginTop:4}}>Requested {dateLabel(request.requestedAt)}</small></div><button className="btn small secondary" onClick={()=>resetPassword(request.id)} disabled={resetRequestedPassword.isPending} data-testid={`button-reset-password-${request.id}`}>{resetRequestedPassword.isPending?'Resetting…':'Verify & reset'}</button></div>):<EmptyState icon={KeyRound} title="No requests waiting" children="New password recovery requests will appear here."/ >}</div></section>
+    </>}
     {tab==='Profile' && <><Heading eyebrow="Administrator account" title="Your profile" subtitle="Manage your administrator account and password."/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Account information</h2><p className="panel-caption">Current signed-in account</p></div><div className="avatar">{initials(user.name)}</div></div><div className="panel-body"><div className="data-row"><span className="data-key">Name</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">Email address</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">Role</span><span className="data-value">{user.role}</span></div><div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/></>}
     {tab==='Analytics' && <><Heading eyebrow="Network insights" title="Care network analytics" subtitle="Aggregate care activity, service use by region and clinic, and potential epidemic signals. Small location cohorts are suppressed." action={<button className="btn secondary no-print" onClick={()=>window.print()} data-testid="button-print-analytics"><Printer size={15}/> Export report</button>}/>{analytics.isLoading?<div className="skeleton"/>:analytics.error?<ErrorState error={analytics.error} retry={()=>analytics.refetch()}/>:<>
       <div className="analytics-report-note">Operational report · Activity totals are not measures of care quality or health outcomes. Regional and clinic activity is shown only for groups with at least {minimumAggregateGroupSize} distinct patients.</div>

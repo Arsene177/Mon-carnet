@@ -28,6 +28,11 @@ import {
   VerifyBookletExportParams,
   VerifyBookletExportResponse,
   ChangePasswordBody,
+  RequestPasswordResetBody,
+  RequestPasswordResetResponse,
+  GetAdminPasswordResetRequestsResponse,
+  ResetAdminRequestedPasswordParams,
+  ResetAdminRequestedPasswordResponse,
   GrantPatientPermissionBody,
   GrantPatientPermissionResponse,
   GrantPatientAccessByIdBody,
@@ -96,6 +101,7 @@ import {
   accessPermissionsTable,
   patientSearchesTable,
   notificationsTable,
+  passwordResetRequestsTable,
 } from "@workspace/db";
 import { createAccessToken, hashPassword, publicUser, requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
 
@@ -510,6 +516,36 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     LoginResponse.parse({
       token: createAccessToken(current),
       user: userResponse(user),
+    }),
+  );
+});
+
+router.post("/auth/password-reset-requests", async (req, res): Promise<void> => {
+  const parsed = RequestPasswordResetBody.safeParse(req.body);
+  if (!parsed.success) {
+    invalidBody(res, "Enter a valid email address.");
+    return;
+  }
+
+  const email = parsed.data.email.trim().toLowerCase();
+  const [user] = await db
+    .select({ email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.email, email))
+    .limit(1);
+  if (user) {
+    await db
+      .insert(passwordResetRequestsTable)
+      .values({ email })
+      .onConflictDoNothing({
+        target: [passwordResetRequestsTable.email],
+        where: isNull(passwordResetRequestsTable.resolvedAt),
+      });
+  }
+
+  res.status(202).json(
+    RequestPasswordResetResponse.parse({
+      message: "If an account exists for that email, an administrator will review your request.",
     }),
   );
 });
@@ -1949,6 +1985,78 @@ router.put("/admin/users/:userId/status", requireAuth("ADMIN"), async (req, res)
     return;
   }
   res.json(UpdateAdminUserStatusResponse.parse(userResponse(updated)));
+});
+
+router.get("/admin/password-reset-requests", requireAuth("ADMIN"), async (_req, res): Promise<void> => {
+  const requests = await db
+    .select({
+      id: passwordResetRequestsTable.id,
+      email: passwordResetRequestsTable.email,
+      requestedAt: passwordResetRequestsTable.requestedAt,
+    })
+    .from(passwordResetRequestsTable)
+    .where(isNull(passwordResetRequestsTable.resolvedAt))
+    .orderBy(asc(passwordResetRequestsTable.requestedAt));
+  res.json(GetAdminPasswordResetRequestsResponse.parse(requests));
+});
+
+router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMIN"), async (req, res): Promise<void> => {
+  const parsedParams = ResetAdminRequestedPasswordParams.safeParse(req.params);
+  if (!parsedParams.success) {
+    invalidBody(res, "Invalid password reset request.");
+    return;
+  }
+
+  const temporaryPassword = randomBytes(9).toString("base64url");
+  const result = await db.transaction(async (tx) => {
+    const [request] = await tx
+      .select()
+      .from(passwordResetRequestsTable)
+      .where(and(
+        eq(passwordResetRequestsTable.id, parsedParams.data.requestId),
+        isNull(passwordResetRequestsTable.resolvedAt),
+      ))
+      .limit(1);
+    if (!request) return null;
+
+    const [account] = await tx
+      .select({ id: usersTable.id, email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.email, request.email))
+      .limit(1);
+    if (!account) {
+      await tx
+        .update(passwordResetRequestsTable)
+        .set({ resolvedAt: new Date(), resolvedBy: req.currentUser!.id })
+        .where(eq(passwordResetRequestsTable.id, request.id));
+      return null;
+    }
+
+    const [resolved] = await tx
+      .update(passwordResetRequestsTable)
+      .set({ resolvedAt: new Date(), resolvedBy: req.currentUser!.id })
+      .where(and(
+        eq(passwordResetRequestsTable.id, request.id),
+        isNull(passwordResetRequestsTable.resolvedAt),
+      ))
+      .returning({ id: passwordResetRequestsTable.id });
+    if (!resolved) return null;
+
+    await tx
+      .update(usersTable)
+      .set({ passwordHash: hashPassword(temporaryPassword) })
+      .where(eq(usersTable.id, account.id));
+    return account;
+  });
+
+  if (!result) {
+    res.status(404).json({ error: "This request is no longer pending or its account no longer exists." });
+    return;
+  }
+  res.json(ResetAdminRequestedPasswordResponse.parse({
+    email: result.email,
+    temporaryPassword,
+  }));
 });
 
 router.get("/admin/search-user", requireAuth("ADMIN"), async (req, res): Promise<void> => {

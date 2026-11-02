@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   real,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -90,6 +91,27 @@ export const notificationsTable = pgTable(
   (table) => [
     index("medichain_notifications_recipient_created_index").on(table.recipientId, table.createdAt),
     index("medichain_notifications_batch_index").on(table.batchId),
+  ],
+);
+
+export const passwordResetRequestsTable = pgTable(
+  "medichain_password_reset_requests",
+  {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: integer("resolved_by").references(() => usersTable.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    uniqueIndex("medichain_password_reset_pending_email_unique")
+      .on(table.email)
+      .where(sql`${table.resolvedAt} is null`),
+    index("medichain_password_reset_requested_index").on(table.requestedAt),
   ],
 );
 

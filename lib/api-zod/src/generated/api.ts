@@ -91,6 +91,19 @@ export const LoginResponse = zod.object({
 })
 
 
+export const requestPasswordResetBodyEmailMax = 254;
+
+
+
+export const RequestPasswordResetBody = zod.object({
+  "email": zod.string().email().max(requestPasswordResetBodyEmailMax)
+})
+
+export const RequestPasswordResetResponse = zod.object({
+  "message": zod.string()
+})
+
+
 export const GetMeResponse = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
@@ -886,6 +899,24 @@ export const UpdateAdminUserStatusResponse = zod.object({
   "contactInfo": zod.string().nullish(),
   "isActive": zod.boolean(),
   "createdAt": zod.coerce.date()
+})
+
+
+export const GetAdminPasswordResetRequestsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "requestedAt": zod.coerce.date()
+})
+export const GetAdminPasswordResetRequestsResponse = zod.array(GetAdminPasswordResetRequestsResponseItem)
+
+
+export const ResetAdminRequestedPasswordParams = zod.object({
+  "requestId": zod.coerce.number().int()
+})
+
+export const ResetAdminRequestedPasswordResponse = zod.object({
+  "email": zod.string().email(),
+  "temporaryPassword": zod.string()
 })
 
 

@@ -223,6 +223,9 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
 .auth-card h2 { color:#142a3f; font:700 29px var(--app-font-serif); letter-spacing:-.8px; margin:0 0 8px; }
 .auth-card>p { color:#82908b; font-size:12px; line-height:1.5; margin:0 0 24px; }
 .auth-card .field { margin-bottom:14px; }
+.auth-feedback { display:flex; align-items:flex-start; gap:7px; margin:-8px 0 16px; color:#914b40; font-size:11px; line-height:1.45; }
+.auth-feedback svg { flex:none; margin-top:1px; }
+.auth-link { display:block; margin:14px auto 0; border:0; background:transparent; color:#526f83; font-size:11px; font-weight:700; text-decoration:underline; text-underline-offset:3px; }
 .role-choice { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
 .role-option { text-align:left; border:1px solid #dfded4; background:#fffefa; padding:12px; border-radius:9px; color:#697a75; font-size:11px; font-weight:700; }
 .role-option.selected { border-color:#e5a23b; background:#fff7e9; color:#142a3f; box-shadow:0 0 0 2px #f8e4c0; }
