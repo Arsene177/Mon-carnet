@@ -64,11 +64,13 @@ import type {
   PatientAccessCodeInput,
   PatientAccessEvent,
   PatientBookletAccess,
+  PatientIdentityInput,
   PatientProfile,
   PatientSearchRequest,
   PatientSearchResult,
   PendingMedicalAttachment,
   PermissionGrantInput,
+  PossibleDuplicateGroup,
   RegistrationInput,
   SearchDiseaseCodesParams,
   SearchUsersParams,
@@ -811,6 +813,88 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getUpdatePatientLocationMutationOptions(options));
+    }
+
+export const getUpdatePatientIdentityUrl = () => {
+
+
+
+
+  return `/api/patient/identity`
+}
+
+export const updatePatientIdentity = async (patientIdentityInput: PatientIdentityInput, options?: Parameters<typeof customFetch>[1]): Promise<User> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<User>(getUpdatePatientIdentityUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(patientIdentityInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePatientIdentityMutationKey = () => ['updatePatientIdentity'] as const;
+
+export const getUpdatePatientIdentityMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePatientIdentity>>, TError,UpdatePatientIdentityMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePatientIdentity>>, TError,UpdatePatientIdentityMutationVariables, TContext> => {
+
+const mutationKey = getUpdatePatientIdentityMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePatientIdentity>>, UpdatePatientIdentityMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updatePatientIdentity(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePatientIdentityMutationResult = NonNullable<Awaited<ReturnType<typeof updatePatientIdentity>>>
+    export type UpdatePatientIdentityMutationBody = BodyType<PatientIdentityInput>
+    export type UpdatePatientIdentityMutationError = ErrorType<void>
+    export type UpdatePatientIdentityMutationVariables = {data: BodyType<PatientIdentityInput>}
+
+    export const useUpdatePatientIdentity = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePatientIdentity>>, TError,UpdatePatientIdentityMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePatientIdentity>>,
+        TError,
+        UpdatePatientIdentityMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdatePatientIdentityMutationOptions(options));
     }
 
 export const getUpdateEmergencyInfoUrl = () => {
@@ -3627,6 +3711,77 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getResetAdminRequestedPasswordMutationOptions(options));
     }
+
+export const getGetAdminPossibleDuplicatesUrl = () => {
+
+
+
+
+  return `/api/admin/possible-duplicates`
+}
+
+export const getAdminPossibleDuplicates = async ( options?: Parameters<typeof customFetch>[1]): Promise<PossibleDuplicateGroup[]> => {
+
+  return customFetch<PossibleDuplicateGroup[]>(getGetAdminPossibleDuplicatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminPossibleDuplicatesQueryKey = () => {
+    return [
+    `/api/admin/possible-duplicates`
+    ] as const;
+    }
+
+
+export const getGetAdminPossibleDuplicatesQueryOptions = <TData = Awaited<ReturnType<typeof getAdminPossibleDuplicates>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminPossibleDuplicates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminPossibleDuplicatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminPossibleDuplicates>>> = ({ signal }) => getAdminPossibleDuplicates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminPossibleDuplicates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminPossibleDuplicatesQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminPossibleDuplicates>>>
+export type GetAdminPossibleDuplicatesQueryError = ErrorType<unknown>
+
+
+
+export function useGetAdminPossibleDuplicates<TData = Awaited<ReturnType<typeof getAdminPossibleDuplicates>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminPossibleDuplicates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminPossibleDuplicatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getSearchUsersUrl = (params: SearchUsersParams,) => {
   const normalizedParams = new URLSearchParams();

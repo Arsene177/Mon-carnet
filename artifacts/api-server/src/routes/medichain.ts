@@ -19,6 +19,9 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  UpdatePatientIdentityBody,
+  UpdatePatientIdentityResponse,
+  GetAdminPossibleDuplicatesResponse,
   UpdateLanguageBody,
   UpdateLanguageResponse,
   EmergencyPatientLookupBody,
@@ -394,13 +397,41 @@ function recordResponse(
   };
 }
 
+type PatientIdentity = Pick<typeof usersTable.$inferSelect, "name" | "sex" | "dateOfBirth" | "dateOfBirthEstimated">;
+
+/** True for a Postgres unique-constraint error, also when the ORM wraps it in `cause`. */
+function isUniqueViolation(error: unknown): boolean {
+  for (let current = error, depth = 0; current && typeof current === "object" && depth < 4; current = (current as { cause?: unknown }).cause, depth++) {
+    if ("code" in current && (current as { code?: unknown }).code === "23505") return true;
+  }
+  return false;
+}
+
+function sexOf(value: string | null): "FEMALE" | "MALE" | null {
+  return value === "FEMALE" || value === "MALE" ? value : null;
+}
+
+/** Upper-case CNI number without spaces, dots or dashes; null when empty. */
+function normalizeNationalId(value: string | null | undefined): string | null {
+  const normalized = (value ?? "").replace(/[\s.\-/]/g, "").toUpperCase();
+  return normalized || null;
+}
+
+function isPlausibleBirthDate(value: Date): boolean {
+  const year = value.getUTCFullYear();
+  return value.getTime() <= Date.now() && year >= new Date().getUTCFullYear() - 130;
+}
+
 function emergencyResponse(
   info: typeof emergencyInfoTable.$inferSelect,
-  patientName: string,
+  patient: PatientIdentity,
 ) {
   return {
     patientId: info.userId,
-    patientName,
+    patientName: patient.name,
+    patientSex: sexOf(patient.sex),
+    patientDateOfBirth: patient.dateOfBirth ?? null,
+    patientDateOfBirthEstimated: patient.dateOfBirthEstimated,
     bloodGroup: info.bloodGroup,
     weightKg: info.weightKg,
     heightCm: info.heightCm,
@@ -471,6 +502,15 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     );
     return;
   }
+  if (input.role === "PATIENT" && (!input.sex || !input.dateOfBirth || !isPlausibleBirthDate(input.dateOfBirth))) {
+    invalidBody(res, "Patient registration requires sex and a valid date of birth or age.");
+    return;
+  }
+  const nationalIdNumber = input.role === "PATIENT" ? normalizeNationalId(input.nationalIdNumber) : null;
+  if (nationalIdNumber && !/^[A-Z0-9]{5,20}$/.test(nationalIdNumber)) {
+    invalidBody(res, "Enter the ID card number as it appears on the card (letters and digits only).");
+    return;
+  }
   if (input.role === "DOCTOR" && !professionalMedicalNumber) {
     invalidBody(res, "Doctor registration requires a professional medical number.");
     return;
@@ -494,6 +534,9 @@ router.post("/auth/register", async (req, res): Promise<void> => {
             : null,
         contactInfo: input.contactInfo?.trim() || null,
         preferredLanguage: input.preferredLanguage ?? "fr",
+        sex: input.role === "PATIENT" ? input.sex : null,
+        dateOfBirthEstimated: input.role === "PATIENT" ? Boolean(input.dateOfBirthEstimated) : false,
+        nationalIdNumber,
       })
       .returning();
     const user = publicUser(created);
@@ -504,12 +547,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       }),
     );
   } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "23505"
-    ) {
+    if (isUniqueViolation(error)) {
       res.status(409).json({ error: "Unable to create an account with those details." });
       return;
     }
@@ -649,9 +687,10 @@ router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise
       user: userResponse(user),
       patientDisplayId: profileUser.patientDisplayId,
       patientAccessId: profileUser.patientAccessId,
-      emergencyInfo: emergency ? emergencyResponse(emergency, user.name) : null,
+      emergencyInfo: emergency ? emergencyResponse(emergency, user) : null,
       recordCount: records.value,
       permissionsCount: permissions.value,
+      nationalIdNumber: user.nationalIdNumber,
     }),
   );
 });
@@ -677,6 +716,40 @@ router.put("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise
   res.json(UpdatePatientLocationResponse.parse(userResponse(updated)));
 });
 
+router.put("/patient/identity", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const parsed = UpdatePatientIdentityBody.safeParse(req.body);
+  if (!parsed.success || !isPlausibleBirthDate(parsed.data.dateOfBirth)) {
+    invalidBody(res, "Choose your sex and enter a valid date of birth or age.");
+    return;
+  }
+  const nationalIdNumber = normalizeNationalId(parsed.data.nationalIdNumber);
+  if (nationalIdNumber && !/^[A-Z0-9]{5,20}$/.test(nationalIdNumber)) {
+    invalidBody(res, "Enter the ID card number as it appears on the card (letters and digits only).");
+    return;
+  }
+  const dateOfBirth = parsed.data.dateOfBirthEstimated
+    ? `${parsed.data.dateOfBirth.getUTCFullYear()}-01-01`
+    : parsed.data.dateOfBirth.toISOString().slice(0, 10);
+  try {
+    const [updated] = await db
+      .update(usersTable)
+      .set({ sex: parsed.data.sex, dateOfBirth, dateOfBirthEstimated: parsed.data.dateOfBirthEstimated, nationalIdNumber })
+      .where(eq(usersTable.id, req.currentUser!.id))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Profile not found." });
+      return;
+    }
+    res.json(UpdatePatientIdentityResponse.parse(userResponse(updated)));
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      res.status(409).json({ error: "This ID card number is already registered to another account. Contact support if this is your card." });
+      return;
+    }
+    throw error;
+  }
+});
+
 router.put("/patient/emergency-info", requireAuth("PATIENT"), async (req, res): Promise<void> => {
   const parsed = UpdateEmergencyInfoBody.safeParse(req.body);
   if (!parsed.success) {
@@ -700,10 +773,13 @@ router.put("/patient/emergency-info", requireAuth("PATIENT"), async (req, res): 
       },
     })
     .returning();
-  const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+  const [user] = await db
+    .select({ name: usersTable.name, sex: usersTable.sex, dateOfBirth: usersTable.dateOfBirth, dateOfBirthEstimated: usersTable.dateOfBirthEstimated })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
   res.json(
     UpdateEmergencyInfoResponse.parse(
-      emergencyResponse(saved, user?.name ?? "Patient"),
+      emergencyResponse(saved, user ?? { name: "Patient", sex: null, dateOfBirth: null, dateOfBirthEstimated: false }),
     ),
   );
 });
@@ -1233,7 +1309,7 @@ router.post(
           ...notificationMessages.emergencyLookup(languageOf(patient.preferredLanguage), doctor.name, doctor.hospitalName, reason),
         });
       });
-      if (emergency) results.push({ emergencyInfo: emergencyResponse(emergency, patient.name) });
+      if (emergency) results.push({ emergencyInfo: emergencyResponse(emergency, patient) });
     }
     res.json(EmergencyPatientLookupResponse.parse(results));
   },
@@ -1287,6 +1363,10 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
       patientId: patient.id,
       patientDisplayId: patient.patientDisplayId,
       patientName: patient.name,
+      patientSex: sexOf(patient.sex),
+      patientDateOfBirth: patient.dateOfBirth ?? null,
+      patientDateOfBirthEstimated: patient.dateOfBirthEstimated,
+      patientNationalIdNumber: status === "GRANTED" ? patient.nationalIdNumber : null,
     });
 
   if (patient.accessApprovalMode === "ASK") {
@@ -1686,7 +1766,7 @@ router.get(
       entityType: "emergency_info",
       hospitalName: req.currentUser!.hospitalName,
     });
-    res.json(GetPatientEmergencyResponse.parse(emergencyResponse(info, patient.name)));
+    res.json(GetPatientEmergencyResponse.parse(emergencyResponse(info, patient)));
   },
 );
 
@@ -2379,6 +2459,49 @@ router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMI
     email: result.email,
     temporaryPassword,
   }));
+});
+
+router.get("/admin/possible-duplicates", requireAuth("ADMIN"), async (_req, res): Promise<void> => {
+  const patients = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      patientDisplayId: usersTable.patientDisplayId,
+      sex: usersTable.sex,
+      dateOfBirth: usersTable.dateOfBirth,
+      dateOfBirthEstimated: usersTable.dateOfBirthEstimated,
+      region: usersTable.locationRegion,
+      nationalIdNumber: usersTable.nationalIdNumber,
+      createdAt: usersTable.createdAt,
+    })
+    .from(usersTable)
+    .where(and(eq(usersTable.role, "PATIENT"), eq(usersTable.isActive, true)))
+    .orderBy(asc(usersTable.createdAt));
+  // Same name (any word order, accents ignored) and same birth year, unless both sexes are known and differ.
+  const byNameAndYear = new Map<string, typeof patients>();
+  for (const patient of patients) {
+    if (!patient.dateOfBirth) continue;
+    const key = `${nameTokens(patient.name).join(" ")}|${patient.dateOfBirth.slice(0, 4)}`;
+    byNameAndYear.set(key, [...(byNameAndYear.get(key) ?? []), patient]);
+  }
+  const toEntry = (patient: (typeof patients)[number]) => ({
+    userId: patient.id,
+    name: patient.name,
+    patientDisplayId: patient.patientDisplayId,
+    sex: sexOf(patient.sex),
+    dateOfBirth: patient.dateOfBirth,
+    dateOfBirthEstimated: patient.dateOfBirthEstimated,
+    region: patient.region,
+    createdAt: patient.createdAt.toISOString(),
+  });
+  const groups = [];
+  for (const group of byNameAndYear.values()) {
+    if (group.length < 2) continue;
+    const sexes = new Set(group.map((patient) => patient.sex).filter(Boolean));
+    if (sexes.size > 1) continue;
+    groups.push({ reason: "SAME_NAME_AND_BIRTH_YEAR" as const, patients: group.map(toEntry) });
+  }
+  res.json(GetAdminPossibleDuplicatesResponse.parse(groups.slice(0, 100)));
 });
 
 router.get("/admin/search-user", requireAuth("ADMIN"), async (req, res): Promise<void> => {

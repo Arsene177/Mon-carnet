@@ -7,6 +7,7 @@
  */
 import type { Language } from './language';
 import type { RegistrationInputRole } from './registrationInputRole';
+import type { Sex } from './sex';
 
 export interface RegistrationInput {
   /**
@@ -22,6 +23,10 @@ export interface RegistrationInput {
      */
   password: string;
   preferredLanguage?: Language;
+  sex?: Sex;
+  dateOfBirthEstimated?: boolean;
+  /** @maxLength 30 */
+  nationalIdNumber?: string;
   role: RegistrationInputRole;
   dateOfBirth?: Date;
   /** @maxLength 300 */

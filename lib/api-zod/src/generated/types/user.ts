@@ -8,8 +8,12 @@
 import type { AccountStatus } from './accountStatus';
 import type { Language } from './language';
 import type { Role } from './role';
+import type { Sex } from './sex';
 
 export interface User {
+  sex: Sex | null;
+  /** True when only the birth year is known; dateOfBirth is then 1 January of that year. */
+  dateOfBirthEstimated: boolean;
   preferredLanguage: Language;
   id: number;
   email: string;

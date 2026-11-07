@@ -28,6 +28,14 @@ export const AccountStatus = {
   INACTIVE: 'INACTIVE',
 } as const;
 
+export type Sex = typeof Sex[keyof typeof Sex];
+
+
+export const Sex = {
+  FEMALE: 'FEMALE',
+  MALE: 'MALE',
+} as const;
+
 export type Language = typeof Language[keyof typeof Language];
 
 
@@ -37,6 +45,9 @@ export const Language = {
 } as const;
 
 export interface User {
+  sex: Sex | null;
+  /** True when only the birth year is known; dateOfBirth is then 1 January of that year. */
+  dateOfBirthEstimated: boolean;
   preferredLanguage: Language;
   id: number;
   email: string;
@@ -87,6 +98,10 @@ export interface RegistrationInput {
      */
   password: string;
   preferredLanguage?: Language;
+  sex?: Sex;
+  dateOfBirthEstimated?: boolean;
+  /** @maxLength 30 */
+  nationalIdNumber?: string;
   role: RegistrationInputRole;
   dateOfBirth?: string;
   /** @maxLength 300 */
@@ -236,6 +251,10 @@ export interface ChangePasswordInput {
 export interface EmergencyInfo {
   patientId: number;
   patientName: string;
+  patientSex: Sex | null;
+  /** @nullable */
+  patientDateOfBirth: string | null;
+  patientDateOfBirthEstimated: boolean;
   bloodGroup: string;
   weightKg: number;
   heightCm: number;
@@ -278,6 +297,8 @@ export interface EmergencyInfoInput {
 }
 
 export interface PatientProfile {
+  /** @nullable */
+  nationalIdNumber: string | null;
   user: User;
   /**
      * @minLength 8
@@ -527,6 +548,48 @@ export interface PermissionGrantInput {
   durationDays: number;
 }
 
+export interface PatientIdentityInput {
+  sex: Sex;
+  dateOfBirth: string;
+  dateOfBirthEstimated: boolean;
+  /**
+     * Cameroon national ID card (CNI) number. Optional.
+     * @maxLength 30
+     * @nullable
+     */
+  nationalIdNumber: string | null;
+}
+
+export interface PossibleDuplicatePatient {
+  userId: number;
+  name: string;
+  /** @nullable */
+  patientDisplayId: string | null;
+  sex: Sex | null;
+  /** @nullable */
+  dateOfBirth: string | null;
+  dateOfBirthEstimated: boolean;
+  /** @nullable */
+  region: string | null;
+  createdAt: string;
+}
+
+/**
+ * Same name in any word order and the same birth year. National ID numbers are unique, so they never repeat.
+ */
+export type PossibleDuplicateGroupReason = typeof PossibleDuplicateGroupReason[keyof typeof PossibleDuplicateGroupReason];
+
+
+export const PossibleDuplicateGroupReason = {
+  SAME_NAME_AND_BIRTH_YEAR: 'SAME_NAME_AND_BIRTH_YEAR',
+} as const;
+
+export interface PossibleDuplicateGroup {
+  /** Same name in any word order and the same birth year. National ID numbers are unique, so they never repeat. */
+  reason: PossibleDuplicateGroupReason;
+  patients: PossibleDuplicatePatient[];
+}
+
 export interface LanguageInput {
   language: Language;
 }
@@ -593,6 +656,15 @@ export const PatientBookletAccessStatus = {
 } as const;
 
 export interface PatientBookletAccess {
+  patientSex: Sex | null;
+  /** @nullable */
+  patientDateOfBirth: string | null;
+  patientDateOfBirthEstimated: boolean;
+  /**
+     * Only when access is granted; null while a request is pending.
+     * @nullable
+     */
+  patientNationalIdNumber: string | null;
   /** PENDING means the patient must approve the request before the booklet opens. */
   status: PatientBookletAccessStatus;
   patientId: number;

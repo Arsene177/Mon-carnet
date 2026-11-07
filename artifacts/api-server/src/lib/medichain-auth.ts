@@ -141,6 +141,8 @@ export function userResponse(user: typeof usersTable.$inferSelect) {
     doctorVerified: user.doctorVerified,
     isActive: user.isActive,
     preferredLanguage: user.preferredLanguage === "en" ? "en" : "fr",
+    sex: user.sex === "FEMALE" || user.sex === "MALE" ? user.sex : null,
+    dateOfBirthEstimated: user.dateOfBirthEstimated,
     createdAt: user.createdAt.toISOString(),
   };
 }

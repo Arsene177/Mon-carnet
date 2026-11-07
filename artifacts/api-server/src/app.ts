@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
@@ -70,5 +70,18 @@ app.post("/api/auth/password-reset-requests", passwordResetLimiter);
 app.get("/api/booklet-verification/:verificationCode", verificationLimiter);
 
 app.use("/api", router);
+
+// Never send stack traces or database details to the client: they can contain personal data.
+app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+  const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" && error.status >= 400 && error.status < 500
+    ? error.status
+    : 500;
+  if (status >= 500) req.log.error({ err: error }, "Unhandled request error");
+  res.status(status).json({ error: status >= 500 ? "Something went wrong. Please try again." : "The request could not be processed." });
+});
 
 export default app;

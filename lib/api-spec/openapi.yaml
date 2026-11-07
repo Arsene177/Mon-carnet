@@ -157,6 +157,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /patient/identity:
+    put:
+      operationId: updatePatientIdentity
+      tags: [patient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatientIdentityInput"
+      responses:
+        "200":
+          description: Identity details saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "409":
+          description: This national ID number is already registered to another account
   /patient/emergency-info:
     put:
       operationId: updateEmergencyInfo
@@ -798,6 +817,19 @@ paths:
                 $ref: "#/components/schemas/AdminPasswordResetResult"
         "404":
           description: Request is no longer pending or account no longer exists
+  /admin/possible-duplicates:
+    get:
+      operationId: getAdminPossibleDuplicates
+      tags: [admin]
+      responses:
+        "200":
+          description: Groups of active patient accounts that may belong to the same person
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PossibleDuplicateGroup"
   /admin/search-user:
     get:
       operationId: searchUsers
@@ -929,8 +961,10 @@ components:
       enum: [PENDING, ACTIVE, INACTIVE]
     User:
       type: object
-      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage]
+      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage, sex, dateOfBirthEstimated]
       properties:
+        sex: { oneOf: [{ $ref: "#/components/schemas/Sex" }, { type: "null" }] }
+        dateOfBirthEstimated: { type: boolean, description: "True when only the birth year is known; dateOfBirth is then 1 January of that year." }
         preferredLanguage: { $ref: "#/components/schemas/Language" }
         id: { type: integer }
         email: { type: string, format: email }
@@ -960,6 +994,9 @@ components:
         email: { type: string, format: email, maxLength: 254 }
         password: { type: string, minLength: 8, maxLength: 128 }
         preferredLanguage: { $ref: "#/components/schemas/Language" }
+        sex: { $ref: "#/components/schemas/Sex" }
+        dateOfBirthEstimated: { type: boolean }
+        nationalIdNumber: { type: string, maxLength: 30 }
         role: { type: string, enum: [PATIENT, DOCTOR] }
         dateOfBirth: { type: string, format: date }
         contactInfo: { type: string, maxLength: 300 }
@@ -1066,10 +1103,13 @@ components:
         newPassword: { type: string, minLength: 8, maxLength: 128 }
     EmergencyInfo:
       type: object
-      required: [patientId, patientName, bloodGroup, weightKg, heightCm, allergies, emergencyContact, updatedAt]
+      required: [patientId, patientName, patientSex, patientDateOfBirth, patientDateOfBirthEstimated, bloodGroup, weightKg, heightCm, allergies, emergencyContact, updatedAt]
       properties:
         patientId: { type: integer }
         patientName: { type: string }
+        patientSex: { oneOf: [{ $ref: "#/components/schemas/Sex" }, { type: "null" }] }
+        patientDateOfBirth: { type: ["string", "null"], format: date }
+        patientDateOfBirthEstimated: { type: boolean }
         bloodGroup: { type: string }
         weightKg: { type: number }
         heightCm: { type: number }
@@ -1087,8 +1127,9 @@ components:
         emergencyContact: { type: string, maxLength: 300 }
     PatientProfile:
       type: object
-      required: [user, patientDisplayId, patientAccessId, emergencyInfo, recordCount, permissionsCount]
+      required: [user, patientDisplayId, patientAccessId, emergencyInfo, recordCount, permissionsCount, nationalIdNumber]
       properties:
+        nationalIdNumber: { type: ["string", "null"] }
         user: { $ref: "#/components/schemas/User" }
         patientDisplayId: { type: string, minLength: 8, maxLength: 8, pattern: "^CM[A-Z0-9]{6}$" }
         patientAccessId:
@@ -1254,6 +1295,37 @@ components:
       properties:
         doctorEmail: { type: string, format: email }
         durationDays: { type: integer, minimum: 1, maximum: 365 }
+    Sex:
+      type: string
+      enum: [FEMALE, MALE]
+    PatientIdentityInput:
+      type: object
+      required: [sex, dateOfBirth, dateOfBirthEstimated, nationalIdNumber]
+      properties:
+        sex: { $ref: "#/components/schemas/Sex" }
+        dateOfBirth: { type: string, format: date }
+        dateOfBirthEstimated: { type: boolean }
+        nationalIdNumber: { type: ["string", "null"], maxLength: 30, description: "Cameroon national ID card (CNI) number. Optional." }
+    PossibleDuplicatePatient:
+      type: object
+      required: [userId, name, patientDisplayId, sex, dateOfBirth, dateOfBirthEstimated, region, createdAt]
+      properties:
+        userId: { type: integer }
+        name: { type: string }
+        patientDisplayId: { type: ["string", "null"] }
+        sex: { oneOf: [{ $ref: "#/components/schemas/Sex" }, { type: "null" }] }
+        dateOfBirth: { type: ["string", "null"], format: date }
+        dateOfBirthEstimated: { type: boolean }
+        region: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+    PossibleDuplicateGroup:
+      type: object
+      required: [reason, patients]
+      properties:
+        reason: { type: string, enum: [SAME_NAME_AND_BIRTH_YEAR], description: "Same name in any word order and the same birth year. National ID numbers are unique, so they never repeat." }
+        patients:
+          type: array
+          items: { $ref: "#/components/schemas/PossibleDuplicatePatient" }
     Language:
       type: string
       enum: [fr, en]
@@ -1305,8 +1377,12 @@ components:
           description: The patient's CM ID and booklet access code.
     PatientBookletAccess:
       type: object
-      required: [status, patientId, patientDisplayId, patientName]
+      required: [status, patientId, patientDisplayId, patientName, patientSex, patientDateOfBirth, patientDateOfBirthEstimated, patientNationalIdNumber]
       properties:
+        patientSex: { oneOf: [{ $ref: "#/components/schemas/Sex" }, { type: "null" }] }
+        patientDateOfBirth: { type: ["string", "null"], format: date }
+        patientDateOfBirthEstimated: { type: boolean }
+        patientNationalIdNumber: { type: ["string", "null"], description: "Only when access is granted; null while a request is pending." }
         status:
           type: string
           enum: [GRANTED, PENDING]

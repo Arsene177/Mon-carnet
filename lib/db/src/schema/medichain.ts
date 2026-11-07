@@ -39,6 +39,12 @@ export const usersTable = pgTable(
     patientDisplayId: text("patient_display_id"),
     patientAccessId: text("patient_access_id"),
     dateOfBirth: date("date_of_birth", { mode: "string" }),
+    // True when the patient gave an age instead of an exact date (stored as 1 January of the birth year).
+    dateOfBirthEstimated: boolean("date_of_birth_estimated").notNull().default(false),
+    // Patients only: "FEMALE" or "MALE"; null until provided.
+    sex: text("sex"),
+    // Patients only: Cameroon national ID card (CNI) number, upper-case without spaces. Never shown to admins.
+    nationalIdNumber: text("national_id_number"),
     contactInfo: text("contact_info"),
     // Patients only. AUTOMATIC: a doctor entering the CM ID gets access until revoked.
     // ASK: the doctor's request waits until the patient approves or rejects it.
@@ -58,6 +64,7 @@ export const usersTable = pgTable(
     uniqueIndex("medichain_users_email_unique").on(table.email),
     uniqueIndex("medichain_users_patient_display_id_unique").on(table.patientDisplayId),
     uniqueIndex("medichain_users_patient_access_id_unique").on(table.patientAccessId),
+    uniqueIndex("medichain_users_national_id_unique").on(table.nationalIdNumber),
     index("medichain_users_role_index").on(table.role),
   ],
 );
