@@ -47,6 +47,7 @@ import type {
   DoctorStats,
   EmergencyInfo,
   EmergencyInfoInput,
+  EmergencyLookupInput,
   ExportAdminDirectoryParams,
   GetAdminDirectoryParams,
   GetMedicalAttachmentDownloadUrlParams,
@@ -69,7 +70,6 @@ import type {
   PermissionGrantInput,
   RegistrationInput,
   SearchDiseaseCodesParams,
-  SearchPatientsParams,
   SearchUsersParams,
   User
 } from './api.schemas';
@@ -1913,29 +1913,36 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getUpdateDoctorProfileMutationOptions(options));
     }
 
-export const getSearchPatientsUrl = (params: SearchPatientsParams,) => {
-  const normalizedParams = new URLSearchParams();
+export const getEmergencyPatientLookupUrl = () => {
 
-  Object.entries(params || {}).forEach(([key, value]) => {
 
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : String(value))
-    }
-  });
 
-  const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/doctor/search-patient?${stringifiedParams}` : `/api/doctor/search-patient`
+  return `/api/doctor/emergency-lookup`
 }
 
-export const searchPatients = async (params: SearchPatientsParams, options?: Parameters<typeof customFetch>[1]): Promise<PatientSearchResult[]> => {
+export const emergencyPatientLookup = async (emergencyLookupInput: EmergencyLookupInput, options?: Parameters<typeof customFetch>[1]): Promise<PatientSearchResult[]> => {
 
-  return customFetch<PatientSearchResult[]>(getSearchPatientsUrl(params),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PatientSearchResult[]>(getEmergencyPatientLookupUrl(),
   {
     ...options,
-    method: 'GET'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(emergencyLookupInput)
   }
 );}
 
@@ -1943,53 +1950,50 @@ export const searchPatients = async (params: SearchPatientsParams, options?: Par
 
 
 
-export const getSearchPatientsQueryKey = (params?: SearchPatientsParams,) => {
-    return [
-    `/api/doctor/search-patient`, ...(params ? [params] : [])
-    ] as const;
+export const getEmergencyPatientLookupMutationKey = () => ['emergencyPatientLookup'] as const;
+
+export const getEmergencyPatientLookupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof emergencyPatientLookup>>, TError,EmergencyPatientLookupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof emergencyPatientLookup>>, TError,EmergencyPatientLookupMutationVariables, TContext> => {
+
+const mutationKey = getEmergencyPatientLookupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof emergencyPatientLookup>>, EmergencyPatientLookupMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  emergencyPatientLookup(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EmergencyPatientLookupMutationResult = NonNullable<Awaited<ReturnType<typeof emergencyPatientLookup>>>
+    export type EmergencyPatientLookupMutationBody = BodyType<EmergencyLookupInput>
+    export type EmergencyPatientLookupMutationError = ErrorType<void>
+    export type EmergencyPatientLookupMutationVariables = {data: BodyType<EmergencyLookupInput>}
+
+    export const useEmergencyPatientLookup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof emergencyPatientLookup>>, TError,EmergencyPatientLookupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof emergencyPatientLookup>>,
+        TError,
+        EmergencyPatientLookupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getEmergencyPatientLookupMutationOptions(options));
     }
-
-
-export const getSearchPatientsQueryOptions = <TData = Awaited<ReturnType<typeof searchPatients>>, TError = ErrorType<unknown>>(params: SearchPatientsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchPatients>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getSearchPatientsQueryKey(params);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchPatients>>> = ({ signal }) => searchPatients(params, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchPatients>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type SearchPatientsQueryResult = NonNullable<Awaited<ReturnType<typeof searchPatients>>>
-export type SearchPatientsQueryError = ErrorType<unknown>
-
-
-
-export function useSearchPatients<TData = Awaited<ReturnType<typeof searchPatients>>, TError = ErrorType<unknown>>(
- params: SearchPatientsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchPatients>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getSearchPatientsQueryOptions(params,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
 
 export const getGrantPatientAccessByIdUrl = () => {
 

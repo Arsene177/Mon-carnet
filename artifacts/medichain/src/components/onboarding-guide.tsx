@@ -52,7 +52,7 @@ function stepsForRole(role: User['role']): GuideStep[] {
       {
         tab: 'Patients',
         title: 'Doctor account review',
-        description: 'Your account is under review. Once approved, patient search and record entry will become available.',
+        description: 'Your account is under review. Once approved, emergency lookup and record entry will become available.',
         target: 'section-heading',
       },
     ];
@@ -62,8 +62,8 @@ function stepsForRole(role: User['role']): GuideStep[] {
     return [
       {
         tab: 'Patients',
-        title: 'Find a patient',
-        description: 'Search for a patient by name or email. Emergency details may be visible, but full records require the patient’s active permission.',
+        title: 'Emergency lookup',
+        description: 'In an emergency, look up a patient by full name to see their emergency details. You must give a reason, and the patient is told. For full records, use the patient’s CM ID in Record entry.',
         target: 'workspace-navigation',
       },
       {

@@ -62,3 +62,11 @@ export const apiLimiter = limiter({
   limit: 300,
   message: { error: "Too many requests. Wait a minute and try again." },
 });
+
+/** Emergency name lookups per doctor account. Use after requireAuth. */
+export const emergencyLookupLimiter = limiter({
+  windowMs: ONE_HOUR,
+  limit: 10,
+  keyGenerator: (req) => `doctor:${req.currentUser?.id ?? req.ip}`,
+  message: { error: "You have made 10 emergency lookups in the last hour. Ask the patient for their CM ID, or try again later." },
+});

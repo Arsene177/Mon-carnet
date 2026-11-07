@@ -243,6 +243,9 @@ export const patientSearchesTable = pgTable(
     searchedAt: timestamp("searched_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // Emergency reason the doctor declared; null for searches made before reasons were required.
+    reason: text("reason"),
+    hospitalName: text("hospital_name"),
   },
   (table) => [
     index("medichain_search_patient_index").on(table.patientId, table.searchedAt),

@@ -342,6 +342,8 @@ export const RevokePatientPermissionResponse = zod.void()
 
 
 export const GetPatientPendingRequestsResponseItem = zod.object({
+  "reason": zod.string().nullable(),
+  "hospitalName": zod.string().nullable(),
   "doctorId": zod.number().int(),
   "doctorName": zod.string(),
   "doctorEmail": zod.string().email(),
@@ -468,15 +470,21 @@ export const UpdateDoctorProfileResponse = zod.object({
 })
 
 
-export const searchPatientsQueryQueryMin = 2;
+export const emergencyPatientLookupBodyFullNameMin = 3;
+export const emergencyPatientLookupBodyFullNameMax = 120;
+
+export const emergencyPatientLookupBodyReasonMin = 10;
+export const emergencyPatientLookupBodyReasonMax = 300;
 
 
 
-export const SearchPatientsQueryParams = zod.object({
-  "query": zod.coerce.string().min(searchPatientsQueryQueryMin)
+export const EmergencyPatientLookupBody = zod.object({
+  "fullName": zod.string().min(emergencyPatientLookupBodyFullNameMin).max(emergencyPatientLookupBodyFullNameMax).describe('The patient\'s full name, in any word order.'),
+  "dateOfBirth": zod.coerce.date().nullable(),
+  "reason": zod.string().min(emergencyPatientLookupBodyReasonMin).max(emergencyPatientLookupBodyReasonMax).describe('Why emergency information is needed without the patient\'s CM ID. Shown to the patient.')
 })
 
-export const SearchPatientsResponseItem = zod.object({
+export const EmergencyPatientLookupResponseItem = zod.object({
   "emergencyInfo": zod.object({
   "patientId": zod.number().int(),
   "patientName": zod.string(),
@@ -488,7 +496,7 @@ export const SearchPatientsResponseItem = zod.object({
   "updatedAt": zod.coerce.date()
 })
 })
-export const SearchPatientsResponse = zod.array(SearchPatientsResponseItem)
+export const EmergencyPatientLookupResponse = zod.array(EmergencyPatientLookupResponseItem)
 
 
 export const grantPatientAccessByIdBodyPatientDisplayIdMin = 8;

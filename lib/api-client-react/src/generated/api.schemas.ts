@@ -592,11 +592,32 @@ export interface PatientBookletAccess {
 }
 
 export interface PatientSearchRequest {
+  /** @nullable */
+  reason: string | null;
+  /** @nullable */
+  hospitalName: string | null;
   doctorId: number;
   doctorName: string;
   doctorEmail: string;
   doctorVerified: boolean;
   searchedAt: string;
+}
+
+export interface EmergencyLookupInput {
+  /**
+     * The patient's full name, in any word order.
+     * @minLength 3
+     * @maxLength 120
+     */
+  fullName: string;
+  /** @nullable */
+  dateOfBirth: string | null;
+  /**
+     * Why emergency information is needed without the patient's CM ID. Shown to the patient.
+     * @minLength 10
+     * @maxLength 300
+     */
+  reason: string;
 }
 
 export interface PatientSearchResult {
@@ -730,13 +751,6 @@ export interface AdminAnalytics {
   systemStatus: AdminAnalyticsSystemStatusItem[];
   epidemicMetrics: AdminEpidemicMetric[];
 }
-
-export type SearchPatientsParams = {
-/**
- * @minLength 2
- */
-query: string;
-};
 
 export type ConfirmMedicalAttachmentUpload200Status = typeof ConfirmMedicalAttachmentUpload200Status[keyof typeof ConfirmMedicalAttachmentUpload200Status];
 

@@ -15,19 +15,19 @@ import {
   getGetPatientPendingRequestsQueryKey, getGetPatientPermissionsQueryKey, getGetAdminPasswordResetRequestsQueryKey,
   getGetPatientProfileQueryKey, getGetPatientRecordsQueryKey, getGetPendingDoctorsQueryKey,
   getGetDoctorPatientRecordsQueryKey, getGetDoctorStatsQueryKey,
-  getSearchDiseaseCodesQueryKey, getSearchPatientsQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
+  getSearchDiseaseCodesQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
   useAddDoctorPatientRecord, useApproveDoctor, useChangePassword, useCreateBookletVerification, useGetAdminAnalytics, useGetAdminStats,
   useGetDoctorPatientRecords, useGetDoctorProfile, useGetDoctorStats, useGetMe, useGetNotificationInbox,
   useApprovePatientAccessRequest, useGetPatientAccessRequests, useGetPatientAccessSettings, useRejectPatientAccessRequest, useUpdatePatientAccessSettings,
   useGetPatientPendingRequests, useGetPatientPermissions,
   useGetPatientProfile, useGetPatientRecords, useGetPendingDoctors, useGrantPatientPermission,
-  useGrantPatientAccessById, useLogin, useRegister, useRevokePatientPermission, useSearchPatients,
+  useGrantPatientAccessById, useLogin, useRegister, useRevokePatientPermission, useEmergencyPatientLookup,
   useSearchDiseaseCodes, useSearchUsers, useUpdateAdminEpidemicThreshold, useUpdateAdminUserStatus, useUpdateEmergencyInfo, useVerifyDoctor,
   useRequestPasswordReset, useGetAdminPasswordResetRequests, useResetAdminRequestedPassword,
 } from '@workspace/api-client-react';
 import type {
   AccessApprovalMode, AccessRequest, AdminEpidemicMetric, BookletVerificationIssue, DiseaseCode, EmergencyInfo, EmergencyInfoInput,
-  MedicalRecord, MedicalRecordInput, MedicalRecordRecordType, PatientProfile, User,
+  MedicalRecord, MedicalRecordInput, PatientSearchResult, MedicalRecordRecordType, PatientProfile, User,
 } from '@workspace/api-client-react';
 import { CAMEROON_ARRONDISSEMENTS, CAMEROON_REGIONS } from '@workspace/api-zod';
 import { Form } from '@/components/ui/form';
@@ -904,7 +904,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
           </div>
         </section>
         {(approvalMode === 'ASK' || Boolean(accessRequests.data?.length)) && <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Requests waiting for you</h2><p className="panel-caption">These doctors entered your CM ID and asked to open your booklet</p></div><span className="tag warning">{accessRequests.data?.length ?? 0} waiting</span></div><div className="panel-body">{accessRequests.isLoading ? <div className="skeleton"/> : accessRequests.error ? <ErrorState error={accessRequests.error} retry={()=>accessRequests.refetch()}/> : accessRequests.data?.length ? accessRequests.data.map((request)=><div className="data-row" key={request.id}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}{request.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.hospitalName || 'Hospital not provided'} · {new Date(request.requestedAt).toLocaleString()} · expires {dateLabel(request.expiresAt)}</small></span></div><div className="request-actions"><button className="btn small ghost" disabled={rejectRequest.isPending} onClick={()=>rejectAccessRequest(request)} data-testid={`button-reject-request-${request.id}`}><X size={13}/> Reject</button><button className="btn small" onClick={()=>{setApprovalDuration('until-revoked');setApprovingRequest(request);}} data-testid={`button-approve-request-${request.id}`}><Check size={13}/> Approve</button></div></div>) : <EmptyState icon={KeyRound} title="No requests waiting" children="When a doctor enters your CM ID, their request appears here for you to approve or reject."/>}</div></section>}
-        <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Clinician requests</h2><p className="panel-caption">A doctor searched for your care profile</p></div><span className="tag warning">{requests.data?.length ?? 0} pending</span></div><div className="panel-body">{requests.data?.length ? requests.data.map((request)=><div className="data-row" key={`${request.doctorId}-${request.searchedAt}`}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}{request.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.doctorEmail} · {dateLabel(request.searchedAt)}</small></span></div><button className="btn small secondary" onClick={()=>{setGrantEmail(request.doctorEmail);setGrantOpen(true);}} data-testid={`button-review-request-${request.doctorId}`}>Review access</button></div>) : <EmptyState icon={KeyRound} title="No requests to review" children="When a doctor asks to see your profile, you can decide whether to grant access here."/>}</div></section>
+        <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Emergency lookups</h2><p className="panel-caption">Doctors who looked you up by name and the reason they gave. You can give them full access if you know them.</p></div><span className="tag warning">{requests.data?.length ?? 0} recent</span></div><div className="panel-body">{requests.data?.length ? requests.data.map((request)=><div className="data-row" key={`${request.doctorId}-${request.searchedAt}`}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}{request.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.hospitalName || request.doctorEmail} · {dateLabel(request.searchedAt)}{request.reason ? <> · Reason: “{request.reason}”</> : null}</small></span></div><button className="btn small secondary" onClick={()=>{setGrantEmail(request.doctorEmail);setGrantOpen(true);}} data-testid={`button-review-request-${request.doctorId}`}>Review access</button></div>) : <EmptyState icon={KeyRound} title="No emergency lookups" children="When a doctor looks you up by name in an emergency, you will see who, where and why here."/>}</div></section>
         <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your active access</h2><p className="panel-caption">Only approved clinicians can see your records</p></div></div><div className="panel-body">{permissions.data?.filter(p=>p.granted).length ? permissions.data.filter(p=>p.granted).map((permission)=><div className="data-row" key={permission.id}><div className="person-cell"><div className="avatar">{initials(permission.doctorName)}</div><span>{permission.doctorName}{permission.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{permission.doctorEmail}</small></span></div><span className="tag">{permission.expiresAt ? `Until ${dateLabel(permission.expiresAt)}` : 'No expiration'}</span><button className="btn small ghost" disabled={revoke.isPending} onClick={()=>revokeDoctor(permission.doctorId)} data-testid={`button-revoke-${permission.doctorId}`}><Trash2 size={13}/> Revoke</button></div>) : <EmptyState icon={Shield} title="No clinicians have access" children="Grant access by entering a doctor's registered email address."/>}</div></section>
       </>}
       <section className="panel" style={{marginTop:17}}>
@@ -1055,7 +1055,12 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 function DoctorView({ user, tab }: { user: User; tab: Tab }) {
-  const [search, setSearch] = useState('');
+  const [lookupName, setLookupName] = useState('');
+  const [lookupDob, setLookupDob] = useState('');
+  const [lookupReasonChoice, setLookupReasonChoice] = useState('');
+  const [lookupReasonDetail, setLookupReasonDetail] = useState('');
+  const [lookupResults, setLookupResults] = useState<PatientSearchResult[] | null>(null);
+  const [lookupError, setLookupError] = useState('');
   const [patientAccessCode, setPatientAccessCode] = useState('');
   const [codeSearch, setCodeSearch] = useState('');
   const [activeCodeRow, setActiveCodeRow] = useState<number | null>(null);
@@ -1084,9 +1089,8 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const activeDoctor = user.role === 'DOCTOR';
   const profile = useGetDoctorProfile({ query: { enabled: activeDoctor, queryKey: getGetDoctorProfileQueryKey() } });
   const stats = useGetDoctorStats({ query: { enabled: activeDoctor, queryKey: getGetDoctorStatsQueryKey() } });
-  const params = useMemo(() => ({ query: search.trim().length >= 2 ? search.trim() : '__' }), [search]);
   const codeSearchParams = useMemo(() => ({ query: codeSearch.trim().length >= 2 ? codeSearch.trim() : '__' }), [codeSearch]);
-  const searchResults = useSearchPatients(params, { query: { enabled: search.trim().length >= 2, queryKey: getSearchPatientsQueryKey(params), retry: false } });
+  const emergencyLookup = useEmergencyPatientLookup();
   const grantAccessById = useGrantPatientAccessById();
   const [accessRequestNotice, setAccessRequestNotice] = useState('');
   const diseaseCodeSearch = useSearchDiseaseCodes(codeSearchParams, { query: { enabled: activeDoctor && entryOpen && activeCodeRow !== null && codeSearch.trim().length >= 2, queryKey: getSearchDiseaseCodesQueryKey(codeSearchParams), retry: false } });
@@ -1284,6 +1288,19 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       setEntryOpen(false); setFollowUpSource(null); setSelectedDiseaseCodes([]); setActiveCodeRow(null); setViewingRecord(record); notify('Record added to the patient file.');
     }, onError: (error) => notify(errText(error)) });
   };
+  const lookupReason = [lookupReasonChoice, lookupReasonDetail.trim()].filter(Boolean).join(': ');
+  const submitEmergencyLookup = (event: FormEvent) => {
+    event.preventDefault();
+    setLookupError('');
+    setLookupResults(null);
+    emergencyLookup.mutate({ data: { fullName: lookupName.trim(), dateOfBirth: lookupDob || null, reason: lookupReason } }, {
+      onSuccess: (results) => setLookupResults(results),
+      onError: (error) => setLookupError(errText(error)),
+    });
+  };
+  const clearEmergencyLookup = () => {
+    setLookupName(''); setLookupDob(''); setLookupReasonChoice(''); setLookupReasonDetail(''); setLookupResults(null); setLookupError('');
+  };
   const submitPatientAccessCode = (event: FormEvent) => {
     event.preventDefault();
     setAccessRequestNotice('');
@@ -1338,11 +1355,22 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   if (user.role === 'PENDING_DOCTOR') return <><Heading eyebrow="Clinician access" title={`Welcome, Dr. ${user.name}.`} subtitle="Your account is under review. After account approval, you can use clinical features. Credential verification is a separate manual review."/><div className="security-banner"><div><h3>Account approval in progress</h3><p>Our administrative team is reviewing your account. Your professional medical number is also checked separately before you receive a certified badge.</p></div><Clock3 size={33} className="security-symbol"/></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Account profile</h2><p className="panel-caption">Information submitted with your registration</p></div><span className="tag warning">Pending review</span></div><div className="panel-body"><div className="data-row"><span className="data-key">Name</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">Email</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">Professional medical number</span><span className="data-value">{user.professionalMedicalNumber || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Submitted</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/></>;
   return <>
     {tab === 'Patients' && <>
-      <Heading eyebrow="Clinical workspace" title="Patient search" subtitle="Search any patient by name or email to find emergency information."/>
-      <div className="security-banner"><div><h3>Emergency information for the care team.</h3><p>Find emergency details across the patient database. Patients can grant booklet access by sharing their CM ID with an approved doctor.</p></div><ShieldCheck size={33} className="security-symbol"/></div>
-      <div className="searchbox" style={{marginBottom:18,width:'min(100%,550px)'}}><Search size={16} color="#81918c"/><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by patient name or email" data-testid="input-patient-search"/></div>
-      {search.trim().length < 2 ? <section className="panel"><EmptyState icon={Search} title="Search emergency information" children="Enter a patient's name or email. This search only returns emergency details." /></section> : searchResults.isLoading ? <div className="skeleton"/> : searchResults.error ? <ErrorState error={searchResults.error} retry={()=>searchResults.refetch()}/> : !searchResults.data?.length ? <section className="panel"><EmptyState icon={Users} title="No emergency information found" children="Try another search or ask the patient to add emergency details." /></section> :
-        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Emergency information</h2><p className="panel-caption">{searchResults.data.length} matching patient{searchResults.data.length===1?'':'s'}</p></div></div><div className="panel-body">{searchResults.data.map(({ emergencyInfo })=><article key={emergencyInfo.patientId} className="callout" style={{marginBottom:12}}><div className="callout-head"><HeartPulse size={16}/> {emergencyInfo.patientName}</div><div className="data-row"><span className="data-key">Blood group</span><span className="data-value">{emergencyInfo.bloodGroup}</span></div><div className="data-row"><span className="data-key">Allergies</span><span className="data-value">{emergencyInfo.allergies || 'None listed'}</span></div><div className="data-row"><span className="data-key">Emergency contact</span><span className="data-value">{emergencyInfo.emergencyContact || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Height / weight</span><span className="data-value">{emergencyInfo.heightCm} cm · {emergencyInfo.weightKg} kg</span></div><small>Updated {dateLabel(emergencyInfo.updatedAt)}</small></article>)}</div></section>}
+      <Heading eyebrow="Clinical workspace" title="Emergency lookup" subtitle="Find a patient's emergency information by full name when they cannot give you their CM ID."/>
+      <div className="security-banner"><div><h3>For emergencies only.</h3><p>Every lookup is recorded, and the patient is told who looked them up, where and why. For routine care, ask for the patient's CM ID and use Record entry.</p></div><ShieldCheck size={33} className="security-symbol"/></div>
+      <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Look up a patient</h2><p className="panel-caption">The full name must match exactly; word order, capitals and accents do not matter. Only emergency details are shown.</p></div></div><div className="panel-body">
+        <form onSubmit={submitEmergencyLookup}>
+          <div className="form-grid">
+            <div className="field"><label htmlFor="lookup-name">Patient's full name</label><input id="lookup-name" required minLength={3} maxLength={120} value={lookupName} onChange={e=>setLookupName(e.target.value)} placeholder="e.g. Ngo Marie Claire" autoComplete="off" data-testid="input-lookup-name"/></div>
+            <div className="field"><label htmlFor="lookup-dob">Date of birth <span className="field-note">(optional)</span></label><input id="lookup-dob" type="date" value={lookupDob} onChange={e=>setLookupDob(e.target.value)} data-testid="input-lookup-dob"/></div>
+            <div className="field"><label htmlFor="lookup-reason">Reason</label><select id="lookup-reason" required value={lookupReasonChoice} onChange={e=>setLookupReasonChoice(e.target.value)} data-testid="select-lookup-reason"><option value="">Choose a reason</option><option>Patient unconscious or unable to communicate</option><option>Patient arrived without their CM ID</option><option>Urgent treatment needs allergy or blood group information</option><option>Other emergency</option></select></div>
+            <div className="field"><label htmlFor="lookup-reason-detail">Details {lookupReasonChoice === 'Other emergency' ? '' : <span className="field-note">(optional)</span>}</label><input id="lookup-reason-detail" maxLength={200} required={lookupReasonChoice === 'Other emergency'} minLength={lookupReasonChoice === 'Other emergency' ? 5 : undefined} value={lookupReasonDetail} onChange={e=>setLookupReasonDetail(e.target.value)} placeholder="e.g. Road accident, admitted to A&E" data-testid="input-lookup-reason-detail"/></div>
+          </div>
+          <p className="field-note" style={{marginTop:10}}>The patient will see: “{lookupReason || 'your reason'}”.</p>
+          <div className="form-actions"><button className="btn ghost" type="button" onClick={clearEmergencyLookup}>Clear</button><button className="btn" type="submit" disabled={emergencyLookup.isPending} data-testid="button-emergency-lookup"><Search size={14}/> {emergencyLookup.isPending ? 'Looking up…' : 'Look up emergency information'}</button></div>
+        </form>
+      </div></section>
+      {lookupError ? <div className="error-state" role="alert" data-testid="text-lookup-error">{lookupError}</div> : lookupResults === null ? null : !lookupResults.length ? <section className="panel"><EmptyState icon={Users} title="No emergency information found" children="No patient with this exact name has saved emergency details. Check the spelling, or add the date of birth." /></section> :
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Emergency information</h2><p className="panel-caption">{lookupResults.length} matching patient{lookupResults.length===1?'':'s'}. Confirm identity before acting on these details.</p></div></div><div className="panel-body">{lookupResults.map(({ emergencyInfo })=><article key={emergencyInfo.patientId} className="callout" style={{marginBottom:12}}><div className="callout-head"><HeartPulse size={16}/> {emergencyInfo.patientName}</div><div className="data-row"><span className="data-key">Blood group</span><span className="data-value">{emergencyInfo.bloodGroup}</span></div><div className="data-row"><span className="data-key">Allergies</span><span className="data-value">{emergencyInfo.allergies || 'None listed'}</span></div><div className="data-row"><span className="data-key">Emergency contact</span><span className="data-value">{emergencyInfo.emergencyContact || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Height / weight</span><span className="data-value">{emergencyInfo.heightCm} cm · {emergencyInfo.weightKg} kg</span></div><small>Updated {dateLabel(emergencyInfo.updatedAt)}</small></article>)}</div></section>}
     </>}
     {entryOpen && canAccessSelectedPatient && <Modal title={followUpSource ? `Follow-up to ${followUpSource.recordType}` : `Add a record for ${patientDisplayId || 'patient'}`} onClose={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>
         {followUpSource ? <div className="callout record-source-callout"><div className="callout-head"><FileHeart size={16}/> This entry will be linked to</div><p><strong>{followUpSource.recordType}: {followUpSource.diagnosis || 'Care note'}</strong><br/>By {followUpSource.doctorName} · {dateLabel(followUpSource.createdAt)}</p></div> : <p className="field-note record-create-note">Saved records are permanent. To correct or add details to an existing entry, open it and choose “Add linked follow-up.”</p>}

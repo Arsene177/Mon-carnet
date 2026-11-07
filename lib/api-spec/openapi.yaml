@@ -376,26 +376,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
-  /doctor/search-patient:
-    get:
-      operationId: searchPatients
+  /doctor/emergency-lookup:
+    post:
+      operationId: emergencyPatientLookup
       tags: [doctor]
-      parameters:
-        - name: query
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmergencyLookupInput"
       responses:
         "200":
-          description: Emergency information only for patients matching the search
+          description: Emergency information only, for patients whose full name (and date of birth, if given) match exactly
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/PatientSearchResult"
+        "422":
+          description: Too many patients share this name; add the date of birth
+        "429":
+          description: Too many emergency lookups
   /doctor/patient-access:
     post:
       operationId: grantPatientAccessById
@@ -1286,13 +1289,22 @@ components:
         patientName: { type: string }
     PatientSearchRequest:
       type: object
-      required: [doctorId, doctorName, doctorEmail, doctorVerified, searchedAt]
+      required: [doctorId, doctorName, doctorEmail, doctorVerified, searchedAt, reason, hospitalName]
       properties:
+        reason: { type: ["string", "null"] }
+        hospitalName: { type: ["string", "null"] }
         doctorId: { type: integer }
         doctorName: { type: string }
         doctorEmail: { type: string, format: email }
         doctorVerified: { type: boolean }
         searchedAt: { type: string, format: date-time }
+    EmergencyLookupInput:
+      type: object
+      required: [fullName, dateOfBirth, reason]
+      properties:
+        fullName: { type: string, minLength: 3, maxLength: 120, description: "The patient's full name, in any word order." }
+        dateOfBirth: { type: ["string", "null"], format: date }
+        reason: { type: string, minLength: 10, maxLength: 300, description: Why emergency information is needed without the patient's CM ID. Shown to the patient. }
     PatientSearchResult:
       type: object
       required: [emergencyInfo]

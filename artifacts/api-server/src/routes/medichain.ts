@@ -19,6 +19,8 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  EmergencyPatientLookupBody,
+  EmergencyPatientLookupResponse,
   ApprovePatientAccessRequestBody,
   ApprovePatientAccessRequestParams,
   ApprovePatientAccessRequestResponse,
@@ -67,8 +69,6 @@ import {
   RevokeDoctorResponse,
   RevokePatientPermissionParams,
   RevokePatientPermissionResponse,
-  SearchPatientsQueryParams,
-  SearchPatientsResponse,
   SearchDiseaseCodesQueryParams,
   SearchDiseaseCodesResponse,
   SearchUsersQueryParams,
@@ -112,6 +112,7 @@ import {
   accessRequestsTable,
   passwordResetRequestsTable,
 } from "@workspace/db";
+import { emergencyLookupLimiter } from "../lib/rate-limits";
 import { createAccessToken, hashPassword, publicUser, requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
 
 const router: IRouter = Router();
@@ -870,6 +871,8 @@ router.get("/patient/pending-requests", requireAuth("PATIENT"), async (req, res)
         doctorEmail: row.doctor.email,
         doctorVerified: row.doctor.doctorVerified,
         searchedAt: row.search.searchedAt.toISOString(),
+        reason: row.search.reason,
+        hospitalName: row.search.hospitalName,
       });
     }
   }
@@ -1112,46 +1115,94 @@ router.put("/doctor/profile", requireAuth("DOCTOR"), async (req, res): Promise<v
   res.json(userResponse(updated));
 });
 
-router.get("/doctor/search-patient", requireAuth("DOCTOR"), async (req, res): Promise<void> => {
-  const parsed = SearchPatientsQueryParams.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Enter at least two characters to search." });
-    return;
-  }
-  const query = parsed.data.query.trim();
-  const patients = await db
-    .select()
-    .from(usersTable)
-    .where(
-      and(
+const ACCENTED = "ÀÁÂÃÄÅàáâãäåÈÉÊËèéêëÌÍÎÏìíîïÒÓÔÕÖòóôõöÙÚÛÜùúûüÇçÑñ";
+const UNACCENTED = "AAAAAAaaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn";
+const MAX_EMERGENCY_LOOKUP_MATCHES = 3;
+
+/** Lower-case name words without accents, sorted so that word order does not matter. */
+function nameTokens(name: string): string[] {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .sort();
+}
+
+router.post(
+  "/doctor/emergency-lookup",
+  requireAuth("DOCTOR"),
+  emergencyLookupLimiter,
+  async (req, res): Promise<void> => {
+    const parsed = EmergencyPatientLookupBody.safeParse(req.body);
+    if (!parsed.success) {
+      invalidBody(res, "Enter the patient's full name and the reason you need their emergency information (at least 10 characters).");
+      return;
+    }
+    const tokens = nameTokens(parsed.data.fullName);
+    const reason = parsed.data.reason.trim();
+    if (tokens.length < 2 || reason.length < 10) {
+      invalidBody(res, "Enter the patient's full name (at least two names) and the reason you need their emergency information.");
+      return;
+    }
+    const dateOfBirth = parsed.data.dateOfBirth ? parsed.data.dateOfBirth.toISOString().slice(0, 10) : null;
+    const searchableName = sql`lower(translate(${usersTable.name}, ${ACCENTED}, ${UNACCENTED}))`;
+    const candidates = await db
+      .select()
+      .from(usersTable)
+      .where(and(
         eq(usersTable.role, "PATIENT"),
         eq(usersTable.isActive, true),
-        or(ilike(usersTable.name, `%${query}%`), ilike(usersTable.email, `%${query}%`)),
-      ),
-    )
-    .limit(25);
-  const doctorId = req.currentUser!.id;
-  const results = await Promise.all(
-    patients.map(async (patient) => {
+        ...(dateOfBirth ? [eq(usersTable.dateOfBirth, dateOfBirth)] : []),
+        ...tokens.map((token) => sql`${searchableName} like ${`%${token}%`}`),
+      ))
+      .limit(200);
+    const wanted = tokens.join(" ");
+    const matches = candidates.filter((patient) => nameTokens(patient.name).join(" ") === wanted);
+    if (matches.length > MAX_EMERGENCY_LOOKUP_MATCHES) {
+      res.status(422).json({
+        error: `More than ${MAX_EMERGENCY_LOOKUP_MATCHES} patients have this name. Add the patient's date of birth to narrow the lookup.`,
+      });
+      return;
+    }
+
+    const doctor = req.currentUser!;
+    const results = [];
+    for (const patient of matches) {
       const [emergency] = await db
         .select()
         .from(emergencyInfoTable)
         .where(eq(emergencyInfoTable.userId, patient.id))
         .limit(1);
-      await db.insert(patientSearchesTable).values({ patientId: patient.id, doctorId });
-      if (!emergency) return null;
-      await db.insert(auditEventsTable).values({
-        actorUserId: doctorId,
-        patientId: patient.id,
-        action: "EMERGENCY_INFO_VIEWED",
-        entityType: "emergency_info",
-        hospitalName: req.currentUser!.hospitalName,
+      await db.transaction(async (tx) => {
+        await tx.insert(patientSearchesTable).values({
+          patientId: patient.id,
+          doctorId: doctor.id,
+          reason,
+          hospitalName: doctor.hospitalName,
+        });
+        if (!emergency) return;
+        await tx.insert(auditEventsTable).values({
+          actorUserId: doctor.id,
+          patientId: patient.id,
+          action: "EMERGENCY_INFO_VIEWED",
+          entityType: "emergency_info",
+          hospitalName: doctor.hospitalName,
+        });
+        await tx.insert(notificationsTable).values({
+          batchId: randomUUID(),
+          senderId: doctor.id,
+          recipientId: patient.id,
+          title: "Your emergency information was viewed",
+          body: `${doctor.name}${doctor.hospitalName ? ` at ${doctor.hospitalName}` : ""} looked you up by name and viewed your emergency information. Reason given: "${reason}". If you do not recognise this, report it to Mon carnet support.`,
+        });
       });
-      return { emergencyInfo: emergencyResponse(emergency, patient.name) };
-    }),
-  );
-  res.json(SearchPatientsResponse.parse(results.filter((result) => result !== null)));
-});
+      if (emergency) results.push({ emergencyInfo: emergencyResponse(emergency, patient.name) });
+    }
+    res.json(EmergencyPatientLookupResponse.parse(results));
+  },
+);
 
 router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): Promise<void> => {
   const parsed = GrantPatientAccessByIdBody.safeParse(req.body);
