@@ -7,6 +7,10 @@
  */
 
 export interface PatientSearchRequest {
+  /** @nullable */
+  reason: string | null;
+  /** @nullable */
+  hospitalName: string | null;
   doctorId: number;
   doctorName: string;
   doctorEmail: string;

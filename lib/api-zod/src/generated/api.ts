@@ -24,6 +24,10 @@ export const registerBodyEmailMax = 254;
 export const registerBodyPasswordMin = 8;
 export const registerBodyPasswordMax = 128;
 
+export const registerBodyAcceptedTermsVersionMax = 40;
+
+export const registerBodyNationalIdNumberMax = 30;
+
 export const registerBodyContactInfoMax = 300;
 
 export const registerBodyProfessionalMedicalNumberMax = 120;
@@ -34,6 +38,12 @@ export const RegisterBody = zod.object({
   "name": zod.string().min(registerBodyNameMin).max(registerBodyNameMax),
   "email": zod.string().email().max(registerBodyEmailMax),
   "password": zod.string().min(registerBodyPasswordMin).max(registerBodyPasswordMax),
+  "preferredLanguage": zod.enum(['fr', 'en']).optional(),
+  "acceptedTermsVersion": zod.string().max(registerBodyAcceptedTermsVersionMax).optional().describe('Must equal the current privacy policy and terms version.'),
+  "healthDataConsent": zod.boolean().optional().describe('Required (true) for patients.'),
+  "sex": zod.enum(['FEMALE', 'MALE']).optional(),
+  "dateOfBirthEstimated": zod.boolean().optional(),
+  "nationalIdNumber": zod.string().max(registerBodyNationalIdNumberMax).optional(),
   "role": zod.enum(['PATIENT', 'DOCTOR']),
   "dateOfBirth": zod.coerce.date().optional(),
   "contactInfo": zod.string().max(registerBodyContactInfoMax).optional(),
@@ -43,6 +53,12 @@ export const RegisterBody = zod.object({
 export const RegisterResponse = zod.object({
   "token": zod.string(),
   "user": zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -73,6 +89,12 @@ export const LoginBody = zod.object({
 export const LoginResponse = zod.object({
   "token": zod.string(),
   "user": zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -105,6 +127,40 @@ export const RequestPasswordResetResponse = zod.object({
 
 
 export const GetMeResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+export const UpdateLanguageBody = zod.object({
+  "language": zod.enum(['fr', 'en'])
+})
+
+export const UpdateLanguageResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -150,7 +206,14 @@ export const getPatientProfileResponsePatientAccessIdRegExp = new RegExp('^CM[A-
 
 
 export const GetPatientProfileResponse = zod.object({
+  "nationalIdNumber": zod.string().nullable(),
   "user": zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -171,6 +234,9 @@ export const GetPatientProfileResponse = zod.object({
   "emergencyInfo": zod.union([zod.object({
   "patientId": zod.number().int(),
   "patientName": zod.string(),
+  "patientSex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "patientDateOfBirth": zod.coerce.date().nullable(),
+  "patientDateOfBirthEstimated": zod.boolean(),
   "bloodGroup": zod.string(),
   "weightKg": zod.number(),
   "heightCm": zod.number(),
@@ -189,6 +255,47 @@ export const UpdatePatientLocationBody = zod.object({
 })
 
 export const UpdatePatientLocationResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+export const updatePatientIdentityBodyNationalIdNumberMax = 30;
+
+
+
+export const UpdatePatientIdentityBody = zod.object({
+  "sex": zod.enum(['FEMALE', 'MALE']),
+  "dateOfBirth": zod.coerce.date(),
+  "dateOfBirthEstimated": zod.boolean(),
+  "nationalIdNumber": zod.string().max(updatePatientIdentityBodyNationalIdNumberMax).nullable().describe('Cameroon national ID card (CNI) number. Optional.')
+})
+
+export const UpdatePatientIdentityResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -228,6 +335,9 @@ export const UpdateEmergencyInfoBody = zod.object({
 export const UpdateEmergencyInfoResponse = zod.object({
   "patientId": zod.number().int(),
   "patientName": zod.string(),
+  "patientSex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "patientDateOfBirth": zod.coerce.date().nullable(),
+  "patientDateOfBirthEstimated": zod.boolean(),
   "bloodGroup": zod.string(),
   "weightKg": zod.number(),
   "heightCm": zod.number(),
@@ -342,6 +452,8 @@ export const RevokePatientPermissionResponse = zod.void()
 
 
 export const GetPatientPendingRequestsResponseItem = zod.object({
+  "reason": zod.string().nullable(),
+  "hospitalName": zod.string().nullable(),
   "doctorId": zod.number().int(),
   "doctorName": zod.string(),
   "doctorEmail": zod.string().email(),
@@ -349,6 +461,64 @@ export const GetPatientPendingRequestsResponseItem = zod.object({
   "searchedAt": zod.coerce.date()
 })
 export const GetPatientPendingRequestsResponse = zod.array(GetPatientPendingRequestsResponseItem)
+
+
+export const GetPatientAccessSettingsResponse = zod.object({
+  "accessApprovalMode": zod.enum(['AUTOMATIC', 'ASK']).describe('AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient\'s approval.')
+})
+
+
+export const UpdatePatientAccessSettingsBody = zod.object({
+  "accessApprovalMode": zod.enum(['AUTOMATIC', 'ASK']).describe('AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient\'s approval.')
+})
+
+export const UpdatePatientAccessSettingsResponse = zod.object({
+  "accessApprovalMode": zod.enum(['AUTOMATIC', 'ASK']).describe('AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient\'s approval.')
+})
+
+
+export const GetPatientAccessRequestsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "doctorId": zod.number().int(),
+  "doctorName": zod.string(),
+  "doctorEmail": zod.string().email(),
+  "doctorVerified": zod.boolean(),
+  "hospitalName": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date()
+})
+export const GetPatientAccessRequestsResponse = zod.array(GetPatientAccessRequestsResponseItem)
+
+
+export const ApprovePatientAccessRequestParams = zod.object({
+  "requestId": zod.coerce.number().int()
+})
+
+export const approvePatientAccessRequestBodyDurationDaysMax = 365;
+
+
+
+export const ApprovePatientAccessRequestBody = zod.object({
+  "durationDays": zod.number().int().min(1).max(approvePatientAccessRequestBodyDurationDaysMax).nullable().describe('Number of days the access lasts, or null to keep access until the patient revokes it.')
+})
+
+export const ApprovePatientAccessRequestResponse = zod.object({
+  "id": zod.number().int(),
+  "doctorId": zod.number().int(),
+  "doctorName": zod.string(),
+  "doctorEmail": zod.string().email(),
+  "doctorVerified": zod.boolean(),
+  "granted": zod.boolean(),
+  "grantedAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date().nullable()
+})
+
+
+export const RejectPatientAccessRequestParams = zod.object({
+  "requestId": zod.coerce.number().int()
+})
+
+export const RejectPatientAccessRequestResponse = zod.void()
 
 
 export const GetPatientAccessHistoryResponseItem = zod.object({
@@ -362,6 +532,12 @@ export const GetPatientAccessHistoryResponse = zod.array(GetPatientAccessHistory
 
 
 export const GetDoctorProfileResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -393,6 +569,12 @@ export const UpdateDoctorProfileBody = zod.object({
 })
 
 export const UpdateDoctorProfileResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -410,18 +592,27 @@ export const UpdateDoctorProfileResponse = zod.object({
 })
 
 
-export const searchPatientsQueryQueryMin = 2;
+export const emergencyPatientLookupBodyFullNameMin = 3;
+export const emergencyPatientLookupBodyFullNameMax = 120;
+
+export const emergencyPatientLookupBodyReasonMin = 10;
+export const emergencyPatientLookupBodyReasonMax = 300;
 
 
 
-export const SearchPatientsQueryParams = zod.object({
-  "query": zod.coerce.string().min(searchPatientsQueryQueryMin)
+export const EmergencyPatientLookupBody = zod.object({
+  "fullName": zod.string().min(emergencyPatientLookupBodyFullNameMin).max(emergencyPatientLookupBodyFullNameMax).describe('The patient\'s full name, in any word order.'),
+  "dateOfBirth": zod.coerce.date().nullable(),
+  "reason": zod.string().min(emergencyPatientLookupBodyReasonMin).max(emergencyPatientLookupBodyReasonMax).describe('Why emergency information is needed without the patient\'s CM ID. Shown to the patient.')
 })
 
-export const SearchPatientsResponseItem = zod.object({
+export const EmergencyPatientLookupResponseItem = zod.object({
   "emergencyInfo": zod.object({
   "patientId": zod.number().int(),
   "patientName": zod.string(),
+  "patientSex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "patientDateOfBirth": zod.coerce.date().nullable(),
+  "patientDateOfBirthEstimated": zod.boolean(),
   "bloodGroup": zod.string(),
   "weightKg": zod.number(),
   "heightCm": zod.number(),
@@ -430,7 +621,7 @@ export const SearchPatientsResponseItem = zod.object({
   "updatedAt": zod.coerce.date()
 })
 })
-export const SearchPatientsResponse = zod.array(SearchPatientsResponseItem)
+export const EmergencyPatientLookupResponse = zod.array(EmergencyPatientLookupResponseItem)
 
 
 export const grantPatientAccessByIdBodyPatientDisplayIdMin = 8;
@@ -452,6 +643,11 @@ export const grantPatientAccessByIdResponsePatientDisplayIdRegExp = new RegExp('
 
 
 export const GrantPatientAccessByIdResponse = zod.object({
+  "patientSex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "patientDateOfBirth": zod.coerce.date().nullable(),
+  "patientDateOfBirthEstimated": zod.boolean(),
+  "patientNationalIdNumber": zod.string().nullable().describe('Only when access is granted; null while a request is pending.'),
+  "status": zod.enum(['GRANTED', 'PENDING']).describe('PENDING means the patient must approve the request before the booklet opens.'),
   "patientId": zod.number().int(),
   "patientDisplayId": zod.string().min(grantPatientAccessByIdResponsePatientDisplayIdMin).max(grantPatientAccessByIdResponsePatientDisplayIdMax).regex(grantPatientAccessByIdResponsePatientDisplayIdRegExp),
   "patientName": zod.string()
@@ -558,6 +754,9 @@ export const GetPatientEmergencyParams = zod.object({
 export const GetPatientEmergencyResponse = zod.object({
   "patientId": zod.number().int(),
   "patientName": zod.string(),
+  "patientSex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "patientDateOfBirth": zod.coerce.date().nullable(),
+  "patientDateOfBirthEstimated": zod.boolean(),
   "bloodGroup": zod.string(),
   "weightKg": zod.number(),
   "heightCm": zod.number(),
@@ -792,6 +991,12 @@ export const UpdateAdminEpidemicThresholdResponse = zod.object({
 
 
 export const GetPendingDoctorsResponseItem = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -815,6 +1020,12 @@ export const ApproveDoctorParams = zod.object({
 })
 
 export const ApproveDoctorResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -837,6 +1048,12 @@ export const RevokeDoctorParams = zod.object({
 })
 
 export const RevokeDoctorResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -859,6 +1076,12 @@ export const VerifyDoctorParams = zod.object({
 })
 
 export const VerifyDoctorResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -885,6 +1108,12 @@ export const UpdateAdminUserStatusBody = zod.object({
 })
 
 export const UpdateAdminUserStatusResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -920,6 +1149,132 @@ export const ResetAdminRequestedPasswordResponse = zod.object({
 })
 
 
+export const acceptLegalTermsBodyTermsVersionMax = 40;
+
+
+
+export const AcceptLegalTermsBody = zod.object({
+  "termsVersion": zod.string().max(acceptLegalTermsBodyTermsVersionMax),
+  "healthDataConsent": zod.boolean()
+})
+
+export const AcceptLegalTermsResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+export const ExportMyDataResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const GetMyDeletionRequestResponse = zod.union([zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['PENDING', 'CANCELLED', 'REJECTED', 'COMPLETED']),
+  "outcome": zod.union([zod.literal('ERASED'),zod.literal('CLOSED'),zod.literal(null)]).nullable(),
+  "reason": zod.string().nullable(),
+  "resolutionNote": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "resolvedAt": zod.coerce.date().nullable()
+}),zod.null()])
+
+
+export const requestAccountDeletionBodyPasswordMax = 128;
+
+export const requestAccountDeletionBodyReasonMax = 500;
+
+
+
+export const RequestAccountDeletionBody = zod.object({
+  "password": zod.string().min(1).max(requestAccountDeletionBodyPasswordMax).describe('Current password, to confirm it is the account owner.'),
+  "reason": zod.string().max(requestAccountDeletionBodyReasonMax).nullable()
+})
+
+export const RequestAccountDeletionResponse = zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['PENDING', 'CANCELLED', 'REJECTED', 'COMPLETED']),
+  "outcome": zod.union([zod.literal('ERASED'),zod.literal('CLOSED'),zod.literal(null)]).nullable(),
+  "reason": zod.string().nullable(),
+  "resolutionNote": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "resolvedAt": zod.coerce.date().nullable()
+})
+
+
+export const CancelAccountDeletionResponse = zod.void()
+
+
+export const GetAdminDeletionRequestsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "userId": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "reason": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "recordCount": zod.number().int().describe('Medical records in the patient\'s file, or written by the doctor.'),
+  "attachmentCount": zod.number().int()
+})
+export const GetAdminDeletionRequestsResponse = zod.array(GetAdminDeletionRequestsResponseItem)
+
+
+export const ResolveAdminDeletionRequestParams = zod.object({
+  "requestId": zod.coerce.number().int()
+})
+
+export const resolveAdminDeletionRequestBodyNoteMax = 500;
+
+
+
+export const ResolveAdminDeletionRequestBody = zod.object({
+  "action": zod.enum(['ERASE', 'CLOSE', 'REJECT']).describe('ERASE deletes the patient\'s account, records and files. CLOSE removes sign-in and contact details and revokes access but keeps medical records. REJECT keeps the account (a note is required).'),
+  "note": zod.string().max(resolveAdminDeletionRequestBodyNoteMax).nullable()
+})
+
+export const ResolveAdminDeletionRequestResponse = zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['PENDING', 'CANCELLED', 'REJECTED', 'COMPLETED']),
+  "outcome": zod.union([zod.literal('ERASED'),zod.literal('CLOSED'),zod.literal(null)]).nullable(),
+  "reason": zod.string().nullable(),
+  "resolutionNote": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "resolvedAt": zod.coerce.date().nullable()
+})
+
+
+export const GetAdminPossibleDuplicatesResponseItem = zod.object({
+  "reason": zod.enum(['SAME_NAME_AND_BIRTH_YEAR']).describe('Same name in any word order and the same birth year. National ID numbers are unique, so they never repeat.'),
+  "patients": zod.array(zod.object({
+  "userId": zod.number().int(),
+  "name": zod.string(),
+  "patientDisplayId": zod.string().nullable(),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirth": zod.coerce.date().nullable(),
+  "dateOfBirthEstimated": zod.boolean(),
+  "region": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+export const GetAdminPossibleDuplicatesResponse = zod.array(GetAdminPossibleDuplicatesResponseItem)
+
+
 export const searchUsersQueryQueryMin = 2;
 
 
@@ -929,6 +1284,12 @@ export const SearchUsersQueryParams = zod.object({
 })
 
 export const SearchUsersResponseItem = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),

@@ -5,10 +5,15 @@
  * Medichain secure medical records API
  * OpenAPI spec version: 0.1.0
  */
+import type { Sex } from './sex';
 
 export interface EmergencyInfo {
   patientId: number;
   patientName: string;
+  patientSex: Sex | null;
+  /** @nullable */
+  patientDateOfBirth: Date | null;
+  patientDateOfBirthEstimated: boolean;
   bloodGroup: string;
   weightKg: number;
   heightCm: number;

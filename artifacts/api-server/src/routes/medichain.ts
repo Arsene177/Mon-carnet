@@ -19,6 +19,21 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  UpdatePatientIdentityBody,
+  UpdatePatientIdentityResponse,
+  GetAdminPossibleDuplicatesResponse,
+  UpdateLanguageBody,
+  UpdateLanguageResponse,
+  EmergencyPatientLookupBody,
+  EmergencyPatientLookupResponse,
+  ApprovePatientAccessRequestBody,
+  ApprovePatientAccessRequestParams,
+  ApprovePatientAccessRequestResponse,
+  GetPatientAccessRequestsResponse,
+  GetPatientAccessSettingsResponse,
+  RejectPatientAccessRequestParams,
+  UpdatePatientAccessSettingsBody,
+  UpdatePatientAccessSettingsResponse,
   AddDoctorPatientRecordBody,
   AddDoctorPatientRecordParams,
   AddDoctorPatientRecordResponse,
@@ -59,8 +74,6 @@ import {
   RevokeDoctorResponse,
   RevokePatientPermissionParams,
   RevokePatientPermissionResponse,
-  SearchPatientsQueryParams,
-  SearchPatientsResponse,
   SearchDiseaseCodesQueryParams,
   SearchDiseaseCodesResponse,
   SearchUsersQueryParams,
@@ -87,7 +100,7 @@ import {
   VerifyDoctorParams,
   VerifyDoctorResponse,
 } from "@workspace/api-zod";
-import { isValidCameroonLocation } from "@workspace/api-zod";
+import { isValidCameroonLocation, LEGAL_DOCUMENTS_VERSION } from "@workspace/api-zod";
 import {
   auditEventsTable,
   bookletExportsTable,
@@ -101,8 +114,11 @@ import {
   accessPermissionsTable,
   patientSearchesTable,
   notificationsTable,
+  accessRequestsTable,
   passwordResetRequestsTable,
 } from "@workspace/db";
+import { emergencyLookupLimiter } from "../lib/rate-limits";
+import { languageOf, notificationMessages } from "../lib/notification-messages";
 import { createAccessToken, hashPassword, publicUser, requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
 
 const router: IRouter = Router();
@@ -162,7 +178,7 @@ function privateObjectPathParts(objectPath: string) {
   return { bucketName, objectName };
 }
 
-async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET" | "DELETE", ttlSeconds: number) {
+export async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET" | "DELETE", ttlSeconds: number) {
   const { bucketName, objectName } = privateObjectPathParts(objectPath);
   const response = await fetch("http://127.0.0.1:1106/object-storage/signed-object-url", {
     method: "POST",
@@ -205,7 +221,7 @@ async function purgeExpiredMedicalAttachments() {
   }
 }
 
-function invalidBody(res: Response, message: string) {
+export function invalidBody(res: Response, message: string) {
   res.status(400).json({ error: message });
 }
 
@@ -347,7 +363,7 @@ async function codedDiagnosesByRecordId(recordIds: number[]) {
   return grouped;
 }
 
-async function recordsResponse(
+export async function recordsResponse(
   rows: Array<{
     record: typeof medicalRecordsTable.$inferSelect;
     doctorName: string;
@@ -381,13 +397,41 @@ function recordResponse(
   };
 }
 
-function emergencyResponse(
+type PatientIdentity = Pick<typeof usersTable.$inferSelect, "name" | "sex" | "dateOfBirth" | "dateOfBirthEstimated">;
+
+/** True for a Postgres unique-constraint error, also when the ORM wraps it in `cause`. */
+export function isUniqueViolation(error: unknown): boolean {
+  for (let current = error, depth = 0; current && typeof current === "object" && depth < 4; current = (current as { cause?: unknown }).cause, depth++) {
+    if ("code" in current && (current as { code?: unknown }).code === "23505") return true;
+  }
+  return false;
+}
+
+function sexOf(value: string | null): "FEMALE" | "MALE" | null {
+  return value === "FEMALE" || value === "MALE" ? value : null;
+}
+
+/** Upper-case CNI number without spaces, dots or dashes; null when empty. */
+function normalizeNationalId(value: string | null | undefined): string | null {
+  const normalized = (value ?? "").replace(/[\s.\-/]/g, "").toUpperCase();
+  return normalized || null;
+}
+
+function isPlausibleBirthDate(value: Date): boolean {
+  const year = value.getUTCFullYear();
+  return value.getTime() <= Date.now() && year >= new Date().getUTCFullYear() - 130;
+}
+
+export function emergencyResponse(
   info: typeof emergencyInfoTable.$inferSelect,
-  patientName: string,
+  patient: PatientIdentity,
 ) {
   return {
     patientId: info.userId,
-    patientName,
+    patientName: patient.name,
+    patientSex: sexOf(patient.sex),
+    patientDateOfBirth: patient.dateOfBirth ?? null,
+    patientDateOfBirthEstimated: patient.dateOfBirthEstimated,
     bloodGroup: info.bloodGroup,
     weightKg: info.weightKg,
     heightCm: info.heightCm,
@@ -396,6 +440,10 @@ function emergencyResponse(
     updatedAt: info.updatedAt.toISOString(),
   };
 }
+
+const ACCESS_REQUEST_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const accessRequestCutoff = () => new Date(Date.now() - ACCESS_REQUEST_LIFETIME_MS);
 
 async function getActivePermission(patientId: number, doctorId: number) {
   const [permission] = await db
@@ -454,6 +502,19 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     );
     return;
   }
+  if (input.role === "PATIENT" && (!input.sex || !input.dateOfBirth || !isPlausibleBirthDate(input.dateOfBirth))) {
+    invalidBody(res, "Patient registration requires sex and a valid date of birth or age.");
+    return;
+  }
+  if (input.acceptedTermsVersion !== LEGAL_DOCUMENTS_VERSION || (input.role === "PATIENT" && input.healthDataConsent !== true)) {
+    invalidBody(res, "Accept the terms of use and privacy policy to create an account. Patients must also consent to the processing of their health data.");
+    return;
+  }
+  const nationalIdNumber = input.role === "PATIENT" ? normalizeNationalId(input.nationalIdNumber) : null;
+  if (nationalIdNumber && !/^[A-Z0-9]{5,20}$/.test(nationalIdNumber)) {
+    invalidBody(res, "Enter the ID card number as it appears on the card (letters and digits only).");
+    return;
+  }
   if (input.role === "DOCTOR" && !professionalMedicalNumber) {
     invalidBody(res, "Doctor registration requires a professional medical number.");
     return;
@@ -476,6 +537,13 @@ router.post("/auth/register", async (req, res): Promise<void> => {
             ? input.dateOfBirth.toISOString().slice(0, 10)
             : null,
         contactInfo: input.contactInfo?.trim() || null,
+        preferredLanguage: input.preferredLanguage ?? "fr",
+        termsVersion: LEGAL_DOCUMENTS_VERSION,
+        termsAcceptedAt: new Date(),
+        healthDataConsentAt: input.role === "PATIENT" ? new Date() : null,
+        sex: input.role === "PATIENT" ? input.sex : null,
+        dateOfBirthEstimated: input.role === "PATIENT" ? Boolean(input.dateOfBirthEstimated) : false,
+        nationalIdNumber,
       })
       .returning();
     const user = publicUser(created);
@@ -486,12 +554,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       }),
     );
   } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "23505"
-    ) {
+    if (isUniqueViolation(error)) {
       res.status(409).json({ error: "Unable to create an account with those details." });
       return;
     }
@@ -548,6 +611,24 @@ router.post("/auth/password-reset-requests", async (req, res): Promise<void> => 
       message: "If an account exists for that email, an administrator will review your request.",
     }),
   );
+});
+
+router.put("/auth/language", requireAuth(), async (req, res): Promise<void> => {
+  const parsed = UpdateLanguageBody.safeParse(req.body);
+  if (!parsed.success) {
+    invalidBody(res, "Choose French or English.");
+    return;
+  }
+  const [user] = await db
+    .update(usersTable)
+    .set({ preferredLanguage: parsed.data.language })
+    .where(eq(usersTable.id, req.currentUser!.id))
+    .returning();
+  if (!user) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  res.json(UpdateLanguageResponse.parse(userResponse(user)));
 });
 
 router.get("/auth/me", requireAuth(), async (req, res): Promise<void> => {
@@ -613,9 +694,10 @@ router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise
       user: userResponse(user),
       patientDisplayId: profileUser.patientDisplayId,
       patientAccessId: profileUser.patientAccessId,
-      emergencyInfo: emergency ? emergencyResponse(emergency, user.name) : null,
+      emergencyInfo: emergency ? emergencyResponse(emergency, user) : null,
       recordCount: records.value,
       permissionsCount: permissions.value,
+      nationalIdNumber: user.nationalIdNumber,
     }),
   );
 });
@@ -641,6 +723,40 @@ router.put("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise
   res.json(UpdatePatientLocationResponse.parse(userResponse(updated)));
 });
 
+router.put("/patient/identity", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const parsed = UpdatePatientIdentityBody.safeParse(req.body);
+  if (!parsed.success || !isPlausibleBirthDate(parsed.data.dateOfBirth)) {
+    invalidBody(res, "Choose your sex and enter a valid date of birth or age.");
+    return;
+  }
+  const nationalIdNumber = normalizeNationalId(parsed.data.nationalIdNumber);
+  if (nationalIdNumber && !/^[A-Z0-9]{5,20}$/.test(nationalIdNumber)) {
+    invalidBody(res, "Enter the ID card number as it appears on the card (letters and digits only).");
+    return;
+  }
+  const dateOfBirth = parsed.data.dateOfBirthEstimated
+    ? `${parsed.data.dateOfBirth.getUTCFullYear()}-01-01`
+    : parsed.data.dateOfBirth.toISOString().slice(0, 10);
+  try {
+    const [updated] = await db
+      .update(usersTable)
+      .set({ sex: parsed.data.sex, dateOfBirth, dateOfBirthEstimated: parsed.data.dateOfBirthEstimated, nationalIdNumber })
+      .where(eq(usersTable.id, req.currentUser!.id))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Profile not found." });
+      return;
+    }
+    res.json(UpdatePatientIdentityResponse.parse(userResponse(updated)));
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      res.status(409).json({ error: "This ID card number is already registered to another account. Contact support if this is your card." });
+      return;
+    }
+    throw error;
+  }
+});
+
 router.put("/patient/emergency-info", requireAuth("PATIENT"), async (req, res): Promise<void> => {
   const parsed = UpdateEmergencyInfoBody.safeParse(req.body);
   if (!parsed.success) {
@@ -664,10 +780,13 @@ router.put("/patient/emergency-info", requireAuth("PATIENT"), async (req, res): 
       },
     })
     .returning();
-  const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+  const [user] = await db
+    .select({ name: usersTable.name, sex: usersTable.sex, dateOfBirth: usersTable.dateOfBirth, dateOfBirthEstimated: usersTable.dateOfBirthEstimated })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
   res.json(
     UpdateEmergencyInfoResponse.parse(
-      emergencyResponse(saved, user?.name ?? "Patient"),
+      emergencyResponse(saved, user ?? { name: "Patient", sex: null, dateOfBirth: null, dateOfBirthEstimated: false }),
     ),
   );
 });
@@ -857,10 +976,181 @@ router.get("/patient/pending-requests", requireAuth("PATIENT"), async (req, res)
         doctorEmail: row.doctor.email,
         doctorVerified: row.doctor.doctorVerified,
         searchedAt: row.search.searchedAt.toISOString(),
+        reason: row.search.reason,
+        hospitalName: row.search.hospitalName,
       });
     }
   }
   res.json(GetPatientPendingRequestsResponse.parse(response));
+});
+
+router.get("/patient/access-settings", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const [user] = await db
+    .select({ accessApprovalMode: usersTable.accessApprovalMode })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.currentUser!.id))
+    .limit(1);
+  res.json(GetPatientAccessSettingsResponse.parse({ accessApprovalMode: user?.accessApprovalMode ?? "AUTOMATIC" }));
+});
+
+router.put("/patient/access-settings", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const parsed = UpdatePatientAccessSettingsBody.safeParse(req.body);
+  if (!parsed.success) {
+    invalidBody(res, "Choose automatic access or ask me first.");
+    return;
+  }
+  const patientId = req.currentUser!.id;
+  await db.transaction(async (tx) => {
+    await tx
+      .update(usersTable)
+      .set({ accessApprovalMode: parsed.data.accessApprovalMode })
+      .where(eq(usersTable.id, patientId));
+    await tx.insert(auditEventsTable).values({
+      actorUserId: patientId,
+      patientId,
+      action: `ACCESS_APPROVAL_MODE_${parsed.data.accessApprovalMode}`,
+      entityType: "access_settings",
+    });
+  });
+  res.json(UpdatePatientAccessSettingsResponse.parse({ accessApprovalMode: parsed.data.accessApprovalMode }));
+});
+
+router.get("/patient/access-requests", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const rows = await db
+    .select({ request: accessRequestsTable, doctor: usersTable })
+    .from(accessRequestsTable)
+    .innerJoin(usersTable, eq(accessRequestsTable.doctorId, usersTable.id))
+    .where(and(
+      eq(accessRequestsTable.patientId, req.currentUser!.id),
+      eq(accessRequestsTable.status, "PENDING"),
+      gte(accessRequestsTable.requestedAt, accessRequestCutoff()),
+      eq(usersTable.isActive, true),
+    ))
+    .orderBy(desc(accessRequestsTable.requestedAt));
+  res.json(GetPatientAccessRequestsResponse.parse(rows.map(({ request, doctor }) => ({
+    id: request.id,
+    doctorId: doctor.id,
+    doctorName: doctor.name,
+    doctorEmail: doctor.email,
+    doctorVerified: doctor.doctorVerified,
+    hospitalName: request.hospitalName,
+    requestedAt: request.requestedAt.toISOString(),
+    expiresAt: new Date(request.requestedAt.getTime() + ACCESS_REQUEST_LIFETIME_MS).toISOString(),
+  }))));
+});
+
+export async function recipientLanguage(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  userId: number,
+) {
+  const [user] = await tx
+    .select({ preferredLanguage: usersTable.preferredLanguage })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  return languageOf(user?.preferredLanguage);
+}
+
+async function resolvePendingAccessRequest(
+  patientId: number,
+  requestId: number,
+  status: "APPROVED" | "REJECTED",
+  onResolved: (
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    request: typeof accessRequestsTable.$inferSelect,
+  ) => Promise<void>,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [request] = await tx
+      .update(accessRequestsTable)
+      .set({ status, resolvedAt: new Date() })
+      .where(and(
+        eq(accessRequestsTable.id, requestId),
+        eq(accessRequestsTable.patientId, patientId),
+        eq(accessRequestsTable.status, "PENDING"),
+        gte(accessRequestsTable.requestedAt, accessRequestCutoff()),
+      ))
+      .returning();
+    if (!request) return false;
+    await onResolved(tx, request);
+    return true;
+  });
+}
+
+router.post("/patient/access-requests/:requestId/approve", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const params = ApprovePatientAccessRequestParams.safeParse(req.params);
+  const body = ApprovePatientAccessRequestBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    invalidBody(res, "Choose how long the doctor can access your booklet.");
+    return;
+  }
+  const patient = req.currentUser!;
+  let permission: typeof accessPermissionsTable.$inferSelect | undefined;
+  const resolved = await resolvePendingAccessRequest(patient.id, params.data.requestId, "APPROVED", async (tx, request) => {
+    const grantedAt = new Date();
+    const expiresAt = body.data.durationDays === null
+      ? null
+      : new Date(grantedAt.getTime() + body.data.durationDays * 24 * 60 * 60 * 1000);
+    [permission] = await tx
+      .insert(accessPermissionsTable)
+      .values({ patientId: patient.id, doctorId: request.doctorId, granted: true, grantedAt, expiresAt })
+      .onConflictDoUpdate({
+        target: [accessPermissionsTable.patientId, accessPermissionsTable.doctorId],
+        set: { granted: true, grantedAt, expiresAt },
+      })
+      .returning();
+    await tx.insert(auditEventsTable).values({
+      actorUserId: patient.id,
+      patientId: patient.id,
+      action: "PATIENT_ACCESS_REQUEST_APPROVED",
+      entityType: "access_request",
+      entityId: request.id,
+    });
+    await tx.insert(notificationsTable).values({
+      batchId: randomUUID(),
+      senderId: patient.id,
+      recipientId: request.doctorId,
+      ...notificationMessages.accessApproved(
+        await recipientLanguage(tx, request.doctorId),
+        patient.name,
+        expiresAt ? expiresAt.toISOString().slice(0, 10) : null,
+      ),
+    });
+  });
+  if (!resolved || !permission) {
+    res.status(404).json({ error: "This request is no longer waiting for a decision." });
+    return;
+  }
+  res.json(ApprovePatientAccessRequestResponse.parse(await permissionResponse(permission)));
+});
+
+router.post("/patient/access-requests/:requestId/reject", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const params = RejectPatientAccessRequestParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid request." });
+    return;
+  }
+  const patient = req.currentUser!;
+  const resolved = await resolvePendingAccessRequest(patient.id, params.data.requestId, "REJECTED", async (tx, request) => {
+    await tx.insert(auditEventsTable).values({
+      actorUserId: patient.id,
+      patientId: patient.id,
+      action: "PATIENT_ACCESS_REQUEST_REJECTED",
+      entityType: "access_request",
+      entityId: request.id,
+    });
+    await tx.insert(notificationsTable).values({
+      batchId: randomUUID(),
+      senderId: patient.id,
+      recipientId: request.doctorId,
+      ...notificationMessages.accessRejected(await recipientLanguage(tx, request.doctorId), patient.name),
+    });
+  });
+  if (!resolved) {
+    res.status(404).json({ error: "This request is no longer waiting for a decision." });
+    return;
+  }
+  res.status(204).send();
 });
 
 router.get("/patient/access-history", requireAuth("PATIENT"), async (req, res): Promise<void> => {
@@ -944,46 +1234,93 @@ router.put("/doctor/profile", requireAuth("DOCTOR"), async (req, res): Promise<v
   res.json(userResponse(updated));
 });
 
-router.get("/doctor/search-patient", requireAuth("DOCTOR"), async (req, res): Promise<void> => {
-  const parsed = SearchPatientsQueryParams.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Enter at least two characters to search." });
-    return;
-  }
-  const query = parsed.data.query.trim();
-  const patients = await db
-    .select()
-    .from(usersTable)
-    .where(
-      and(
+const ACCENTED = "ÀÁÂÃÄÅàáâãäåÈÉÊËèéêëÌÍÎÏìíîïÒÓÔÕÖòóôõöÙÚÛÜùúûüÇçÑñ";
+const UNACCENTED = "AAAAAAaaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn";
+const MAX_EMERGENCY_LOOKUP_MATCHES = 3;
+
+/** Lower-case name words without accents, sorted so that word order does not matter. */
+function nameTokens(name: string): string[] {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .sort();
+}
+
+router.post(
+  "/doctor/emergency-lookup",
+  requireAuth("DOCTOR"),
+  emergencyLookupLimiter,
+  async (req, res): Promise<void> => {
+    const parsed = EmergencyPatientLookupBody.safeParse(req.body);
+    if (!parsed.success) {
+      invalidBody(res, "Enter the patient's full name and the reason you need their emergency information (at least 10 characters).");
+      return;
+    }
+    const tokens = nameTokens(parsed.data.fullName);
+    const reason = parsed.data.reason.trim();
+    if (tokens.length < 2 || reason.length < 10) {
+      invalidBody(res, "Enter the patient's full name (at least two names) and the reason you need their emergency information.");
+      return;
+    }
+    const dateOfBirth = parsed.data.dateOfBirth ? parsed.data.dateOfBirth.toISOString().slice(0, 10) : null;
+    const searchableName = sql`lower(translate(${usersTable.name}, ${ACCENTED}, ${UNACCENTED}))`;
+    const candidates = await db
+      .select()
+      .from(usersTable)
+      .where(and(
         eq(usersTable.role, "PATIENT"),
         eq(usersTable.isActive, true),
-        or(ilike(usersTable.name, `%${query}%`), ilike(usersTable.email, `%${query}%`)),
-      ),
-    )
-    .limit(25);
-  const doctorId = req.currentUser!.id;
-  const results = await Promise.all(
-    patients.map(async (patient) => {
+        ...(dateOfBirth ? [eq(usersTable.dateOfBirth, dateOfBirth)] : []),
+        ...tokens.map((token) => sql`${searchableName} like ${`%${token}%`}`),
+      ))
+      .limit(200);
+    const wanted = tokens.join(" ");
+    const matches = candidates.filter((patient) => nameTokens(patient.name).join(" ") === wanted);
+    if (matches.length > MAX_EMERGENCY_LOOKUP_MATCHES) {
+      res.status(422).json({
+        error: `More than ${MAX_EMERGENCY_LOOKUP_MATCHES} patients have this name. Add the patient's date of birth to narrow the lookup.`,
+      });
+      return;
+    }
+
+    const doctor = req.currentUser!;
+    const results = [];
+    for (const patient of matches) {
       const [emergency] = await db
         .select()
         .from(emergencyInfoTable)
         .where(eq(emergencyInfoTable.userId, patient.id))
         .limit(1);
-      await db.insert(patientSearchesTable).values({ patientId: patient.id, doctorId });
-      if (!emergency) return null;
-      await db.insert(auditEventsTable).values({
-        actorUserId: doctorId,
-        patientId: patient.id,
-        action: "EMERGENCY_INFO_VIEWED",
-        entityType: "emergency_info",
-        hospitalName: req.currentUser!.hospitalName,
+      await db.transaction(async (tx) => {
+        await tx.insert(patientSearchesTable).values({
+          patientId: patient.id,
+          doctorId: doctor.id,
+          reason,
+          hospitalName: doctor.hospitalName,
+        });
+        if (!emergency) return;
+        await tx.insert(auditEventsTable).values({
+          actorUserId: doctor.id,
+          patientId: patient.id,
+          action: "EMERGENCY_INFO_VIEWED",
+          entityType: "emergency_info",
+          hospitalName: doctor.hospitalName,
+        });
+        await tx.insert(notificationsTable).values({
+          batchId: randomUUID(),
+          senderId: doctor.id,
+          recipientId: patient.id,
+          ...notificationMessages.emergencyLookup(languageOf(patient.preferredLanguage), doctor.name, doctor.hospitalName, reason),
+        });
       });
-      return { emergencyInfo: emergencyResponse(emergency, patient.name) };
-    }),
-  );
-  res.json(SearchPatientsResponse.parse(results.filter((result) => result !== null)));
-});
+      if (emergency) results.push({ emergencyInfo: emergencyResponse(emergency, patient) });
+    }
+    res.json(EmergencyPatientLookupResponse.parse(results));
+  },
+);
 
 router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): Promise<void> => {
   const parsed = GrantPatientAccessByIdBody.safeParse(req.body);
@@ -1026,6 +1363,84 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
     return;
   }
   const patient = await ensurePatientIdentifiers(matchedPatient);
+  const doctor = req.currentUser!;
+  const accessResponse = (status: "GRANTED" | "PENDING") =>
+    GrantPatientAccessByIdResponse.parse({
+      status,
+      patientId: patient.id,
+      patientDisplayId: patient.patientDisplayId,
+      patientName: patient.name,
+      patientSex: sexOf(patient.sex),
+      patientDateOfBirth: patient.dateOfBirth ?? null,
+      patientDateOfBirthEstimated: patient.dateOfBirthEstimated,
+      patientNationalIdNumber: status === "GRANTED" ? patient.nationalIdNumber : null,
+    });
+
+  if (patient.accessApprovalMode === "ASK") {
+    if (await getActivePermission(patient.id, doctor.id)) {
+      res.json(accessResponse("GRANTED"));
+      return;
+    }
+    const [recentRejection] = await db
+      .select({ id: accessRequestsTable.id })
+      .from(accessRequestsTable)
+      .where(and(
+        eq(accessRequestsTable.patientId, patient.id),
+        eq(accessRequestsTable.doctorId, doctor.id),
+        eq(accessRequestsTable.status, "REJECTED"),
+        gte(accessRequestsTable.resolvedAt, new Date(Date.now() - REJECTION_COOLDOWN_MS)),
+      ))
+      .limit(1);
+    if (recentRejection) {
+      res.status(429).json({
+        error: "This patient declined your request recently. Speak with the patient before asking again tomorrow.",
+      });
+      return;
+    }
+    await db.transaction(async (tx) => {
+      const now = new Date();
+      await tx
+        .update(accessRequestsTable)
+        .set({ status: "EXPIRED", resolvedAt: now })
+        .where(and(
+          eq(accessRequestsTable.patientId, patient.id),
+          eq(accessRequestsTable.doctorId, doctor.id),
+          eq(accessRequestsTable.status, "PENDING"),
+          lt(accessRequestsTable.requestedAt, accessRequestCutoff()),
+        ));
+      const [existing] = await tx
+        .update(accessRequestsTable)
+        .set({ requestedAt: now, hospitalName: doctor.hospitalName })
+        .where(and(
+          eq(accessRequestsTable.patientId, patient.id),
+          eq(accessRequestsTable.doctorId, doctor.id),
+          eq(accessRequestsTable.status, "PENDING"),
+        ))
+        .returning({ id: accessRequestsTable.id });
+      const request = existing ?? (await tx
+        .insert(accessRequestsTable)
+        .values({ patientId: patient.id, doctorId: doctor.id, hospitalName: doctor.hospitalName, requestedAt: now })
+        .returning({ id: accessRequestsTable.id }))[0];
+      if (!existing) {
+        await tx.insert(notificationsTable).values({
+          batchId: randomUUID(),
+          senderId: doctor.id,
+          recipientId: patient.id,
+          ...notificationMessages.accessRequested(languageOf(patient.preferredLanguage), doctor.name, doctor.hospitalName),
+        });
+      }
+      await tx.insert(auditEventsTable).values({
+        actorUserId: doctor.id,
+        patientId: patient.id,
+        action: "PATIENT_ACCESS_REQUESTED",
+        entityType: "access_request",
+        entityId: request?.id,
+        hospitalName: doctor.hospitalName,
+      });
+    });
+    res.json(accessResponse("PENDING"));
+    return;
+  }
 
   const grantedAt = new Date();
   await db.transaction(async (tx) => {
@@ -1057,13 +1472,7 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
     });
   });
 
-  res.json(
-    GrantPatientAccessByIdResponse.parse({
-      patientId: patient.id,
-      patientDisplayId: patient.patientDisplayId,
-      patientName: patient.name,
-    }),
-  );
+  res.json(accessResponse("GRANTED"));
 });
 
 router.get(
@@ -1364,7 +1773,7 @@ router.get(
       entityType: "emergency_info",
       hospitalName: req.currentUser!.hospitalName,
     });
-    res.json(GetPatientEmergencyResponse.parse(emergencyResponse(info, patient.name)));
+    res.json(GetPatientEmergencyResponse.parse(emergencyResponse(info, patient)));
   },
 );
 
@@ -1957,12 +2366,16 @@ router.put("/admin/users/:userId/status", requireAuth("ADMIN"), async (req, res)
     return;
   }
   const [target] = await db
-    .select({ id: usersTable.id, role: usersTable.role, isActive: usersTable.isActive })
+    .select({ id: usersTable.id, role: usersTable.role, isActive: usersTable.isActive, closedAt: usersTable.closedAt })
     .from(usersTable)
     .where(eq(usersTable.id, parsedParams.data.userId))
     .limit(1);
   if (!target) {
     res.status(404).json({ error: "Account not found." });
+    return;
+  }
+  if (target.closedAt) {
+    res.status(409).json({ error: "This account was closed at the owner's request and cannot be restored." });
     return;
   }
   if (!parsedBody.data.isActive && target.role === "ADMIN" && target.isActive) {
@@ -2057,6 +2470,49 @@ router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMI
     email: result.email,
     temporaryPassword,
   }));
+});
+
+router.get("/admin/possible-duplicates", requireAuth("ADMIN"), async (_req, res): Promise<void> => {
+  const patients = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      patientDisplayId: usersTable.patientDisplayId,
+      sex: usersTable.sex,
+      dateOfBirth: usersTable.dateOfBirth,
+      dateOfBirthEstimated: usersTable.dateOfBirthEstimated,
+      region: usersTable.locationRegion,
+      nationalIdNumber: usersTable.nationalIdNumber,
+      createdAt: usersTable.createdAt,
+    })
+    .from(usersTable)
+    .where(and(eq(usersTable.role, "PATIENT"), eq(usersTable.isActive, true)))
+    .orderBy(asc(usersTable.createdAt));
+  // Same name (any word order, accents ignored) and same birth year, unless both sexes are known and differ.
+  const byNameAndYear = new Map<string, typeof patients>();
+  for (const patient of patients) {
+    if (!patient.dateOfBirth) continue;
+    const key = `${nameTokens(patient.name).join(" ")}|${patient.dateOfBirth.slice(0, 4)}`;
+    byNameAndYear.set(key, [...(byNameAndYear.get(key) ?? []), patient]);
+  }
+  const toEntry = (patient: (typeof patients)[number]) => ({
+    userId: patient.id,
+    name: patient.name,
+    patientDisplayId: patient.patientDisplayId,
+    sex: sexOf(patient.sex),
+    dateOfBirth: patient.dateOfBirth,
+    dateOfBirthEstimated: patient.dateOfBirthEstimated,
+    region: patient.region,
+    createdAt: patient.createdAt.toISOString(),
+  });
+  const groups = [];
+  for (const group of byNameAndYear.values()) {
+    if (group.length < 2) continue;
+    const sexes = new Set(group.map((patient) => patient.sex).filter(Boolean));
+    if (sexes.size > 1) continue;
+    groups.push({ reason: "SAME_NAME_AND_BIRTH_YEAR" as const, patients: group.map(toEntry) });
+  }
+  res.json(GetAdminPossibleDuplicatesResponse.parse(groups.slice(0, 100)));
 });
 
 router.get("/admin/search-user", requireAuth("ADMIN"), async (req, res): Promise<void> => {

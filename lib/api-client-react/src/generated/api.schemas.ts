@@ -28,7 +28,39 @@ export const AccountStatus = {
   INACTIVE: 'INACTIVE',
 } as const;
 
+export type Sex = typeof Sex[keyof typeof Sex];
+
+
+export const Sex = {
+  FEMALE: 'FEMALE',
+  MALE: 'MALE',
+} as const;
+
+export type Language = typeof Language[keyof typeof Language];
+
+
+export const Language = {
+  fr: 'fr',
+  en: 'en',
+} as const;
+
 export interface User {
+  /**
+     * Version of the privacy policy and terms this account accepted.
+     * @nullable
+     */
+  termsVersion: string | null;
+  /** @nullable */
+  termsAcceptedAt: string | null;
+  /**
+     * Patients: when they consented to the processing of their health data.
+     * @nullable
+     */
+  healthDataConsentAt: string | null;
+  sex: Sex | null;
+  /** True when only the birth year is known; dateOfBirth is then 1 January of that year. */
+  dateOfBirthEstimated: boolean;
+  preferredLanguage: Language;
   id: number;
   email: string;
   name: string;
@@ -77,6 +109,18 @@ export interface RegistrationInput {
      * @maxLength 128
      */
   password: string;
+  preferredLanguage?: Language;
+  /**
+     * Must equal the current privacy policy and terms version.
+     * @maxLength 40
+     */
+  acceptedTermsVersion?: string;
+  /** Required (true) for patients. */
+  healthDataConsent?: boolean;
+  sex?: Sex;
+  dateOfBirthEstimated?: boolean;
+  /** @maxLength 30 */
+  nationalIdNumber?: string;
   role: RegistrationInputRole;
   dateOfBirth?: string;
   /** @maxLength 300 */
@@ -226,6 +270,10 @@ export interface ChangePasswordInput {
 export interface EmergencyInfo {
   patientId: number;
   patientName: string;
+  patientSex: Sex | null;
+  /** @nullable */
+  patientDateOfBirth: string | null;
+  patientDateOfBirthEstimated: boolean;
   bloodGroup: string;
   weightKg: number;
   heightCm: number;
@@ -268,6 +316,8 @@ export interface EmergencyInfoInput {
 }
 
 export interface PatientProfile {
+  /** @nullable */
+  nationalIdNumber: string | null;
   user: User;
   /**
      * @minLength 8
@@ -517,6 +567,180 @@ export interface PermissionGrantInput {
   durationDays: number;
 }
 
+export interface AccountDeletionInput {
+  /**
+     * Current password, to confirm it is the account owner.
+     * @minLength 1
+     * @maxLength 128
+     */
+  password: string;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  reason: string | null;
+}
+
+export type AccountDeletionRequestStatus = typeof AccountDeletionRequestStatus[keyof typeof AccountDeletionRequestStatus];
+
+
+export const AccountDeletionRequestStatus = {
+  PENDING: 'PENDING',
+  CANCELLED: 'CANCELLED',
+  REJECTED: 'REJECTED',
+  COMPLETED: 'COMPLETED',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AccountDeletionRequestOutcome = typeof AccountDeletionRequestOutcome[keyof typeof AccountDeletionRequestOutcome] | null;
+
+
+export const AccountDeletionRequestOutcome = {
+  ERASED: 'ERASED',
+  CLOSED: 'CLOSED',
+} as const;
+
+export interface AccountDeletionRequest {
+  id: number;
+  status: AccountDeletionRequestStatus;
+  /** @nullable */
+  outcome: AccountDeletionRequestOutcome;
+  /** @nullable */
+  reason: string | null;
+  /** @nullable */
+  resolutionNote: string | null;
+  requestedAt: string;
+  /** @nullable */
+  resolvedAt: string | null;
+}
+
+export interface AdminDeletionRequest {
+  id: number;
+  userId: number;
+  name: string;
+  email: string;
+  role: Role;
+  /** @nullable */
+  reason: string | null;
+  requestedAt: string;
+  /** Medical records in the patient's file, or written by the doctor. */
+  recordCount: number;
+  attachmentCount: number;
+}
+
+/**
+ * ERASE deletes the patient's account, records and files. CLOSE removes sign-in and contact details and revokes access but keeps medical records. REJECT keeps the account (a note is required).
+ */
+export type DeletionResolutionInputAction = typeof DeletionResolutionInputAction[keyof typeof DeletionResolutionInputAction];
+
+
+export const DeletionResolutionInputAction = {
+  ERASE: 'ERASE',
+  CLOSE: 'CLOSE',
+  REJECT: 'REJECT',
+} as const;
+
+export interface DeletionResolutionInput {
+  /** ERASE deletes the patient's account, records and files. CLOSE removes sign-in and contact details and revokes access but keeps medical records. REJECT keeps the account (a note is required). */
+  action: DeletionResolutionInputAction;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  note: string | null;
+}
+
+export interface ConsentInput {
+  /** @maxLength 40 */
+  termsVersion: string;
+  healthDataConsent: boolean;
+}
+
+export interface PatientIdentityInput {
+  sex: Sex;
+  dateOfBirth: string;
+  dateOfBirthEstimated: boolean;
+  /**
+     * Cameroon national ID card (CNI) number. Optional.
+     * @maxLength 30
+     * @nullable
+     */
+  nationalIdNumber: string | null;
+}
+
+export interface PossibleDuplicatePatient {
+  userId: number;
+  name: string;
+  /** @nullable */
+  patientDisplayId: string | null;
+  sex: Sex | null;
+  /** @nullable */
+  dateOfBirth: string | null;
+  dateOfBirthEstimated: boolean;
+  /** @nullable */
+  region: string | null;
+  createdAt: string;
+}
+
+/**
+ * Same name in any word order and the same birth year. National ID numbers are unique, so they never repeat.
+ */
+export type PossibleDuplicateGroupReason = typeof PossibleDuplicateGroupReason[keyof typeof PossibleDuplicateGroupReason];
+
+
+export const PossibleDuplicateGroupReason = {
+  SAME_NAME_AND_BIRTH_YEAR: 'SAME_NAME_AND_BIRTH_YEAR',
+} as const;
+
+export interface PossibleDuplicateGroup {
+  /** Same name in any word order and the same birth year. National ID numbers are unique, so they never repeat. */
+  reason: PossibleDuplicateGroupReason;
+  patients: PossibleDuplicatePatient[];
+}
+
+export interface LanguageInput {
+  language: Language;
+}
+
+/**
+ * AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient's approval.
+ */
+export type AccessApprovalMode = typeof AccessApprovalMode[keyof typeof AccessApprovalMode];
+
+
+export const AccessApprovalMode = {
+  AUTOMATIC: 'AUTOMATIC',
+  ASK: 'ASK',
+} as const;
+
+export interface AccessSettings {
+  accessApprovalMode: AccessApprovalMode;
+}
+
+export interface AccessRequest {
+  id: number;
+  doctorId: number;
+  doctorName: string;
+  doctorEmail: string;
+  doctorVerified: boolean;
+  /** @nullable */
+  hospitalName: string | null;
+  requestedAt: string;
+  expiresAt: string;
+}
+
+export interface AccessRequestApprovalInput {
+  /**
+     * Number of days the access lasts, or null to keep access until the patient revokes it.
+     * @minimum 1
+     * @maximum 365
+     * @nullable
+     */
+  durationDays: number | null;
+}
+
 /**
  * The patient's CM ID, which also grants booklet access when entered by a doctor.
  */
@@ -530,7 +754,29 @@ export interface PatientAccessCodeInput {
   patientDisplayId: string;
 }
 
+/**
+ * PENDING means the patient must approve the request before the booklet opens.
+ */
+export type PatientBookletAccessStatus = typeof PatientBookletAccessStatus[keyof typeof PatientBookletAccessStatus];
+
+
+export const PatientBookletAccessStatus = {
+  GRANTED: 'GRANTED',
+  PENDING: 'PENDING',
+} as const;
+
 export interface PatientBookletAccess {
+  patientSex: Sex | null;
+  /** @nullable */
+  patientDateOfBirth: string | null;
+  patientDateOfBirthEstimated: boolean;
+  /**
+     * Only when access is granted; null while a request is pending.
+     * @nullable
+     */
+  patientNationalIdNumber: string | null;
+  /** PENDING means the patient must approve the request before the booklet opens. */
+  status: PatientBookletAccessStatus;
   patientId: number;
   /**
      * @minLength 8
@@ -542,11 +788,32 @@ export interface PatientBookletAccess {
 }
 
 export interface PatientSearchRequest {
+  /** @nullable */
+  reason: string | null;
+  /** @nullable */
+  hospitalName: string | null;
   doctorId: number;
   doctorName: string;
   doctorEmail: string;
   doctorVerified: boolean;
   searchedAt: string;
+}
+
+export interface EmergencyLookupInput {
+  /**
+     * The patient's full name, in any word order.
+     * @minLength 3
+     * @maxLength 120
+     */
+  fullName: string;
+  /** @nullable */
+  dateOfBirth: string | null;
+  /**
+     * Why emergency information is needed without the patient's CM ID. Shown to the patient.
+     * @minLength 10
+     * @maxLength 300
+     */
+  reason: string;
 }
 
 export interface PatientSearchResult {
@@ -681,13 +948,6 @@ export interface AdminAnalytics {
   epidemicMetrics: AdminEpidemicMetric[];
 }
 
-export type SearchPatientsParams = {
-/**
- * @minLength 2
- */
-query: string;
-};
-
 export type ConfirmMedicalAttachmentUpload200Status = typeof ConfirmMedicalAttachmentUpload200Status[keyof typeof ConfirmMedicalAttachmentUpload200Status];
 
 
@@ -711,6 +971,8 @@ export type SearchDiseaseCodesParams = {
  */
 query: string;
 };
+
+export type ExportMyData200 = { [key: string]: unknown };
 
 export type SearchUsersParams = {
 /**

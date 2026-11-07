@@ -39,8 +39,26 @@ export const usersTable = pgTable(
     patientDisplayId: text("patient_display_id"),
     patientAccessId: text("patient_access_id"),
     dateOfBirth: date("date_of_birth", { mode: "string" }),
+    // True when the patient gave an age instead of an exact date (stored as 1 January of the birth year).
+    dateOfBirthEstimated: boolean("date_of_birth_estimated").notNull().default(false),
+    // Patients only: "FEMALE" or "MALE"; null until provided.
+    sex: text("sex"),
+    // Patients only: Cameroon national ID card (CNI) number, upper-case without spaces. Never shown to admins.
+    nationalIdNumber: text("national_id_number"),
     contactInfo: text("contact_info"),
+    // Patients only. AUTOMATIC: a doctor entering the CM ID gets access until revoked.
+    // ASK: the doctor's request waits until the patient approves or rejects it.
+    accessApprovalMode: text("access_approval_mode").notNull().default("AUTOMATIC"),
+    // "fr" or "en": the language of the app and of notifications sent to this account.
+    preferredLanguage: text("preferred_language").notNull().default("fr"),
     isActive: boolean("is_active").notNull().default(true),
+    // Set when the account was closed after a deletion request. Closed accounts cannot sign in or be restored.
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    // Version of the privacy policy and terms accepted, and when. Patients also record explicit
+    // consent to the processing of their health data (sensitive data under Law 2024/017).
+    termsVersion: text("terms_version"),
+    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+    healthDataConsentAt: timestamp("health_data_consent_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -53,6 +71,7 @@ export const usersTable = pgTable(
     uniqueIndex("medichain_users_email_unique").on(table.email),
     uniqueIndex("medichain_users_patient_display_id_unique").on(table.patientDisplayId),
     uniqueIndex("medichain_users_patient_access_id_unique").on(table.patientAccessId),
+    uniqueIndex("medichain_users_national_id_unique").on(table.nationalIdNumber),
     index("medichain_users_role_index").on(table.role),
   ],
 );
@@ -201,6 +220,57 @@ export const accessPermissionsTable = pgTable(
   ],
 );
 
+export const accountDeletionRequestsTable = pgTable(
+  "medichain_account_deletion_requests",
+  {
+    id: serial("id").primaryKey(),
+    // No foreign key: the request is kept as evidence after the account itself is erased.
+    userId: integer("user_id").notNull(),
+    role: text("role").notNull(),
+    reason: text("reason"),
+    // PENDING, CANCELLED, REJECTED, COMPLETED
+    status: text("status").notNull().default("PENDING"),
+    // ERASED (account and medical data deleted) or CLOSED (sign-in and contact details removed, records kept)
+    outcome: text("outcome"),
+    resolutionNote: text("resolution_note"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: integer("resolved_by").references(() => usersTable.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    uniqueIndex("medichain_deletion_request_pending_unique")
+      .on(table.userId)
+      .where(sql`${table.status} = 'PENDING'`),
+    index("medichain_deletion_request_status_index").on(table.status, table.requestedAt),
+  ],
+);
+
+export const accessRequestsTable = pgTable(
+  "medichain_access_requests",
+  {
+    id: serial("id").primaryKey(),
+    patientId: integer("patient_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    doctorId: integer("doctor_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    hospitalName: text("hospital_name"),
+    // PENDING, APPROVED or REJECTED
+    status: text("status").notNull().default("PENDING"),
+    requestedAt: timestamp("requested_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("medichain_access_request_pending_unique")
+      .on(table.patientId, table.doctorId)
+      .where(sql`${table.status} = 'PENDING'`),
+    index("medichain_access_request_patient_index").on(table.patientId, table.requestedAt),
+  ],
+);
+
 export const patientSearchesTable = pgTable(
   "medichain_patient_searches",
   {
@@ -214,6 +284,9 @@ export const patientSearchesTable = pgTable(
     searchedAt: timestamp("searched_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // Emergency reason the doctor declared; null for searches made before reasons were required.
+    reason: text("reason"),
+    hospitalName: text("hospital_name"),
   },
   (table) => [
     index("medichain_search_patient_index").on(table.patientId, table.searchedAt),

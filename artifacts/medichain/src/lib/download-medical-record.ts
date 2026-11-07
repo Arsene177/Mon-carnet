@@ -1,7 +1,8 @@
 import type { MedicalRecord } from '@workspace/api-client-react';
+import { locale, t } from './i18n';
 
 function formatDate(value?: string | null): string {
-  if (!value) return 'Not provided';
+  if (!value) return t("Not provided");
   const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
     ? new Date(`${value}T00:00:00`)
     : new Date(value);
@@ -23,20 +24,20 @@ function downloadTextFile(filename: string, contents: string): void {
 
 export function downloadMedicalRecord(record: MedicalRecord, patientDisplayId?: string): void {
   const lines = [
-    'MEDICHAIN MEDICAL RECORD',
+    t("MEDICHAIN MEDICAL RECORD"),
     '========================',
-    `Record ID: ${record.id}`,
-    ...(patientDisplayId ? [`Patient ID: ${patientDisplayId}`] : []),
-    `Record type: ${record.recordType}`,
-    `Entered by: ${record.doctorName}`,
-    `Created: ${formatDate(record.createdAt)}`,
-    `Follow-up to record: ${record.followUpToRecordId ?? 'None'}`,
+    t("Record ID: {0}", { 0: record.id }),
+    ...(patientDisplayId ? [t("Patient ID: {0}", { 0: patientDisplayId })] : []),
+    t("Record type: {0}", { 0: record.recordType }),
+    t("Entered by: {0}", { 0: record.doctorName }),
+    t("Created: {0}", { 0: formatDate(record.createdAt) }),
+    t("Follow-up to record: {0}", { 0: record.followUpToRecordId ?? t("None") }),
     '',
     'DIAGNOSIS',
     '---------',
-    record.diagnosis || 'No diagnosis documented.',
+    record.diagnosis || t("No diagnosis documented."),
     '',
-    'STRUCTURED DISEASE DIAGNOSES',
+    t("STRUCTURED DISEASE DIAGNOSES"),
     '----------------------------',
   ];
 
@@ -45,14 +46,14 @@ export function downloadMedicalRecord(record: MedicalRecord, patientDisplayId?: 
   } else {
     for (const [index, diagnosis] of record.codedDiagnoses.entries()) {
       lines.push(
-        `${index + 1}. ${diagnosis.diseaseCode.diseaseName} (${diagnosis.diseaseCode.code})`,
-        `   Coding system: ${diagnosis.diseaseCode.codingSystem} ${diagnosis.diseaseCode.release}`,
-        `   Status: ${diagnosis.status.replaceAll('_', ' ')}`,
-        `   Diagnosis date: ${formatDate(diagnosis.diagnosisDate)}`,
-        `   Onset date: ${formatDate(diagnosis.onsetDate)}`,
-        `   Notes: ${diagnosis.notes || 'None'}`,
-        `   Supporting record: ${diagnosis.supportingRecordId ?? 'None'}`,
-        `   Source: ${diagnosis.diseaseCode.source}`,
+        `${index + 1}. ${t(diagnosis.diseaseCode.diseaseName)} (${diagnosis.diseaseCode.code})`,
+        t("   Coding system: {0} {1}", { 0: diagnosis.diseaseCode.codingSystem, 1: diagnosis.diseaseCode.release }),
+        t("   Status: {0}", { 0: diagnosis.status.replaceAll('_', ' ') }),
+        t("   Diagnosis date: {0}", { 0: formatDate(diagnosis.diagnosisDate) }),
+        t("   Onset date: {0}", { 0: formatDate(diagnosis.onsetDate) }),
+        t("   Notes: {0}", { 0: diagnosis.notes || t("None") }),
+        t("   Supporting record: {0}", { 0: diagnosis.supportingRecordId ?? t("None") }),
+        t("   Source: {0}", { 0: diagnosis.diseaseCode.source }),
         '',
       );
     }
@@ -61,22 +62,22 @@ export function downloadMedicalRecord(record: MedicalRecord, patientDisplayId?: 
   lines.push(
     'TREATMENT / PLAN',
     '----------------',
-    record.treatment || 'No treatment or plan documented.',
+    record.treatment || t("No treatment or plan documented."),
     '',
     'MEDICATIONS',
     '-----------',
-    record.medications.length > 0 ? record.medications.join(', ') : 'None documented.',
+    record.medications.length > 0 ? record.medications.join(', ') : t("None documented."),
     '',
     'CLINICAL NOTES',
     '--------------',
-    record.notes || 'No additional notes.',
+    record.notes || t("No additional notes."),
     '',
     'VITALS',
     '------',
-    `Blood pressure: ${record.vitals.bloodPressure || 'Not recorded'}`,
-    `Heart rate: ${record.vitals.heartRate ? `${record.vitals.heartRate} bpm` : 'Not recorded'}`,
-    `Temperature: ${record.vitals.temperature ? `${record.vitals.temperature} °C` : 'Not recorded'}`,
-    `Weight: ${record.vitals.weightKg ? `${record.vitals.weightKg} kg` : 'Not recorded'}`,
+    t("Blood pressure: {0}", { 0: record.vitals.bloodPressure || t("Not recorded") }),
+    t("Heart rate: {0}", { 0: record.vitals.heartRate ? `${record.vitals.heartRate} bpm` : t("Not recorded") }),
+    t("Temperature: {0}", { 0: record.vitals.temperature ? `${record.vitals.temperature} °C` : t("Not recorded") }),
+    t("Weight: {0}", { 0: record.vitals.weightKg ? `${record.vitals.weightKg} kg` : t("Not recorded") }),
   );
 
   downloadTextFile(`medichain-record-${record.id}.txt`, `\uFEFF${lines.join('\n')}`);

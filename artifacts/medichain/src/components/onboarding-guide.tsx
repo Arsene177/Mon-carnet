@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { User } from '@workspace/api-client-react';
 import type { WorkspaceTab } from '@/lib/navigation';
+import { locale, t } from '@/lib/i18n';
 
 type GuideStep = {
   tab: WorkspaceTab;
@@ -22,26 +23,26 @@ function stepsForRole(role: User['role']): GuideStep[] {
     return [
       {
         tab: 'Overview',
-        title: 'Your health overview',
-        description: 'Start here for your record count, care essentials, and recent activity. Use the workspace sections to move around.',
+        title: t("Your health overview"),
+        description: t("Start here for your record count, care essentials, and recent activity. Use the workspace sections to move around."),
         target: 'workspace-navigation',
       },
       {
         tab: 'Records',
-        title: 'Medical records',
-        description: 'Records added by your doctors appear in this timeline. Open an entry to review its details and download a copy.',
+        title: t("Medical records"),
+        description: t("Records added by your doctors appear in this timeline. Open an entry to review its details and download a copy."),
         target: 'section-heading',
       },
       {
         tab: 'Access control',
-        title: 'Access control',
-        description: 'Review doctor requests, choose how long to share your records, and revoke access whenever you need.',
+        title: t("Access control"),
+        description: t("Review doctor requests, choose how long to share your records, and revoke access whenever you need."),
         target: 'section-heading',
       },
       {
         tab: 'Emergency info',
-        title: 'Emergency information',
-        description: 'Keep your blood group, allergies, measurements, and emergency contact current for your care team.',
+        title: t("Emergency information"),
+        description: t("Keep your blood group, allergies, measurements, and emergency contact current for your care team."),
         target: 'section-heading',
       },
     ];
@@ -51,8 +52,8 @@ function stepsForRole(role: User['role']): GuideStep[] {
     return [
       {
         tab: 'Patients',
-        title: 'Doctor account review',
-        description: 'Your account is under review. Once approved, patient search and record entry will become available.',
+        title: t("Doctor account review"),
+        description: t("Your account is under review. Once approved, emergency lookup and record entry will become available."),
         target: 'section-heading',
       },
     ];
@@ -62,20 +63,20 @@ function stepsForRole(role: User['role']): GuideStep[] {
     return [
       {
         tab: 'Patients',
-        title: 'Find a patient',
-        description: 'Search for a patient by name or email. Emergency details may be visible, but full records require the patient’s active permission.',
+        title: t("Emergency lookup"),
+        description: t("In an emergency, look up a patient by full name to see their emergency details. You must give a reason, and the patient is told. For full records, use the patient’s CM ID in Record entry."),
         target: 'workspace-navigation',
       },
       {
         tab: 'Record entry',
-        title: 'Add a medical record',
-        description: 'Choose a patient who granted access, then create a record. Existing records stay read-only; corrections are added as linked follow-ups.',
+        title: t("Add a medical record"),
+        description: t("Choose a patient who granted access, then create a record. Existing records stay read-only; corrections are added as linked follow-ups."),
         target: 'section-heading',
       },
       {
         tab: 'Profile',
-        title: 'Your clinician profile',
-        description: 'Review the account identity patients see and check your clinical activity.',
+        title: t("Your clinician profile"),
+        description: t("Review the account identity patients see and check your clinical activity."),
         target: 'section-heading',
       },
     ];
@@ -84,26 +85,26 @@ function stepsForRole(role: User['role']): GuideStep[] {
   return [
     {
       tab: 'System overview',
-      title: 'System overview',
-      description: 'Review account totals, recent activity, and the operational status of the care network.',
+      title: t("System overview"),
+      description: t("Review account totals, recent activity, and the operational status of the care network."),
       target: 'workspace-navigation',
     },
     {
       tab: 'Doctor approvals',
-      title: 'Doctor approvals',
-      description: 'Review pending clinician accounts and revoke an active doctor account when necessary.',
+      title: t("Doctor approvals"),
+      description: t("Review pending clinician accounts and revoke an active doctor account when necessary."),
       target: 'section-heading',
     },
     {
       tab: 'User search',
-      title: 'User search',
-      description: 'Find an account by name or email. This view does not expose patient medical records.',
+      title: t("User search"),
+      description: t("Find an account by name or email. This view does not expose patient medical records."),
       target: 'section-heading',
     },
     {
       tab: 'Analytics',
-      title: 'Network analytics',
-      description: 'Review monthly record activity and aggregate system health information.',
+      title: t("Network analytics"),
+      description: t("Review monthly record activity and aggregate system health information."),
       target: 'section-heading',
     },
   ];
@@ -165,7 +166,7 @@ export function OnboardingGuide({ user, activeTab, onTabChange }: OnboardingGuid
         data-testid="button-guide"
       >
         <CircleHelp size={15} />
-        Guide
+        {t("Guide")}
       </button>
 
       {dialogMode && (
@@ -227,24 +228,24 @@ function GuideDialog({
       >
         <header className="guide-dialog-header">
           <div>
-            <p className="eyebrow">Medichain help</p>
-            <h2 id="guide-dialog-title">{mode === 'menu' ? 'Choose a guide' : 'Written guide'}</h2>
+            <p className="eyebrow">{t("Medichain help")}</p>
+            <h2 id="guide-dialog-title">{mode === 'menu' ? t("Choose a guide") : t("Written guide")}</h2>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close guide">
+          <button type="button" className="icon-button" onClick={onClose} aria-label={t("Close guide")}>
             <X size={16} />
           </button>
         </header>
         {mode === 'menu' ? (
           <div className="guide-dialog-body">
-            <p className="subhead guide-intro">Choose how you’d like to review your workspace.</p>
+            <p className="subhead guide-intro">{t("Choose how you’d like to review your workspace.")}</p>
             <button type="button" className="guide-choice" onClick={onReplay} data-testid="button-guide-replay">
               <span className="guide-choice-icon"><RotateCcw size={17} /></span>
-              <span><strong>Replay the section tour</strong><small>Step through the workspace with highlighted sections.</small></span>
+              <span><strong>{t("Replay the section tour")}</strong><small>{t("Step through the workspace with highlighted sections.")}</small></span>
               <ChevronRight size={16} />
             </button>
             <button type="button" className="guide-choice" onClick={onReadGuide} data-testid="button-guide-written">
               <span className="guide-choice-icon"><BookOpen size={17} /></span>
-              <span><strong>Read the written guide</strong><small>See what each workspace section is for.</small></span>
+              <span><strong>{t("Read the written guide")}</strong><small>{t("See what each workspace section is for.")}</small></span>
               <ChevronRight size={16} />
             </button>
           </div>
@@ -258,16 +259,16 @@ function GuideDialog({
                     <h3>{step.title}</h3>
                     <p>{step.description}</p>
                     <button type="button" className="btn ghost small" onClick={() => onOpenSection(step.tab)}>
-                      Open section <ChevronRight size={13} />
+                      {t("Open section")} <ChevronRight size={13} />
                     </button>
                   </div>
                 </li>
               ))}
             </ol>
             <div className="form-actions">
-              <button type="button" className="btn ghost" onClick={onClose}>Close</button>
+              <button type="button" className="btn ghost" onClick={onClose}>{t("Close")}</button>
               <button type="button" className="btn secondary" onClick={onReplay}>
-                <RotateCcw size={14} /> Replay tour
+                <RotateCcw size={14} /> {t("Replay tour")}
               </button>
             </div>
           </div>
@@ -366,17 +367,17 @@ function TourSpotlight({
         aria-live="polite"
         data-testid="onboarding-tour"
       >
-        <div className="tour-progress"><span>Workspace tour</span><span>Step {stepNumber} of {totalSteps}</span></div>
+        <div className="tour-progress"><span>{t("Workspace tour")}</span><span>{t("Step")} {stepNumber} {t("of")} {totalSteps}</span></div>
         <h2 id="tour-step-title">{step.title}</h2>
         <p id="tour-step-description">{step.description}</p>
         <div className="tour-actions">
-          <button type="button" className="btn ghost small" onClick={onClose} data-testid="button-tour-skip">End tour</button>
+          <button type="button" className="btn ghost small" onClick={onClose} data-testid="button-tour-skip">{t("End tour")}</button>
           <div>
-            <button type="button" className="btn ghost small" onClick={onBack} disabled={stepNumber === 1} aria-label="Previous tour step">
-              <ChevronLeft size={14} /> Back
+            <button type="button" className="btn ghost small" onClick={onBack} disabled={stepNumber === 1} aria-label={t("Previous tour step")}>
+              <ChevronLeft size={14} /> {t("Back")}
             </button>
             <button type="button" className="btn small" onClick={onNext} data-testid="button-tour-next">
-              {stepNumber === totalSteps ? 'Finish' : 'Next'} <ChevronRight size={14} />
+              {stepNumber === totalSteps ? t("Finish") : t("Next")} <ChevronRight size={14} />
             </button>
           </div>
         </div>

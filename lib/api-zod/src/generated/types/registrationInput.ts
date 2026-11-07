@@ -5,7 +5,9 @@
  * Medichain secure medical records API
  * OpenAPI spec version: 0.1.0
  */
+import type { Language } from './language';
 import type { RegistrationInputRole } from './registrationInputRole';
+import type { Sex } from './sex';
 
 export interface RegistrationInput {
   /**
@@ -20,6 +22,18 @@ export interface RegistrationInput {
      * @maxLength 128
      */
   password: string;
+  preferredLanguage?: Language;
+  /**
+     * Must equal the current privacy policy and terms version.
+     * @maxLength 40
+     */
+  acceptedTermsVersion?: string;
+  /** Required (true) for patients. */
+  healthDataConsent?: boolean;
+  sex?: Sex;
+  dateOfBirthEstimated?: boolean;
+  /** @maxLength 30 */
+  nationalIdNumber?: string;
   role: RegistrationInputRole;
   dateOfBirth?: Date;
   /** @maxLength 300 */

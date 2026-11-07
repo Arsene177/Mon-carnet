@@ -98,6 +98,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /auth/language:
+    put:
+      operationId: updateLanguage
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LanguageInput"
+      responses:
+        "200":
+          description: Language saved for the app and notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
   /auth/change-password:
     post:
       operationId: changePassword
@@ -140,6 +157,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /patient/identity:
+    put:
+      operationId: updatePatientIdentity
+      tags: [patient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatientIdentityInput"
+      responses:
+        "200":
+          description: Identity details saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "409":
+          description: This national ID number is already registered to another account
   /patient/emergency-info:
     put:
       operationId: updateEmergencyInfo
@@ -256,6 +292,86 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/PatientSearchRequest"
+  /patient/access-settings:
+    get:
+      operationId: getPatientAccessSettings
+      tags: [patient]
+      responses:
+        "200":
+          description: How doctors get access when they enter the patient's CM ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessSettings"
+    put:
+      operationId: updatePatientAccessSettings
+      tags: [patient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessSettings"
+      responses:
+        "200":
+          description: Access settings saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessSettings"
+  /patient/access-requests:
+    get:
+      operationId: getPatientAccessRequests
+      tags: [patient]
+      responses:
+        "200":
+          description: Doctor access requests waiting for the patient's decision
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccessRequest"
+  /patient/access-requests/{requestId}/approve:
+    post:
+      operationId: approvePatientAccessRequest
+      tags: [patient]
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessRequestApprovalInput"
+      responses:
+        "200":
+          description: Request approved and access granted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessPermission"
+        "404":
+          description: Request not found or no longer pending
+  /patient/access-requests/{requestId}/reject:
+    post:
+      operationId: rejectPatientAccessRequest
+      tags: [patient]
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Request rejected
+        "404":
+          description: Request not found or no longer pending
   /patient/access-history:
     get:
       operationId: getPatientAccessHistory
@@ -296,26 +412,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
-  /doctor/search-patient:
-    get:
-      operationId: searchPatients
+  /doctor/emergency-lookup:
+    post:
+      operationId: emergencyPatientLookup
       tags: [doctor]
-      parameters:
-        - name: query
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmergencyLookupInput"
       responses:
         "200":
-          description: Emergency information only for patients matching the search
+          description: Emergency information only, for patients whose full name (and date of birth, if given) match exactly
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/PatientSearchResult"
+        "422":
+          description: Too many patients share this name; add the date of birth
+        "429":
+          description: Too many emergency lookups
   /doctor/patient-access:
     post:
       operationId: grantPatientAccessById
@@ -328,7 +447,7 @@ paths:
               $ref: "#/components/schemas/PatientAccessCodeInput"
       responses:
         "200":
-          description: Patient booklet access granted using the patient's CM ID
+          description: Access granted, or a request sent to the patient when they approve each doctor
           content:
             application/json:
               schema:
@@ -336,7 +455,7 @@ paths:
         "404":
           description: Patient CM ID not found
         "429":
-          description: Too many incorrect CM IDs
+          description: Too many incorrect CM IDs, or the patient recently declined this doctor
   /doctor/patient/{patientId}/attachments/upload-url:
     post:
       operationId: requestPatientAttachmentUpload
@@ -698,6 +817,119 @@ paths:
                 $ref: "#/components/schemas/AdminPasswordResetResult"
         "404":
           description: Request is no longer pending or account no longer exists
+  /account/consent:
+    post:
+      operationId: acceptLegalTerms
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentInput"
+      responses:
+        "200":
+          description: Consent recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /account/data-export:
+    get:
+      operationId: exportMyData
+      tags: [auth]
+      responses:
+        "200":
+          description: Everything Mon carnet holds about the signed-in account, as JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /account/deletion-request:
+    get:
+      operationId: getMyDeletionRequest
+      tags: [auth]
+      responses:
+        "200":
+          description: The latest deletion request for this account, or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AccountDeletionRequest"
+                  - type: "null"
+    post:
+      operationId: requestAccountDeletion
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountDeletionInput"
+      responses:
+        "201":
+          description: Deletion request recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDeletionRequest"
+    delete:
+      operationId: cancelAccountDeletion
+      tags: [auth]
+      responses:
+        "204":
+          description: Pending request cancelled
+  /admin/deletion-requests:
+    get:
+      operationId: getAdminDeletionRequests
+      tags: [admin]
+      responses:
+        "200":
+          description: Pending account deletion requests, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminDeletionRequest"
+  /admin/deletion-requests/{requestId}/resolve:
+    post:
+      operationId: resolveAdminDeletionRequest
+      tags: [admin]
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeletionResolutionInput"
+      responses:
+        "200":
+          description: Request resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDeletionRequest"
+  /admin/possible-duplicates:
+    get:
+      operationId: getAdminPossibleDuplicates
+      tags: [admin]
+      responses:
+        "200":
+          description: Groups of active patient accounts that may belong to the same person
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PossibleDuplicateGroup"
   /admin/search-user:
     get:
       operationId: searchUsers
@@ -829,8 +1061,14 @@ components:
       enum: [PENDING, ACTIVE, INACTIVE]
     User:
       type: object
-      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement]
+      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage, sex, dateOfBirthEstimated, termsVersion, termsAcceptedAt, healthDataConsentAt]
       properties:
+        termsVersion: { type: ["string", "null"], description: "Version of the privacy policy and terms this account accepted." }
+        termsAcceptedAt: { type: ["string", "null"], format: date-time }
+        healthDataConsentAt: { type: ["string", "null"], format: date-time, description: "Patients: when they consented to the processing of their health data." }
+        sex: { oneOf: [{ $ref: "#/components/schemas/Sex" }, { type: "null" }] }
+        dateOfBirthEstimated: { type: boolean, description: "True when only the birth year is known; dateOfBirth is then 1 January of that year." }
+        preferredLanguage: { $ref: "#/components/schemas/Language" }
         id: { type: integer }
         email: { type: string, format: email }
         name: { type: string }
@@ -858,6 +1096,12 @@ components:
         name: { type: string, minLength: 2, maxLength: 120 }
         email: { type: string, format: email, maxLength: 254 }
         password: { type: string, minLength: 8, maxLength: 128 }
+        preferredLanguage: { $ref: "#/components/schemas/Language" }
+        acceptedTermsVersion: { type: string, maxLength: 40, description: "Must equal the current privacy policy and terms version." }
+        healthDataConsent: { type: boolean, description: "Required (true) for patients." }
+        sex: { $ref: "#/components/schemas/Sex" }
+        dateOfBirthEstimated: { type: boolean }
+        nationalIdNumber: { type: string, maxLength: 30 }
         role: { type: string, enum: [PATIENT, DOCTOR] }
         dateOfBirth: { type: string, format: date }
         contactInfo: { type: string, maxLength: 300 }
@@ -964,10 +1208,13 @@ components:
         newPassword: { type: string, minLength: 8, maxLength: 128 }
     EmergencyInfo:
       type: object
-      required: [patientId, patientName, bloodGroup, weightKg, heightCm, allergies, emergencyContact, updatedAt]
+      required: [patientId, patientName, patientSex, patientDateOfBirth, patientDateOfBirthEstimated, bloodGroup, weightKg, heightCm, allergies, emergencyContact, updatedAt]
       properties:
         patientId: { type: integer }
         patientName: { type: string }
+        patientSex: { oneOf: [{ $ref: "#/components/schemas/Sex" }, { type: "null" }] }
+        patientDateOfBirth: { type: ["string", "null"], format: date }
+        patientDateOfBirthEstimated: { type: boolean }
         bloodGroup: { type: string }
         weightKg: { type: number }
         heightCm: { type: number }
@@ -985,8 +1232,9 @@ components:
         emergencyContact: { type: string, maxLength: 300 }
     PatientProfile:
       type: object
-      required: [user, patientDisplayId, patientAccessId, emergencyInfo, recordCount, permissionsCount]
+      required: [user, patientDisplayId, patientAccessId, emergencyInfo, recordCount, permissionsCount, nationalIdNumber]
       properties:
+        nationalIdNumber: { type: ["string", "null"] }
         user: { $ref: "#/components/schemas/User" }
         patientDisplayId: { type: string, minLength: 8, maxLength: 8, pattern: "^CM[A-Z0-9]{6}$" }
         patientAccessId:
@@ -1152,6 +1400,120 @@ components:
       properties:
         doctorEmail: { type: string, format: email }
         durationDays: { type: integer, minimum: 1, maximum: 365 }
+    AccountDeletionInput:
+      type: object
+      required: [password, reason]
+      properties:
+        password: { type: string, minLength: 1, maxLength: 128, description: "Current password, to confirm it is the account owner." }
+        reason: { type: ["string", "null"], maxLength: 500 }
+    AccountDeletionRequest:
+      type: object
+      required: [id, status, outcome, reason, resolutionNote, requestedAt, resolvedAt]
+      properties:
+        id: { type: integer }
+        status: { type: string, enum: [PENDING, CANCELLED, REJECTED, COMPLETED] }
+        outcome: { type: ["string", "null"], enum: [ERASED, CLOSED, null] }
+        reason: { type: ["string", "null"] }
+        resolutionNote: { type: ["string", "null"] }
+        requestedAt: { type: string, format: date-time }
+        resolvedAt: { type: ["string", "null"], format: date-time }
+    AdminDeletionRequest:
+      type: object
+      required: [id, userId, name, email, role, reason, requestedAt, recordCount, attachmentCount]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        reason: { type: ["string", "null"] }
+        requestedAt: { type: string, format: date-time }
+        recordCount: { type: integer, description: "Medical records in the patient's file, or written by the doctor." }
+        attachmentCount: { type: integer }
+    DeletionResolutionInput:
+      type: object
+      required: [action, note]
+      properties:
+        action:
+          type: string
+          enum: [ERASE, CLOSE, REJECT]
+          description: "ERASE deletes the patient's account, records and files. CLOSE removes sign-in and contact details and revokes access but keeps medical records. REJECT keeps the account (a note is required)."
+        note: { type: ["string", "null"], maxLength: 500 }
+    ConsentInput:
+      type: object
+      required: [termsVersion, healthDataConsent]
+      properties:
+        termsVersion: { type: string, maxLength: 40 }
+        healthDataConsent: { type: boolean }
+    Sex:
+      type: string
+      enum: [FEMALE, MALE]
+    PatientIdentityInput:
+      type: object
+      required: [sex, dateOfBirth, dateOfBirthEstimated, nationalIdNumber]
+      properties:
+        sex: { $ref: "#/components/schemas/Sex" }
+        dateOfBirth: { type: string, format: date }
+        dateOfBirthEstimated: { type: boolean }
+        nationalIdNumber: { type: ["string", "null"], maxLength: 30, description: "Cameroon national ID card (CNI) number. Optional." }
+    PossibleDuplicatePatient:
+      type: object
+      required: [userId, name, patientDisplayId, sex, dateOfBirth, dateOfBirthEstimated, region, createdAt]
+      properties:
+        userId: { type: integer }
+        name: { type: string }
+        patientDisplayId: { type: ["string", "null"] }
+        sex: { oneOf: [{ $ref: "#/components/schemas/Sex" }, { type: "null" }] }
+        dateOfBirth: { type: ["string", "null"], format: date }
+        dateOfBirthEstimated: { type: boolean }
+        region: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+    PossibleDuplicateGroup:
+      type: object
+      required: [reason, patients]
+      properties:
+        reason: { type: string, enum: [SAME_NAME_AND_BIRTH_YEAR], description: "Same name in any word order and the same birth year. National ID numbers are unique, so they never repeat." }
+        patients:
+          type: array
+          items: { $ref: "#/components/schemas/PossibleDuplicatePatient" }
+    Language:
+      type: string
+      enum: [fr, en]
+    LanguageInput:
+      type: object
+      required: [language]
+      properties:
+        language: { $ref: "#/components/schemas/Language" }
+    AccessApprovalMode:
+      type: string
+      enum: [AUTOMATIC, ASK]
+      description: AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient's approval.
+    AccessSettings:
+      type: object
+      required: [accessApprovalMode]
+      properties:
+        accessApprovalMode: { $ref: "#/components/schemas/AccessApprovalMode" }
+    AccessRequest:
+      type: object
+      required: [id, doctorId, doctorName, doctorEmail, doctorVerified, hospitalName, requestedAt, expiresAt]
+      properties:
+        id: { type: integer }
+        doctorId: { type: integer }
+        doctorName: { type: string }
+        doctorEmail: { type: string, format: email }
+        doctorVerified: { type: boolean }
+        hospitalName: { type: ["string", "null"] }
+        requestedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    AccessRequestApprovalInput:
+      type: object
+      required: [durationDays]
+      properties:
+        durationDays:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 365
+          description: Number of days the access lasts, or null to keep access until the patient revokes it.
     PatientAccessCodeInput:
       type: object
       description: The patient's CM ID, which also grants booklet access when entered by a doctor.
@@ -1165,20 +1527,37 @@ components:
           description: The patient's CM ID and booklet access code.
     PatientBookletAccess:
       type: object
-      required: [patientId, patientDisplayId, patientName]
+      required: [status, patientId, patientDisplayId, patientName, patientSex, patientDateOfBirth, patientDateOfBirthEstimated, patientNationalIdNumber]
       properties:
+        patientSex: { oneOf: [{ $ref: "#/components/schemas/Sex" }, { type: "null" }] }
+        patientDateOfBirth: { type: ["string", "null"], format: date }
+        patientDateOfBirthEstimated: { type: boolean }
+        patientNationalIdNumber: { type: ["string", "null"], description: "Only when access is granted; null while a request is pending." }
+        status:
+          type: string
+          enum: [GRANTED, PENDING]
+          description: PENDING means the patient must approve the request before the booklet opens.
         patientId: { type: integer }
         patientDisplayId: { type: string, minLength: 8, maxLength: 8, pattern: "^CM[A-Z0-9]{6}$" }
         patientName: { type: string }
     PatientSearchRequest:
       type: object
-      required: [doctorId, doctorName, doctorEmail, doctorVerified, searchedAt]
+      required: [doctorId, doctorName, doctorEmail, doctorVerified, searchedAt, reason, hospitalName]
       properties:
+        reason: { type: ["string", "null"] }
+        hospitalName: { type: ["string", "null"] }
         doctorId: { type: integer }
         doctorName: { type: string }
         doctorEmail: { type: string, format: email }
         doctorVerified: { type: boolean }
         searchedAt: { type: string, format: date-time }
+    EmergencyLookupInput:
+      type: object
+      required: [fullName, dateOfBirth, reason]
+      properties:
+        fullName: { type: string, minLength: 3, maxLength: 120, description: "The patient's full name, in any word order." }
+        dateOfBirth: { type: ["string", "null"], format: date }
+        reason: { type: string, minLength: 10, maxLength: 300, description: Why emergency information is needed without the patient's CM ID. Shown to the patient. }
     PatientSearchResult:
       type: object
       required: [emergencyInfo]

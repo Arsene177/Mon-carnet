@@ -9,6 +9,8 @@ import type { EmergencyInfo } from './emergencyInfo';
 import type { User } from './user';
 
 export interface PatientProfile {
+  /** @nullable */
+  nationalIdNumber: string | null;
   user: User;
   /**
      * @minLength 8

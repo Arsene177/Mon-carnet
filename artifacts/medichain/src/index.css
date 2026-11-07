@@ -103,7 +103,7 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
 .stat-card:after { content:""; position:absolute; width:90px; height:90px; right:-23px; bottom:-30px; border-radius:50%; background:#fff1d8; }
 .stat-label { color:#7b8986; font-size:11px; font-weight:600; }
 .stat-value { color:#142a3f; font:700 29px var(--app-font-serif); letter-spacing:-1px; margin:13px 0 5px; }
-.stat-foot { color:#91a09b; font-size:10px; }
+.stat-foot { color:#91a09b; font-size:10px; display:block; position:relative; z-index:1; padding-right:44px; line-height:1.45; }
 .stat-icon { position:absolute; right:18px; top:18px; color:#d99125; z-index:1; }
 .dashboard-grid { grid-template-columns:minmax(0,1.35fr) minmax(270px,.8fr); align-items:start; }
 .export-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:9px; }
@@ -340,3 +340,56 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
   .tour-card { padding:16px; }
   .tour-actions { align-items:flex-end; }
 }
+/* Patient access approval setting */
+.choice-group { border:0; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+.choice-group:disabled { opacity:.7; }
+.choice-card { display:flex; align-items:flex-start; gap:11px; padding:15px; border:1px solid #e3e0d7; border-radius:13px; background:#fff; cursor:pointer; }
+.choice-card:hover { border-color:#b9d3c8; }
+.choice-card.selected { border-color:#467267; background:#f2f8f4; }
+.choice-card:focus-within { outline:2px solid #467267; outline-offset:2px; }
+.choice-card input { margin-top:3px; accent-color:#467267; }
+.choice-card strong { display:block; color:#24403b; font-size:13px; }
+.choice-card small { display:block; color:#788683; font-size:11px; line-height:1.5; margin-top:4px; }
+.request-actions { display:flex; gap:8px; flex-shrink:0; }
+@media (max-width:560px) { .data-row:has(.request-actions) { flex-direction:column; align-items:flex-start; } }
+
+/* Language switcher (FR / EN) */
+.language-switcher { display:inline-flex; border:1px solid #dfe5eb; border-radius:10px; background:#fff; padding:2px; gap:2px; }
+.language-switcher button { border:0; background:transparent; color:#5b6f80; font-size:11px; font-weight:700; letter-spacing:.06em; padding:6px 9px; border-radius:8px; cursor:pointer; min-width:34px; }
+.language-switcher button.active { background:#17344a; color:#fff; }
+.language-switcher button:focus-visible { outline:2px solid #e5a23b; outline-offset:1px; }
+.login-main { position:relative; }
+.login-language { position:absolute; top:max(18px, env(safe-area-inset-top, 0px)); right:max(18px, env(safe-area-inset-right, 0px)); }
+
+/* Patient identity */
+.checkbox-line { display:flex; align-items:center; gap:7px; margin-top:8px; font-size:11px; font-weight:500; color:#5d6f6b; cursor:pointer; }
+.checkbox-line input { width:auto; accent-color:#467267; }
+.patient-identity { margin:4px 0 0; font-size:12px; font-weight:600; color:#36504c; }
+.identity-chip { margin-left:8px; font-size:11px; font-weight:600; color:#5d6f6b; }
+.duplicate-group { padding:14px 0; border-bottom:1px solid #f0ede6; }
+.duplicate-group:last-child { border:0; }
+
+/* Data rights */
+.row-help { display:block; margin-top:4px; color:#7b8986; font-size:11px; font-weight:400; line-height:1.5; max-width:62ch; }
+.deletion-block { padding:15px 0 4px; border-top:1px solid #f0ede6; }
+.form-success { margin:12px 0 0; color:#2f6b52; font-size:12px; font-weight:600; }
+
+/* Legal pages and consent */
+.consent-group { display:grid; gap:10px; margin:4px 0 14px; }
+.consent-line { display:flex; align-items:flex-start; gap:9px; font-size:11.5px; line-height:1.5; color:#4d605c; cursor:pointer; }
+.consent-line input { width:auto; margin-top:2px; accent-color:#467267; flex-shrink:0; }
+.consent-line a, .auth-foot a, .panel-caption a { color:#2f6b52; font-weight:600; }
+.consent-page { grid-template-columns:1fr; }
+.consent-page .auth-card h2 { margin:18px 0 6px; }
+.consent-page .auth-card .consent-line { margin-top:14px; }
+.brand-inline { display:flex; align-items:center; gap:9px; color:#142a3f; }
+.legal-page { min-height:100dvh; background:#f3f5f8; padding-block:40px 70px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); }
+.legal-body { max-width:720px; margin:0 auto; background:#fff; border:1px solid #e3e0d7; border-radius:16px; padding:32px clamp(18px, 5vw, 44px); color:#334947; font-size:14px; line-height:1.7; }
+.legal-body h1 { font-size:clamp(26px, 5vw, 34px); color:#142a3f; margin:18px 0 4px; }
+.legal-body h2 { font-size:17px; color:#142a3f; margin:26px 0 8px; }
+.legal-body ul { list-style:disc; padding-left:1.3em; display:grid; gap:6px; }
+.legal-body li::marker { color:#467267; }
+.legal-back { font-size:12px; margin:0; }
+.legal-back a { color:#2f6b52; font-weight:600; }
+.legal-version { color:#7b8986; font-size:12px; margin:0 0 16px; }
+.legal-draft { margin-top:16px; padding:12px 14px; border-radius:10px; background:#fbf1dc; color:#7a5419; font-size:12px; font-weight:600; }

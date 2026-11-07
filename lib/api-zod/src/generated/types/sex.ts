@@ -6,9 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type SearchPatientsParams = {
-/**
- * @minLength 2
- */
-query: string;
-};
+export type Sex = typeof Sex[keyof typeof Sex];
+
+
+export const Sex = {
+  FEMALE: 'FEMALE',
+  MALE: 'MALE',
+} as const;
