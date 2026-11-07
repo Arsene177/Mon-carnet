@@ -28,7 +28,16 @@ export const AccountStatus = {
   INACTIVE: 'INACTIVE',
 } as const;
 
+export type Language = typeof Language[keyof typeof Language];
+
+
+export const Language = {
+  fr: 'fr',
+  en: 'en',
+} as const;
+
 export interface User {
+  preferredLanguage: Language;
   id: number;
   email: string;
   name: string;
@@ -77,6 +86,7 @@ export interface RegistrationInput {
      * @maxLength 128
      */
   password: string;
+  preferredLanguage?: Language;
   role: RegistrationInputRole;
   dateOfBirth?: string;
   /** @maxLength 300 */
@@ -515,6 +525,10 @@ export interface PermissionGrantInput {
      * @maximum 365
      */
   durationDays: number;
+}
+
+export interface LanguageInput {
+  language: Language;
 }
 
 /**

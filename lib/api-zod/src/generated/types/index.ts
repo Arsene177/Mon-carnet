@@ -58,6 +58,8 @@ export * from './getAdminDirectoryKind';
 export * from './getAdminDirectoryParams';
 export * from './getMedicalAttachmentDownloadUrlParams';
 export * from './healthStatus';
+export * from './language';
+export * from './languageInput';
 export * from './locationProfileInput';
 export * from './loginInput';
 export * from './medicalAttachment';

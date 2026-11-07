@@ -98,6 +98,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /auth/language:
+    put:
+      operationId: updateLanguage
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LanguageInput"
+      responses:
+        "200":
+          description: Language saved for the app and notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
   /auth/change-password:
     post:
       operationId: changePassword
@@ -912,8 +929,9 @@ components:
       enum: [PENDING, ACTIVE, INACTIVE]
     User:
       type: object
-      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement]
+      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage]
       properties:
+        preferredLanguage: { $ref: "#/components/schemas/Language" }
         id: { type: integer }
         email: { type: string, format: email }
         name: { type: string }
@@ -941,6 +959,7 @@ components:
         name: { type: string, minLength: 2, maxLength: 120 }
         email: { type: string, format: email, maxLength: 254 }
         password: { type: string, minLength: 8, maxLength: 128 }
+        preferredLanguage: { $ref: "#/components/schemas/Language" }
         role: { type: string, enum: [PATIENT, DOCTOR] }
         dateOfBirth: { type: string, format: date }
         contactInfo: { type: string, maxLength: 300 }
@@ -1235,6 +1254,14 @@ components:
       properties:
         doctorEmail: { type: string, format: email }
         durationDays: { type: integer, minimum: 1, maximum: 365 }
+    Language:
+      type: string
+      enum: [fr, en]
+    LanguageInput:
+      type: object
+      required: [language]
+      properties:
+        language: { $ref: "#/components/schemas/Language" }
     AccessApprovalMode:
       type: string
       enum: [AUTOMATIC, ASK]

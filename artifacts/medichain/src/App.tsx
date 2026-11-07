@@ -35,6 +35,7 @@ import { useLocation } from 'wouter';
 import { OnboardingGuide } from '@/components/onboarding-guide';
 import { downloadMedicalRecord } from '@/lib/download-medical-record';
 import type { WorkspaceTab } from '@/lib/navigation';
+import { LANGUAGES, getLanguage, locale, setLanguage, t, useLanguage, type Language } from '@/lib/i18n';
 
 const queryClient = new QueryClient();
 setAuthTokenGetter(() => typeof localStorage === 'undefined' ? null : localStorage.getItem('medichain_token'));
@@ -46,23 +47,34 @@ type Tab = WorkspaceTab;
 const patientTabs: Tab[] = ['Overview', 'Profile', 'Records', 'Access control', 'Emergency info', 'Inbox'];
 const doctorTabs: Tab[] = ['Patients', 'Record entry', 'Profile', 'Inbox'];
 const adminTabs: Tab[] = ['System overview', 'Doctor approvals', 'User search', 'Password recovery', 'Directories & notices', 'Analytics', 'Profile', 'Inbox'];
-const dateLabel = (date?: string | null) => date ? new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not provided';
+const dateLabel = (date?: string | null) => date ? new Date(date).toLocaleDateString(locale(), { month: 'short', day: 'numeric', year: 'numeric' }) : t("Not provided");
 const initials = (name?: string) => (name || 'MC').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
-const errText = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+/** A readable, translated message for an API or network error. */
+const errText = (error: unknown) => {
+  if (typeof error === 'object' && error !== null && 'data' in error && typeof error.data === 'object' && error.data !== null) {
+    if ('error' in error.data && typeof error.data.error === 'string') return t(error.data.error);
+    if ('message' in error.data && typeof error.data.message === 'string') return t(error.data.message);
+  }
+  if (error instanceof Error) {
+    if (/failed to fetch|network/i.test(error.message)) return t("Unable to connect. Check your internet connection and try again.");
+    return t(error.message);
+  }
+  return t("Something went wrong. Please try again.");
+};
 const loginErrorText = (error: unknown) => {
   if (typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number') {
-    if (error.status === 401) return 'Email or password is incorrect. Check your details and try again.';
-    if (error.status === 429) return 'Too many sign-in attempts. Wait 15 minutes and try again, or use "Forgot password".';
-    if (error.status >= 500) return 'Sign in is temporarily unavailable. Please try again shortly.';
+    if (error.status === 401) return t("Email or password is incorrect. Check your details and try again.");
+    if (error.status === 429) return t("Too many sign-in attempts. Wait 15 minutes and try again, or use \"Forgot password\".");
+    if (error.status >= 500) return t("Sign in is temporarily unavailable. Please try again shortly.");
   }
   if (error instanceof Error && /failed to fetch|network/i.test(error.message)) {
-    return 'Unable to connect. Check your internet connection and try again.';
+    return t("Unable to connect. Check your internet connection and try again.");
   }
   if (typeof error === 'object' && error !== null && 'data' in error && typeof error.data === 'object' && error.data !== null) {
-    if ('error' in error.data && typeof error.data.error === 'string') return error.data.error;
-    if ('message' in error.data && typeof error.data.message === 'string') return error.data.message;
+    if ('error' in error.data && typeof error.data.error === 'string') return t(error.data.error);
+    if ('message' in error.data && typeof error.data.message === 'string') return t(error.data.message);
   }
-  return "We couldn't sign you in. Please try again.";
+  return t("We couldn't sign you in. Please try again.");
 };
 
 type CodedDiagnosisStatus = 'suspected' | 'probable' | 'confirmed' | 'ruled_out';
@@ -175,23 +187,23 @@ function LocationFields({ idPrefix, region, arrondissement, onRegionChange, onAr
     .map((location) => location.arrondissement);
   return <div className="form-grid">
     <div className="field">
-      <label htmlFor={`${idPrefix}-region`}>Region (optional)</label>
+      <label htmlFor={`${idPrefix}-region`}>{t("Region (optional)")}</label>
       <select id={`${idPrefix}-region`} value={region ?? ''} onChange={(event) => {
         onRegionChange(event.target.value || null);
         onArrondissementChange(null);
       }} data-testid={`${idPrefix}-region`}>
-        <option value="">Choose a region</option>
-        {CAMEROON_REGIONS.map((item) => <option value={item} key={item}>{item}</option>)}
+        <option value="">{t("Choose a region")}</option>
+        {CAMEROON_REGIONS.map((item) => <option value={item} key={item}>{t(item)}</option>)}
       </select>
     </div>
     <div className="field">
-      <label htmlFor={`${idPrefix}-arrondissement`}>Arrondissement (optional)</label>
+      <label htmlFor={`${idPrefix}-arrondissement`}>{t("Arrondissement (optional)")}</label>
       <select id={`${idPrefix}-arrondissement`} value={arrondissement ?? ''} disabled={!region} onChange={(event) => onArrondissementChange(event.target.value || null)} data-testid={`${idPrefix}-arrondissement`}>
-        <option value="">Choose an arrondissement</option>
+        <option value="">{t("Choose an arrondissement")}</option>
         {arrondissements.map((item) => <option value={item} key={item}>{item}</option>)}
       </select>
     </div>
-    <p className="field-note full">Location helps regional directories and notices. The list contains 360 OCHA/HDX arrondissement entries; it is not a commune list.</p>
+    <p className="field-note full">{t("Location helps regional directories and notices. The list contains 360 OCHA/HDX arrondissement entries; it is not a commune list.")}</p>
   </div>;
 }
 
@@ -213,11 +225,11 @@ function PatientIdIndicator({ onOpenProfile }: { onOpenProfile: () => void }) {
     type="button"
     className="patient-id-indicator"
     onClick={onOpenProfile}
-    aria-label={patientDisplayId ? `Patient ID ${patientDisplayId}. Open profile` : profile.isError ? 'Could not load Patient ID. Open profile' : 'Patient ID is loading'}
+    aria-label={patientDisplayId ? t("Patient ID {0}. Open profile", { 0: patientDisplayId }) : profile.isError ? t("Could not load Patient ID. Open profile") : t("Patient ID is loading")}
     data-testid="topbar-patient-display-id"
   >
-    <span>Patient ID</span>
-    <code>{patientDisplayId ?? (profile.isError ? 'Unavailable' : 'Loading…')}</code>
+    <span>{t("Patient ID")}</span>
+    <code>{patientDisplayId ?? (profile.isError ? t("Unavailable") : t("Loading…"))}</code>
   </button>;
 }
 
@@ -234,11 +246,11 @@ function PasswordChangeCard() {
     setMessage('');
     setError('');
     if (newPassword.length < 8) {
-      setError('Your new password must be at least 8 characters.');
+      setError(t("Your new password must be at least 8 characters."));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('The new passwords do not match.');
+      setError(t("The new passwords do not match."));
       return;
     }
     changePassword.mutate({ data: { currentPassword, newPassword } }, {
@@ -246,22 +258,22 @@ function PasswordChangeCard() {
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
-        setMessage('Password changed successfully.');
+        setMessage(t("Password changed successfully."));
       },
       onError: (changeError) => setError(errText(changeError)),
     });
   };
 
   return <section className="panel" style={{marginTop:17}}>
-    <div className="panel-head"><div><h2 className="panel-title">Change password</h2><p className="panel-caption">Use your current password to set a new one.</p></div><KeyRound size={17} color="#69a293"/></div>
+    <div className="panel-head"><div><h2 className="panel-title">{t("Change password")}</h2><p className="panel-caption">{t("Use your current password to set a new one.")}</p></div><KeyRound size={17} color="#69a293"/></div>
     <div className="panel-body">
       <form onSubmit={submit} className="form-grid">
-        <div className="field full"><label htmlFor="current-password">Current password</label><input id="current-password" type="password" autoComplete="current-password" minLength={1} maxLength={128} required value={currentPassword} onChange={(event)=>setCurrentPassword(event.target.value)} data-testid="input-current-password"/></div>
-        <div className="field"><label htmlFor="new-password">New password</label><input id="new-password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={newPassword} onChange={(event)=>setNewPassword(event.target.value)} data-testid="input-new-password"/></div>
-        <div className="field"><label htmlFor="confirm-password">Confirm new password</label><input id="confirm-password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={confirmPassword} onChange={(event)=>setConfirmPassword(event.target.value)} data-testid="input-confirm-password"/></div>
+        <div className="field full"><label htmlFor="current-password">{t("Current password")}</label><input id="current-password" type="password" autoComplete="current-password" minLength={1} maxLength={128} required value={currentPassword} onChange={(event)=>setCurrentPassword(event.target.value)} data-testid="input-current-password"/></div>
+        <div className="field"><label htmlFor="new-password">{t("New password")}</label><input id="new-password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={newPassword} onChange={(event)=>setNewPassword(event.target.value)} data-testid="input-new-password"/></div>
+        <div className="field"><label htmlFor="confirm-password">{t("Confirm new password")}</label><input id="confirm-password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={confirmPassword} onChange={(event)=>setConfirmPassword(event.target.value)} data-testid="input-confirm-password"/></div>
         {error && <p className="error-state full" role="alert">{error}</p>}
         {message && <p className="field-note full" role="status">{message}</p>}
-        <div className="form-actions full"><button className="btn" type="submit" disabled={changePassword.isPending} data-testid="button-change-password">{changePassword.isPending ? 'Updating…' : 'Change password'}</button></div>
+        <div className="form-actions full"><button className="btn" type="submit" disabled={changePassword.isPending} data-testid="button-change-password">{changePassword.isPending ? t("Updating…") : t("Change password")}</button></div>
       </form>
     </div>
   </section>;
@@ -285,20 +297,40 @@ function defaultDoctorRecordForm(recordType: MedicalRecordRecordType = 'Consulta
 
 function recordNoteTemplate(recordType: MedicalRecordRecordType): string {
   const templates: Partial<Record<MedicalRecordRecordType, string>> = {
-    Consultation: 'Reason for visit:\nRelevant history:\nExamination findings:\nAssessment:\nPlan:\nFollow-up:',
-    Diagnosis: 'Diagnostic basis:\nDifferential considerations:\nSeverity / stage:\nPlan:',
-    Treatment: 'Treatment goal:\nPlan and instructions:\nMonitoring:\nReview date:',
-    'Lab Results': 'Test / panel:\nResult summary:\nReference range:\nInterpretation:\nRecommended next step:',
-    Prescription: 'Medication:\nDose and route:\nFrequency:\nDuration:\nCounselling / precautions:',
-    Surgery: 'Procedure:\nIndication:\nOutcome:\nPost-procedure plan:',
-    Emergency: 'Triage level:\nPresenting concern:\nImmediate care:\nDisposition:',
-    'Follow-up': 'Progress since last record:\nResponse to plan:\nOutstanding concerns:\nNext steps:',
-    Other: 'Record title:\nRelevant details:\nNext steps:',
+    Consultation: t("Reason for visit:\nRelevant history:\nExamination findings:\nAssessment:\nPlan:\nFollow-up:"),
+    Diagnosis: t("Diagnostic basis:\nDifferential considerations:\nSeverity / stage:\nPlan:"),
+    Treatment: t("Treatment goal:\nPlan and instructions:\nMonitoring:\nReview date:"),
+    'Lab Results': t("Test / panel:\nResult summary:\nReference range:\nInterpretation:\nRecommended next step:"),
+    Prescription: t("Medication:\nDose and route:\nFrequency:\nDuration:\nCounselling / precautions:"),
+    Surgery: t("Procedure:\nIndication:\nOutcome:\nPost-procedure plan:"),
+    Emergency: t("Triage level:\nPresenting concern:\nImmediate care:\nDisposition:"),
+    'Follow-up': t("Progress since last record:\nResponse to plan:\nOutstanding concerns:\nNext steps:"),
+    Other: t("Record title:\nRelevant details:\nNext steps:"),
   };
   return templates[recordType] ?? '';
 }
 
+/** Saves the language on the account so notifications reach this person in it. */
+function saveAccountLanguage(language: Language) {
+  const token = localStorage.getItem('medichain_token');
+  if (!token) return;
+  void fetch('/api/auth/language', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ language }),
+  }).catch(() => undefined);
+}
+
+function LanguageSwitcher({ signedIn = false }: { signedIn?: boolean }) {
+  const language = useLanguage();
+  return <div className="language-switcher" role="group" aria-label={t("Language")}>
+    {LANGUAGES.map((option) => <button key={option.code} type="button" lang={option.code} className={language === option.code ? 'active' : ''} aria-pressed={language === option.code} title={option.name} onClick={() => { setLanguage(option.code); if (signedIn) saveAccountLanguage(option.code); }} data-testid={`button-language-${option.code}`}>{option.label}</button>)}
+  </div>;
+}
+
 function App() {
+  // Re-render the whole app when the language changes.
+  useLanguage();
   return <QueryClientProvider client={queryClient}><Router /></QueryClientProvider>;
 }
 
@@ -376,7 +408,7 @@ function Router() {
 }
 
 function LoadingScreen() {
-  return <div className="login-page"><div className="login-aside"><div className="brand"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div><div className="aside-copy"><p className="eyebrow">A clearer kind of care</p><h1>Your health story, in safe hands.</h1><p>One trusted place for the information that helps care move forward.</p></div><div className="aside-foot">Private by design · Built for patients and clinicians</div></div><main className="login-main"><div className="auth-card"><div className="skeleton"/></div></main></div>;
+  return <div className="login-page"><div className="login-aside"><div className="brand"><NotebookLogo/><span className="brand-name">{t("Mon")} <strong>{t("carnet")}</strong></span></div><div className="aside-copy"><p className="eyebrow">{t("A clearer kind of care")}</p><h1>{t("Your health story, in safe hands.")}</h1><p>{t("One trusted place for the information that helps care move forward.")}</p></div><div className="aside-foot">{t("Private by design · Built for patients and clinicians")}</div></div><main className="login-main"><div className="auth-card"><div className="skeleton"/></div></main></div>;
 }
 
 function AuthPage() {
@@ -411,6 +443,7 @@ function AuthPage() {
     }
     const onSession = (session: { token: string; user: User }) => {
       localStorage.setItem('medichain_token', session.token);
+      if (session.user.preferredLanguage !== getLanguage()) saveAccountLanguage(getLanguage());
       localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
       qc.setQueryData(getGetMeQueryKey(), session.user);
       const destination = session.user.role === 'ADMIN' ? '/admin' : session.user.role === 'DOCTOR' || session.user.role === 'PENDING_DOCTOR' ? '/doctor' : '/patient';
@@ -419,37 +452,38 @@ function AuthPage() {
     if (mode === 'login') {
       login.mutate({ data: { email: form.email.trim(), password: form.password } }, { onSuccess: onSession, onError: (error) => setFeedback(loginErrorText(error)) });
     } else {
-      register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, ...(form.dateOfBirth ? { dateOfBirth: form.dateOfBirth } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: onSession, onError: (error) => setFeedback(errText(error)) });
+      register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, preferredLanguage: getLanguage(), ...(form.dateOfBirth ? { dateOfBirth: form.dateOfBirth } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: onSession, onError: (error) => setFeedback(errText(error)) });
     }
   };
   const flipMode = (next: 'login' | 'register') => { setMode(next); setRecoveringPassword(false); setResetSubmitted(false); setFeedback(''); setLocation(next === 'login' ? '/login' : '/register'); };
   return <div className="login-page">
     <aside className="login-aside">
-      <div className="brand"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
-      <div className="aside-copy"><p className="eyebrow">Care, connected</p><h1>Your health story, in safe hands.</h1><p>Keep your records close, share them on your terms, and help your care team see what matters.</p></div>
-      <div className="aside-foot">Private by design · Built for patients and clinicians</div>
+      <div className="brand"><NotebookLogo/><span className="brand-name">{t("Mon")} <strong>{t("carnet")}</strong></span></div>
+      <div className="aside-copy"><p className="eyebrow">{t("Care, connected")}</p><h1>{t("Your health story, in safe hands.")}</h1><p>{t("Keep your records close, share them on your terms, and help your care team see what matters.")}</p></div>
+      <div className="aside-foot">{t("Private by design · Built for patients and clinicians")}</div>
     </aside>
     <main className="login-main">
+      <div className="login-language"><LanguageSwitcher/></div>
       <div className="auth-card">
-        <div className="mobile-brand"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
-        {!recoveringPassword && <div className="auth-tabs"><button className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => flipMode('login')} data-testid="tab-login">Sign in</button><button className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => flipMode('register')} data-testid="tab-register">Create account</button></div>}
-        <h2>{recoveringPassword ? 'Reset your password' : mode === 'login' ? 'Welcome back' : 'Start your record'}</h2><p>{recoveringPassword ? 'Enter your account email. An administrator will review your request.' : mode === 'login' ? 'Sign in to continue to your secure care workspace.' : 'Create a trusted account for your care journey.'}</p>
+        <div className="mobile-brand"><NotebookLogo/><span className="brand-name">{t("Mon")} <strong>{t("carnet")}</strong></span></div>
+        {!recoveringPassword && <div className="auth-tabs"><button className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => flipMode('login')} data-testid="tab-login">{t("Sign in")}</button><button className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => flipMode('register')} data-testid="tab-register">{t("Create account")}</button></div>}
+        <h2>{recoveringPassword ? t("Reset your password") : mode === 'login' ? t("Welcome back") : t("Start your record")}</h2><p>{recoveringPassword ? t("Enter your account email. An administrator will review your request.") : mode === 'login' ? t("Sign in to continue to your secure care workspace.") : t("Create a trusted account for your care journey.")}</p>
         {feedback && <div className="auth-feedback" role="alert"><AlertCircle size={14}/><span>{feedback}</span></div>}
-        {resetSubmitted && <div className="notice" role="status">If an account exists for that email, an administrator will review your request. Please contact them through a trusted channel if you need help.</div>}
+        {resetSubmitted && <div className="notice" role="status">{t("If an account exists for that email, an administrator will review your request. Please contact them through a trusted channel if you need help.")}</div>}
         <form onSubmit={submit}>
           {!recoveringPassword && mode === 'register' && <>
-            <div className="field"><label htmlFor="auth-name">Full name</label><input id="auth-name" value={form.name} onChange={onField('name')} required minLength={2} autoComplete="name" data-testid="input-name" placeholder="Your name"/></div>
-            <div className="field"><label>Account type</label><div className="role-choice"><button type="button" className={`role-option ${role === 'PATIENT' ? 'selected' : ''}`} onClick={() => setRole('PATIENT')} data-testid="role-patient"><UserRound size={15}/> Patient</button><button type="button" className={`role-option ${role === 'DOCTOR' ? 'selected' : ''}`} onClick={() => setRole('DOCTOR')} data-testid="role-doctor"><Stethoscope size={15}/> Doctor</button></div></div>
-            {role === 'DOCTOR' && <div className="field"><label htmlFor="auth-medical-number">Professional medical number</label><input id="auth-medical-number" value={form.professionalMedicalNumber} onChange={onField('professionalMedicalNumber')} required maxLength={120} autoComplete="off" data-testid="input-professional-medical-number" placeholder="Enter your license or registration number"/><small className="field-note">An administrator will manually verify this before your certified badge is awarded.</small></div>}
-            <div className="field"><label htmlFor="auth-dob">Date of birth <span className="field-note">Optional</span></label><input type="date" id="auth-dob" value={form.dateOfBirth} onChange={onField('dateOfBirth')} data-testid="input-dob"/></div>
-            <div className="field"><label htmlFor="auth-contact">Contact information <span className="field-note">Optional</span></label><input id="auth-contact" value={form.contactInfo} onChange={onField('contactInfo')} data-testid="input-contact" placeholder="Phone number"/></div>
+            <div className="field"><label htmlFor="auth-name">{t("Full name")}</label><input id="auth-name" value={form.name} onChange={onField('name')} required minLength={2} autoComplete="name" data-testid="input-name" placeholder={t("Your name")}/></div>
+            <div className="field"><label>{t("Account type")}</label><div className="role-choice"><button type="button" className={`role-option ${role === 'PATIENT' ? 'selected' : ''}`} onClick={() => setRole('PATIENT')} data-testid="role-patient"><UserRound size={15}/> {t("Patient")}</button><button type="button" className={`role-option ${role === 'DOCTOR' ? 'selected' : ''}`} onClick={() => setRole('DOCTOR')} data-testid="role-doctor"><Stethoscope size={15}/> {t("Doctor")}</button></div></div>
+            {role === 'DOCTOR' && <div className="field"><label htmlFor="auth-medical-number">{t("Professional medical number")}</label><input id="auth-medical-number" value={form.professionalMedicalNumber} onChange={onField('professionalMedicalNumber')} required maxLength={120} autoComplete="off" data-testid="input-professional-medical-number" placeholder={t("Enter your license or registration number")}/><small className="field-note">{t("An administrator will manually verify this before your certified badge is awarded.")}</small></div>}
+            <div className="field"><label htmlFor="auth-dob">{t("Date of birth")} <span className="field-note">{t("Optional")}</span></label><input type="date" id="auth-dob" value={form.dateOfBirth} onChange={onField('dateOfBirth')} data-testid="input-dob"/></div>
+            <div className="field"><label htmlFor="auth-contact">{t("Contact information")} <span className="field-note">{t("Optional")}</span></label><input id="auth-contact" value={form.contactInfo} onChange={onField('contactInfo')} data-testid="input-contact" placeholder={t("Phone number")}/></div>
           </>}
-          <div className="field"><label htmlFor="auth-email">Email address</label><input id="auth-email" type="email" value={form.email} onChange={onField('email')} required autoComplete="email" data-testid="input-email" placeholder="you@example.com"/></div>
-          {!recoveringPassword && <div className="field"><label htmlFor="auth-password">Password</label><input id="auth-password" type="password" value={form.password} onChange={onField('password')} required minLength={mode === 'register' ? 8 : 1} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} data-testid="input-password" placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'}/></div>}
-          {!resetSubmitted && <button className="btn auth-submit" type="submit" disabled={busy} data-testid="button-auth-submit">{busy ? 'Please wait…' : recoveringPassword ? 'Request password reset' : mode === 'login' ? <>Sign in <ArrowRight size={15}/></> : <>Create account <ArrowRight size={15}/></>}</button>}
+          <div className="field"><label htmlFor="auth-email">{t("Email address")}</label><input id="auth-email" type="email" value={form.email} onChange={onField('email')} required autoComplete="email" data-testid="input-email" placeholder={t("you@example.com")}/></div>
+          {!recoveringPassword && <div className="field"><label htmlFor="auth-password">{t("Password")}</label><input id="auth-password" type="password" value={form.password} onChange={onField('password')} required minLength={mode === 'register' ? 8 : 1} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} data-testid="input-password" placeholder={mode === 'register' ? t("At least 8 characters") : t("Your password")}/></div>}
+          {!resetSubmitted && <button className="btn auth-submit" type="submit" disabled={busy} data-testid="button-auth-submit">{busy ? t("Please wait…") : recoveringPassword ? t("Request password reset") : mode === 'login' ? <>{t("Sign in")} <ArrowRight size={15}/></> : <>{t("Create account")} <ArrowRight size={15}/></>}</button>}
         </form>
-        {mode === 'login' && <button className="auth-link" type="button" onClick={() => { setRecoveringPassword(!recoveringPassword); setResetSubmitted(false); setFeedback(''); }}>{recoveringPassword ? 'Back to sign in' : 'Forgot password?'}</button>}
-        {!recoveringPassword && <div className="auth-foot"><LockKeyhole size={12}/> Your health information is private and protected. Doctor accounts may require approval.</div>}
+        {mode === 'login' && <button className="auth-link" type="button" onClick={() => { setRecoveringPassword(!recoveringPassword); setResetSubmitted(false); setFeedback(''); }}>{recoveringPassword ? t("Back to sign in") : t("Forgot password?")}</button>}
+        {!recoveringPassword && <div className="auth-foot"><LockKeyhole size={12}/> {t("Your health information is private and protected. Doctor accounts may require approval.")}</div>}
       </div>
     </main>
   </div>;
@@ -469,15 +503,15 @@ function Workspace({ user, onSignOut }: { user: User; onSignOut: () => void }) {
     'Password recovery': KeyRound, Analytics: ClipboardList, Inbox: Bell,
   };
   return <div className="app-shell">
-    <a className="skip-link" href="#main-content">Skip to content</a>
+    <a className="skip-link" href="#main-content">{t("Skip to content")}</a>
     <aside className="sidebar">
-      <div className="brand"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
-      <div className="nav-label">Workspace</div>
-      <nav className="nav-list" aria-label="Main navigation" data-tour="workspace-navigation">{tabs.map((item) => { const Icon = iconFor[item]; return <button key={item} className={`nav-item ${tab === item ? 'active' : ''}`} aria-current={tab === item ? 'page' : undefined} onClick={() => setTab(item)} data-tour={`nav-${item.toLowerCase().replaceAll(' ', '-')}`} data-testid={`nav-${item.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{item}{item === 'Inbox' && Boolean(notificationInbox.data?.unreadCount) && <span className="tag warning" style={{marginLeft:8}}>{notificationInbox.data?.unreadCount}</span>}</span></button>; })}</nav>
-      <div className="sidebar-bottom"><div className="privacy-note"><b><ShieldCheck size={14} style={{verticalAlign:'-3px',marginRight:6}}/>Your care stays yours</b>Access is granted by you and can be changed at any time.</div><div className="profile-mini"><div className="avatar">{initials(user.name)}</div><div style={{flex:1,minWidth:0}}><strong>{user.name}</strong><span>{user.role === 'PENDING_DOCTOR' ? 'Doctor · pending review' : user.role.toLowerCase()}</span></div><button className="icon-button" onClick={onSignOut} aria-label="Sign out" data-testid="button-signout"><LogOut size={15}/></button></div></div>
+      <div className="brand"><NotebookLogo/><span className="brand-name">{t("Mon")} <strong>{t("carnet")}</strong></span></div>
+      <div className="nav-label">{t("Workspace")}</div>
+      <nav className="nav-list" aria-label={t("Main navigation")} data-tour="workspace-navigation">{tabs.map((item) => { const Icon = iconFor[item]; return <button key={item} className={`nav-item ${tab === item ? 'active' : ''}`} aria-current={tab === item ? 'page' : undefined} onClick={() => setTab(item)} data-tour={`nav-${item.toLowerCase().replaceAll(' ', '-')}`} data-testid={`nav-${item.toLowerCase().replaceAll(' ', '-')}`}><Icon size={16}/><span>{t(item)}{item === 'Inbox' && Boolean(notificationInbox.data?.unreadCount) && <span className="tag warning" style={{marginLeft:8}}>{notificationInbox.data?.unreadCount}</span>}</span></button>; })}</nav>
+      <div className="sidebar-bottom"><div className="privacy-note"><b><ShieldCheck size={14} style={{verticalAlign:'-3px',marginRight:6}}/>{t("Your care stays yours")}</b>{t("Access is granted by you and can be changed at any time.")}</div><div className="profile-mini"><div className="avatar">{initials(user.name)}</div><div style={{flex:1,minWidth:0}}><strong>{user.name}</strong><span>{user.role === 'PENDING_DOCTOR' ? t("Doctor · pending review") : t(user.role === 'ADMIN' ? 'Administrator' : user.role === 'DOCTOR' ? 'Doctor' : 'Patient')}</span></div><button className="icon-button" onClick={onSignOut} aria-label={t("Sign out")} data-testid="button-signout"><LogOut size={15}/></button></div></div>
     </aside>
     <main className="main-area" id="main-content" tabIndex={-1}>
-      <header className="topbar"><div className="crumb"><span>Mon carnet</span><ChevronRight size={13}/><strong>{tab}</strong></div><div className="top-actions"><span className="status-pill" aria-label="Secure workspace. Automatically signs out after 30 minutes of inactivity." title="Automatically signs out after 30 minutes of inactivity."><i className="status-dot"/> Secure · 30 min idle sign-out</span><OnboardingGuide user={user} activeTab={tab} onTabChange={setTab}/><button className="icon-button" aria-label="Sign out" onClick={onSignOut} data-testid="button-signout-top"><LogOut size={15}/></button>{user.role === 'PATIENT' && <PatientIdIndicator onOpenProfile={() => setTab('Profile')}/>}</div></header>
+      <header className="topbar"><div className="crumb"><span>{t("Mon carnet")}</span><ChevronRight size={13}/><strong>{t(tab)}</strong></div><div className="top-actions"><LanguageSwitcher signedIn/><span className="status-pill" aria-label={t("Secure workspace. Automatically signs out after 30 minutes of inactivity.")} title={t("Automatically signs out after 30 minutes of inactivity.")}><i className="status-dot"/> {t("Secure · 30 min idle sign-out")}</span><OnboardingGuide user={user} activeTab={tab} onTabChange={setTab}/><button className="icon-button" aria-label={t("Sign out")} onClick={onSignOut} data-testid="button-signout-top"><LogOut size={15}/></button>{user.role === 'PATIENT' && <PatientIdIndicator onOpenProfile={() => setTab('Profile')}/>}</div></header>
       {tab === 'Inbox' ? <InboxView/> : user.role === 'ADMIN' ? <AdminView user={user} tab={tab} onTab={setTab}/> : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? <DoctorView user={user} tab={tab}/> : <PatientView user={user} tab={tab} onTab={setTab}/>}
     </main>
   </div>;
@@ -487,7 +521,7 @@ function Heading({ eyebrow, title, subtitle, action }: { eyebrow: string; title:
   return <div className="page-heading" data-tour="section-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="subhead">{subtitle}</p></div>{action}</div>;
 }
 function ErrorState({ error, retry }: { error: unknown; retry?: () => void }) {
-  return <div className="error-state" role="alert"><span>{errText(error)}</span>{retry && <button className="btn small ghost" onClick={retry}>Try again</button>}</div>;
+  return <div className="error-state" role="alert"><span>{errText(error)}</span>{retry && <button className="btn small ghost" onClick={retry}>{t("Try again")}</button>}</div>;
 }
 function EmptyState({ icon: Icon = BookOpen, title, children }: { icon?: typeof BookOpen; title: string; children: string }) {
   return <div className="empty-state"><span className="empty-icon"><Icon size={19}/></span><strong>{title}</strong><p>{children}</p></div>;
@@ -506,62 +540,61 @@ function PatientBookletPrint({ user, patientDisplayId, emergency, records, verif
   const verificationUrl = `${window.location.origin}/api/booklet-verification/${verification.verificationCode}`;
   return <article className="booklet-print" aria-hidden="true">
     <header className="booklet-cover">
-      <p className="booklet-brand">MON CARNET</p>
-      <h1>Patient medical booklet</h1>
-      <p>Complete clinical record · Issued {new Date(verification.issuedAt).toLocaleString()}</p>
+      <p className="booklet-brand">{t("MON CARNET")}</p>
+      <h1>{t("Patient medical booklet")}</h1>
+      <p>{t("Complete clinical record · Issued")} {new Date(verification.issuedAt).toLocaleString(locale())}</p>
       <dl className="booklet-patient">
-        <div><dt>Patient</dt><dd>{user.name}</dd></div>
-        <div><dt>Patient ID</dt><dd>{patientDisplayId}</dd></div>
-        <div><dt>Date of birth</dt><dd>{dateLabel(user.dateOfBirth)}</dd></div>
-        <div><dt>Contact</dt><dd>{user.contactInfo || 'Not provided'}</dd></div>
-        <div><dt>Records included</dt><dd>{records.length}</dd></div>
+        <div><dt>{t("Patient")}</dt><dd>{user.name}</dd></div>
+        <div><dt>{t("Patient ID")}</dt><dd>{patientDisplayId}</dd></div>
+        <div><dt>{t("Date of birth")}</dt><dd>{dateLabel(user.dateOfBirth)}</dd></div>
+        <div><dt>{t("Contact")}</dt><dd>{user.contactInfo || t("Not provided")}</dd></div>
+        <div><dt>{t("Records included")}</dt><dd>{records.length}</dd></div>
       </dl>
       <section className="booklet-section">
-        <h2>Emergency information</h2>
+        <h2>{t("Emergency information")}</h2>
         {emergency ? <>
-          <p><strong>Blood group:</strong> {emergency.bloodGroup}</p>
-          <p><strong>Allergies:</strong> {emergency.allergies || 'None listed'}</p>
-          <p><strong>Emergency contact:</strong> {emergency.emergencyContact || 'Not provided'}</p>
-          <p><strong>Height / weight:</strong> {emergency.heightCm} cm / {emergency.weightKg} kg</p>
-          <p><strong>Last updated:</strong> {dateLabel(emergency.updatedAt)}</p>
-        </> : <p>No emergency information has been saved.</p>}
+          <p><strong>{t("Blood group:")}</strong> {emergency.bloodGroup}</p>
+          <p><strong>{t("Allergies:")}</strong> {emergency.allergies || t("None listed")}</p>
+          <p><strong>{t("Emergency contact:")}</strong> {emergency.emergencyContact || t("Not provided")}</p>
+          <p><strong>{t("Height / weight:")}</strong> {emergency.heightCm} {t("cm /")} {emergency.weightKg} {t("kg")}</p>
+          <p><strong>{t("Last updated:")}</strong> {dateLabel(emergency.updatedAt)}</p>
+        </> : <p>{t("No emergency information has been saved.")}</p>}
       </section>
-      <p className="booklet-verification-note">Issued reference only; it confirms that Mon carnet issued this booklet reference and record count. It does not prove that this document has not been edited.</p>
+      <p className="booklet-verification-note">{t("Issued reference only; it confirms that Mon carnet issued this booklet reference and record count. It does not prove that this document has not been edited.")}</p>
     </header>
     <section className="booklet-records">
-      <h2>Medical record history</h2>
-      {records.length === 0 ? <p>No medical records are currently available.</p> : records.map((record) => {
+      <h2>{t("Medical record history")}</h2>
+      {records.length === 0 ? <p>{t("No medical records are currently available.")}</p> : records.map((record) => {
         const attachments = Array.from(record.notes.matchAll(/(?:^|\r?\n)Attachment: ([^\r\n]+)/g), (match) => match[1]);
         const notes = record.notes.replace(/(?:^|\r?\n)Attachment: [^\r\n]*\r?\nAttachment object: [^\r\n]*/g, '').trim();
         return <article className="booklet-record" key={record.id}>
-          <h3>{record.recordType}</h3>
-          <p className="booklet-record-byline">Entered by {record.doctorName} · {dateLabel(record.createdAt)} · Record #{record.id}</p>
-          {record.followUpToRecordId !== null && <p><strong>Follow-up to:</strong> Record #{record.followUpToRecordId}</p>}
-          <h4>Diagnosis</h4><p>{record.diagnosis || 'No diagnosis documented.'}</p>
+          <h3>{t(record.recordType)}</h3>
+          <p className="booklet-record-byline">{t("Entered by")} {record.doctorName} · {dateLabel(record.createdAt)} {t("· Record #")}{record.id}</p>
+          {record.followUpToRecordId !== null && <p><strong>{t("Follow-up to:")}</strong> {t("Record #")}{record.followUpToRecordId}</p>}
+          <h4>{t("Diagnosis")}</h4><p>{record.diagnosis || t("No diagnosis documented.")}</p>
           {record.codedDiagnoses.length > 0 && <>
-            <h4>Structured disease diagnoses</h4>
+            <h4>{t("Structured disease diagnoses")}</h4>
             {record.codedDiagnoses.map((diagnosis) => <p key={diagnosis.id}>
-              <strong>{diagnosis.diseaseCode.diseaseName}</strong> ({diagnosis.diseaseCode.code}, {diagnosis.diseaseCode.codingSystem} {diagnosis.diseaseCode.release}) · {diagnosis.status.replaceAll('_', ' ')}<br/>
-              Diagnosis date: {dateLabel(diagnosis.diagnosisDate)} · Onset: {dateLabel(diagnosis.onsetDate)}
-              {diagnosis.supportingRecordId !== null && <><br/>Supporting record: #{diagnosis.supportingRecordId}</>}
-              {diagnosis.notes && <><br/>Notes: {diagnosis.notes}</>}
-              {diagnosis.diseaseCode.source && <><br/>Source: {diagnosis.diseaseCode.source}</>}
+              <strong>{t(diagnosis.diseaseCode.diseaseName)}</strong> ({diagnosis.diseaseCode.code}, {diagnosis.diseaseCode.codingSystem} {diagnosis.diseaseCode.release}) · {t(diagnosis.status.replaceAll('_', ' '))}<br/>
+              {t("Diagnosis date:")} {dateLabel(diagnosis.diagnosisDate)} {t("· Onset:")} {dateLabel(diagnosis.onsetDate)}
+              {diagnosis.supportingRecordId !== null && <><br/>{t("Supporting record: #")}{diagnosis.supportingRecordId}</>}
+              {diagnosis.notes && <><br/>{t("Notes:")} {diagnosis.notes}</>}
+              {diagnosis.diseaseCode.source && <><br/>{t("Source:")} {diagnosis.diseaseCode.source}</>}
             </p>)}
           </>}
-          <h4>Treatment / plan</h4><p>{record.treatment || 'No treatment or plan documented.'}</p>
-          <h4>Medications</h4><p>{record.medications.length > 0 ? record.medications.join(', ') : 'None documented.'}</p>
-          <h4>Clinical notes</h4><p>{notes || 'No additional notes.'}</p>
-          <h4>Vitals</h4><p>
-            Blood pressure: {record.vitals.bloodPressure || 'Not recorded'} · Heart rate: {record.vitals.heartRate ? `${record.vitals.heartRate} bpm` : 'Not recorded'} ·
-            Temperature: {record.vitals.temperature ? `${record.vitals.temperature} °C` : 'Not recorded'} · Weight: {record.vitals.weightKg ? `${record.vitals.weightKg} kg` : 'Not recorded'}
+          <h4>{t("Treatment / plan")}</h4><p>{record.treatment || t("No treatment or plan documented.")}</p>
+          <h4>{t("Medications")}</h4><p>{record.medications.length > 0 ? record.medications.join(', ') : t("None documented.")}</p>
+          <h4>{t("Clinical notes")}</h4><p>{notes || t("No additional notes.")}</p>
+          <h4>{t("Vitals")}</h4><p>
+            {t("Blood pressure:")} {record.vitals.bloodPressure || t("Not recorded")} {t("· Heart rate:")} {record.vitals.heartRate ? `${record.vitals.heartRate} bpm` : t("Not recorded")} {t("· Temperature:")} {record.vitals.temperature ? `${record.vitals.temperature} °C` : t("Not recorded")} {t("· Weight:")} {record.vitals.weightKg ? `${record.vitals.weightKg} kg` : t("Not recorded")}
           </p>
-          {attachments.length > 0 && <section><h4>Attached documents (not embedded)</h4><ul>{attachments.map((name, index) => <li key={`${name}-${index}`}>{name} — download separately from this record in the app.</li>)}</ul></section>}
+          {attachments.length > 0 && <section><h4>{t("Attached documents (not embedded)")}</h4><ul>{attachments.map((name, index) => <li key={`${name}-${index}`}>{name} {t("— download separately from this record in the app.")}</li>)}</ul></section>}
         </article>;
       })}
     </section>
     <footer className="booklet-verification-stamp">
-      <span>MON CARNET · RECORD COPY</span>
-      <span>Reference {verification.verificationCode} · Verify: {verificationUrl}</span>
+      <span>{t("MON CARNET · RECORD COPY")}</span>
+      <span>{t("Reference")} {verification.verificationCode} {t("· Verify:")} {verificationUrl}</span>
     </footer>
   </article>;
 }
@@ -576,42 +609,42 @@ function PatientCareSummaryPrint({ user, patientDisplayId, emergency, records, v
   const verificationUrl = `${window.location.origin}/api/booklet-verification/${verification.verificationCode}`;
   return <article className="booklet-print care-summary-print" aria-hidden="true">
     <header className="booklet-cover">
-      <p className="booklet-brand">MON CARNET</p>
-      <h1>My care summary</h1>
-      <p>Prepared {new Date(verification.issuedAt).toLocaleString()}</p>
+      <p className="booklet-brand">{t("MON CARNET")}</p>
+      <h1>{t("My care summary")}</h1>
+      <p>{t("Prepared")} {new Date(verification.issuedAt).toLocaleString(locale())}</p>
       <dl className="booklet-patient">
-        <div><dt>Name</dt><dd>{user.name}</dd></div>
-        <div><dt>Patient ID</dt><dd>{patientDisplayId}</dd></div>
-        <div><dt>Date of birth</dt><dd>{dateLabel(user.dateOfBirth)}</dd></div>
-        <div><dt>Contact</dt><dd>{user.contactInfo || 'Not provided'}</dd></div>
-        <div><dt>Records on file</dt><dd>{records.length}</dd></div>
+        <div><dt>{t("Name")}</dt><dd>{user.name}</dd></div>
+        <div><dt>{t("Patient ID")}</dt><dd>{patientDisplayId}</dd></div>
+        <div><dt>{t("Date of birth")}</dt><dd>{dateLabel(user.dateOfBirth)}</dd></div>
+        <div><dt>{t("Contact")}</dt><dd>{user.contactInfo || t("Not provided")}</dd></div>
+        <div><dt>{t("Records on file")}</dt><dd>{records.length}</dd></div>
       </dl>
       <section className="booklet-section">
-        <h2>Emergency information</h2>
+        <h2>{t("Emergency information")}</h2>
         {emergency ? <>
-          <p><strong>Blood group:</strong> {emergency.bloodGroup}</p>
-          <p><strong>Allergies:</strong> {emergency.allergies || 'None listed'}</p>
-          <p><strong>Emergency contact:</strong> {emergency.emergencyContact || 'Not provided'}</p>
-          <p><strong>Height / weight:</strong> {emergency.heightCm} cm / {emergency.weightKg} kg</p>
-        </> : <p>No emergency information has been saved.</p>}
+          <p><strong>{t("Blood group:")}</strong> {emergency.bloodGroup}</p>
+          <p><strong>{t("Allergies:")}</strong> {emergency.allergies || t("None listed")}</p>
+          <p><strong>{t("Emergency contact:")}</strong> {emergency.emergencyContact || t("Not provided")}</p>
+          <p><strong>{t("Height / weight:")}</strong> {emergency.heightCm} {t("cm /")} {emergency.weightKg} {t("kg")}</p>
+        </> : <p>{t("No emergency information has been saved.")}</p>}
       </section>
     </header>
     <section className="booklet-records">
-      <h2>Recent care entries</h2>
+      <h2>{t("Recent care entries")}</h2>
       {records.length ? records.slice(0, 5).map((record) => (
         <article className="booklet-record" key={record.id}>
-          <h3>{record.recordType} · {dateLabel(record.createdAt)}</h3>
-          <p className="booklet-record-byline">Recorded by {record.doctorName}</p>
-          {record.diagnosis && <p><strong>Diagnosis recorded:</strong> {record.diagnosis}</p>}
-          {record.treatment && <p><strong>Plan recorded:</strong> {record.treatment}</p>}
-          {record.medications.length > 0 && <p><strong>Medications recorded in this entry:</strong> {record.medications.join(', ')}</p>}
+          <h3>{t(record.recordType)} · {dateLabel(record.createdAt)}</h3>
+          <p className="booklet-record-byline">{t("Recorded by")} {record.doctorName}</p>
+          {record.diagnosis && <p><strong>{t("Diagnosis recorded:")}</strong> {record.diagnosis}</p>}
+          {record.treatment && <p><strong>{t("Plan recorded:")}</strong> {record.treatment}</p>}
+          {record.medications.length > 0 && <p><strong>{t("Medications recorded in this entry:")}</strong> {record.medications.join(', ')}</p>}
           {record.codedDiagnoses.map((diagnosis) => <p key={diagnosis.id}>
-            <strong>Structured diagnosis:</strong> {diagnosis.diseaseCode.diseaseName} ({diagnosis.status.replaceAll('_', ' ')})
+            <strong>{t("Structured diagnosis:")}</strong> {t(diagnosis.diseaseCode.diseaseName)} ({t(diagnosis.status.replaceAll('_', ' '))})
           </p>)}
         </article>
-      )) : <p>No medical records are currently available.</p>}
-      {records.length > 5 && <p>Showing the five most recent entries. The complete booklet includes all {records.length} records.</p>}
-      <p className="booklet-verification-note">This summary repeats information recorded by your care team and is not medical advice. Medication entries reflect what was documented in each record; they are not a reconciled current medication list. Verification reference {verification.verificationCode} confirms issuance and the record count, not that this printout has not been edited. Verify at {verificationUrl}.</p>
+      )) : <p>{t("No medical records are currently available.")}</p>}
+      {records.length > 5 && <p>{t("Showing the five most recent entries. The complete booklet includes all")} {records.length} {t("records.")}</p>}
+      <p className="booklet-verification-note">{t("This summary repeats information recorded by your care team and is not medical advice. Medication entries reflect what was documented in each record; they are not a reconciled current medication list. Verification reference")} {verification.verificationCode} {t("confirms issuance and the record count, not that this printout has not been edited. Verify at")} {verificationUrl}.</p>
     </section>
   </article>;
 }
@@ -619,12 +652,12 @@ function PatientCareSummaryPrint({ user, patientDisplayId, emergency, records, v
 function EpidemicAlerts({ metrics }: { metrics: AdminEpidemicMetric[] }) {
   const concerningMetrics = metrics.filter((metric) => metric.alertLevel !== 'NORMAL');
   return <section className="panel epidemic-alert-panel" aria-live="polite">
-    <div className="panel-head"><div><h2 className="panel-title">Potential epidemic signals</h2><p className="panel-caption">Network-wide coded cases in a rolling 7-day window; refreshes each minute. Signals are not a confirmed outbreak or public-health diagnosis.</p></div><span className={`tag ${concerningMetrics.length ? 'warning' : ''}`}>{concerningMetrics.length ? `${concerningMetrics.length} to review` : 'No signals'}</span></div>
+    <div className="panel-head"><div><h2 className="panel-title">{t("Potential epidemic signals")}</h2><p className="panel-caption">{t("Network-wide coded cases in a rolling 7-day window; refreshes each minute. Signals are not a confirmed outbreak or public-health diagnosis.")}</p></div><span className={`tag ${concerningMetrics.length ? 'warning' : ''}`}>{concerningMetrics.length ? `${concerningMetrics.length} to review` : t("No signals")}</span></div>
     <div className="panel-body">
       {metrics.length > 0 ? metrics.map((metric) => <div className="data-row" key={metric.diseaseCodeId}>
-        <div><strong>{metric.diseaseName}</strong><small className="epidemic-detail">{metric.code} · {metric.codingSystem} · {metric.last7Cases} patients in 7 days (threshold {metric.threshold}; prior 7 days: {metric.previous7Cases})</small></div>
-        <span className={`tag ${metric.alertLevel === 'ALERT' ? 'epidemic-alert' : metric.alertLevel === 'WATCH' ? 'warning' : ''}`}>{metric.alertLevel === 'ALERT' ? 'Threshold reached' : metric.alertLevel === 'WATCH' ? 'Approaching' : 'Within range'}</span>
-      </div>) : <EmptyState icon={Activity} title="No monitored diseases" children="No epidemic-relevant diseases are configured in the disease catalog."/>}
+        <div><strong>{t(metric.diseaseName)}</strong><small className="epidemic-detail">{metric.code} · {metric.codingSystem} · {metric.last7Cases} {t("patients in 7 days (threshold")} {metric.threshold}{t("; prior 7 days:")} {metric.previous7Cases})</small></div>
+        <span className={`tag ${metric.alertLevel === 'ALERT' ? 'epidemic-alert' : metric.alertLevel === 'WATCH' ? 'warning' : ''}`}>{metric.alertLevel === 'ALERT' ? t("Threshold reached") : metric.alertLevel === 'WATCH' ? t("Approaching") : t("Within range")}</span>
+      </div>) : <EmptyState icon={Activity} title={t("No monitored diseases")} children={t("No epidemic-relevant diseases are configured in the disease catalog.")}/>}
     </div>
   </section>;
 }
@@ -635,18 +668,18 @@ function EpidemicThresholds({ metrics, savingDiseaseCodeId, onSave }: {
   onSave: (diseaseCodeId: number, threshold: number) => void;
 }) {
   return <section className="panel">
-    <div className="panel-head"><div><h2 className="panel-title">Disease alert thresholds</h2><p className="panel-caption">Initial threshold is 5 unique patients in 7 days. A watch signal starts at 80% of each threshold.</p></div></div>
+    <div className="panel-head"><div><h2 className="panel-title">{t("Disease alert thresholds")}</h2><p className="panel-caption">{t("Initial threshold is 5 unique patients in 7 days. A watch signal starts at 80% of each threshold.")}</p></div></div>
     <div className="panel-body">
       {metrics.map((metric) => <form className="epidemic-threshold-row" key={metric.diseaseCodeId} onSubmit={(event) => {
         event.preventDefault();
         const value = Number(new FormData(event.currentTarget).get('threshold'));
         if (Number.isInteger(value) && value >= 1 && value <= 10000) onSave(metric.diseaseCodeId, value);
       }}>
-        <div><strong>{metric.diseaseName}</strong><small className="epidemic-detail">{metric.code} · {metric.codingSystem}</small></div>
-        <label>Cases / 7 days <input name="threshold" type="number" min="1" max="10000" step="1" required defaultValue={metric.threshold} aria-label={`${metric.diseaseName} alert threshold`}/></label>
-        <button className="btn small secondary" type="submit" disabled={savingDiseaseCodeId !== null}>{savingDiseaseCodeId === metric.diseaseCodeId ? 'Saving…' : 'Save threshold'}</button>
+        <div><strong>{t(metric.diseaseName)}</strong><small className="epidemic-detail">{metric.code} · {metric.codingSystem}</small></div>
+        <label>{t("Cases / 7 days")} <input name="threshold" type="number" min="1" max="10000" step="1" required defaultValue={metric.threshold} aria-label={`${t(metric.diseaseName)} alert threshold`}/></label>
+        <button className="btn small secondary" type="submit" disabled={savingDiseaseCodeId !== null}>{savingDiseaseCodeId === metric.diseaseCodeId ? t("Saving…") : t("Save threshold")}</button>
       </form>)}
-      {metrics.length === 0 && <EmptyState icon={Activity} title="No monitored diseases" children="Epidemic-relevant diseases will appear here when configured in the catalog."/>}
+      {metrics.length === 0 && <EmptyState icon={Activity} title={t("No monitored diseases")} children={t("Epidemic-relevant diseases will appear here when configured in the catalog.")}/>}
     </div>
   </section>;
 }
@@ -700,10 +733,10 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const createBookletVerification = useCreateBookletVerification();
   const emergency = profile.data?.emergencyInfo;
   const setupItems = [
-    { title: 'Save emergency information', complete: Boolean(emergency), tab: 'Emergency info' as Tab },
-    { title: 'Add your date of birth', complete: Boolean(user.dateOfBirth), tab: 'Profile' as Tab },
-    { title: 'Add a contact number', complete: Boolean(user.contactInfo), tab: 'Profile' as Tab },
-    { title: 'Add your region', complete: Boolean(profile.data?.user.locationRegion), tab: 'Profile' as Tab },
+    { title: t("Save emergency information"), complete: Boolean(emergency), tab: 'Emergency info' as Tab },
+    { title: t("Add your date of birth"), complete: Boolean(user.dateOfBirth), tab: 'Profile' as Tab },
+    { title: t("Add a contact number"), complete: Boolean(user.contactInfo), tab: 'Profile' as Tab },
+    { title: t("Add your region"), complete: Boolean(profile.data?.user.locationRegion), tab: 'Profile' as Tab },
   ];
   const completedSetupItems = setupItems.filter((item) => item.complete).length;
   useEffect(() => {
@@ -718,7 +751,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     fetch('/api/patient/access-history', {
       headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
     }).then(async (response) => {
-      if (!response.ok) throw new Error('Could not load record access history.');
+      if (!response.ok) throw new Error(t("Could not load record access history."));
       return response.json() as Promise<AccessHistoryEntry[]>;
     }).then((entries) => {
       if (active) setAccessHistory(entries);
@@ -732,7 +765,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   useEffect(() => {
     if (!bookletExport) return;
     const previousTitle = document.title;
-    document.title = `Mon carnet - ${bookletExport.profile.patientDisplayId} ${bookletExport.mode}`;
+    document.title = t("Mon carnet - {0} {1}", { 0: bookletExport.profile.patientDisplayId, 1: bookletExport.mode });
     document.body.classList.add('booklet-printing');
     const afterPrint = () => setBookletExport(null);
     window.addEventListener('afterprint', afterPrint);
@@ -760,24 +793,24 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
         body: JSON.stringify({ locationRegion, locationArrondissement }),
       });
       const body = await response.json() as User & { error?: string };
-      if (!response.ok) throw new Error(body.error || 'Could not save your location.');
+      if (!response.ok) throw new Error(body.error || t("Could not save your location."));
       const currentProfile = qc.getQueryData<PatientProfile>(getGetPatientProfileQueryKey());
       if (currentProfile) qc.setQueryData(getGetPatientProfileQueryKey(), { ...currentProfile, user: body });
-      notify('Location saved.');
+      notify(t("Location saved."));
     } catch (error) {
       notify(errText(error));
     }
   };
   const submitGrant = (event: FormEvent) => {
     event.preventDefault();
-    grant.mutate({ data: { doctorEmail: grantEmail.trim(), durationDays: Number(grantDays) } }, { onSuccess: () => { invalidate(); setGrantOpen(false); setGrantEmail(''); notify('Access updated.'); }, onError: (e) => notify(errText(e)) });
+    grant.mutate({ data: { doctorEmail: grantEmail.trim(), durationDays: Number(grantDays) } }, { onSuccess: () => { invalidate(); setGrantOpen(false); setGrantEmail(''); notify(t("Access updated.")); }, onError: (e) => notify(errText(e)) });
   };
   const changeApprovalMode = (accessApprovalMode: AccessApprovalMode) => {
     if (accessApprovalMode === approvalMode) return;
     updateAccessSettings.mutate({ data: { accessApprovalMode } }, {
       onSuccess: (settings) => {
         qc.setQueryData(getGetPatientAccessSettingsQueryKey(), settings);
-        notify(settings.accessApprovalMode === 'ASK' ? 'Doctors now need your approval to open your booklet.' : 'Doctors who enter your CM ID now get access straight away.');
+        notify(settings.accessApprovalMode === 'ASK' ? t("Doctors now need your approval to open your booklet.") : t("Doctors who enter your CM ID now get access straight away."));
       },
       onError: (e) => notify(errText(e)),
     });
@@ -793,13 +826,13 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   };
   const rejectAccessRequest = (request: AccessRequest) => {
     rejectRequest.mutate({ requestId: request.id }, {
-      onSuccess: () => { invalidate(); notify(`You declined ${request.doctorName}’s request.`); },
+      onSuccess: () => { invalidate(); notify(t("You declined {0}’s request.", { 0: request.doctorName })); },
       onError: (e) => { invalidate(); notify(errText(e)); },
     });
   };
   const revokeDoctor = (doctorId: number) => {
-    if (!window.confirm('Remove this doctor’s access to your records?')) return;
-    revoke.mutate({ doctorId }, { onSuccess: () => { invalidate(); notify('Doctor access removed.'); }, onError: (e) => notify(errText(e)) });
+    if (!window.confirm(t("Remove this doctor’s access to your records?"))) return;
+    revoke.mutate({ doctorId }, { onSuccess: () => { invalidate(); notify(t("Doctor access removed.")); }, onError: (e) => notify(errText(e)) });
   };
   const updateEmergencySubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -809,7 +842,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
       weightKg: Number(values.get('weightKg')), heightCm: Number(values.get('heightCm')),
       allergies: String(values.get('allergies') || ''), emergencyContact: String(values.get('emergencyContact') || ''),
     };
-    updateEmergency.mutate({ data: payload }, { onSuccess: () => { invalidate(); notify('Emergency information saved.'); }, onError: (e) => notify(errText(e)) });
+    updateEmergency.mutate({ data: payload }, { onSuccess: () => { invalidate(); notify(t("Emergency information saved.")); }, onError: (e) => notify(errText(e)) });
   };
   const prepareBookletDownload = async (mode: PatientBookletExport['mode']) => {
     if (bookletPreparing) return;
@@ -817,110 +850,110 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     try {
       const [freshProfile, freshRecords] = await Promise.all([profile.refetch(), records.refetch()]);
       if (freshProfile.isError || freshRecords.isError || !freshProfile.data || !freshRecords.data) {
-        throw new Error('Could not refresh your profile and complete record history.');
+        throw new Error(t("Could not refresh your profile and complete record history."));
       }
       const verification = await createBookletVerification.mutateAsync(undefined);
       if (verification.recordCount !== freshRecords.data.length) {
-        throw new Error('Your record history changed during export. Please try again.');
+        throw new Error(t("Your record history changed during export. Please try again."));
       }
       setBookletExport({ mode, verification, profile: freshProfile.data, records: freshRecords.data });
     } catch (error) {
-      notify(`Could not prepare booklet: ${errText(error)}`);
+      notify(t("Could not prepare booklet: {0}", { 0: errText(error) }));
     } finally {
       setBookletPreparing(false);
     }
   };
   return <>
     {tab === 'Overview' && <>
-      <Heading eyebrow="Patient workspace" title={`Good to see you, ${user.name.split(' ')[0]}.`} subtitle="Your records, shared care and important health details — all together." action={<button className="btn secondary" onClick={() => { onTab('Emergency info'); }} data-testid="button-emergency"><HeartPulse size={15}/> Emergency info</button>}/>
+      <Heading eyebrow={t("Patient workspace")} title={t("Good to see you, {0}.", { 0: user.name.split(' ')[0] })} subtitle={t("Your records, shared care and important health details — all together.")} action={<button className="btn secondary" onClick={() => { onTab('Emergency info'); }} data-testid="button-emergency"><HeartPulse size={15}/> {t("Emergency info")}</button>}/>
       {profile.isLoading ? <div className="grid stats-grid">{[1,2,3,4].map((n)=><div className="skeleton" key={n}/>)}</div> : profile.error ? <ErrorState error={profile.error} retry={() => profile.refetch()}/> : <>
         <section className="panel" style={{marginBottom:17}}>
-          <div className="panel-head"><div><h2 className="panel-title">Your Patient ID</h2><p className="panel-caption">Your CM ID is also the code your doctor uses to open your booklet.</p></div><Shield size={17} color="#d99125"/></div>
+          <div className="panel-head"><div><h2 className="panel-title">{t("Your Patient ID")}</h2><p className="panel-caption">{t("Your CM ID is also the code your doctor uses to open your booklet.")}</p></div><Shield size={17} color="#d99125"/></div>
           <div className="panel-body">
-            <div className="callout"><div className="callout-head"><ShieldCheck size={16}/> Patient ID & booklet code</div><p style={{margin:'10px 0'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="overview-patient-display-id">{profile.data?.patientDisplayId ?? 'Unavailable'}</code></p><p className="field-note">{approvalMode === 'ASK' ? 'Give this CM ID to your doctor. You will be asked to approve or reject their request before they can open your booklet.' : 'Give this CM ID to your doctor to grant immediate booklet access. You can revoke access at any time.'}</p><button className="btn small secondary" onClick={()=>onTab('Profile')} data-testid="button-view-profile">View profile <ArrowRight size={13}/></button></div>
+            <div className="callout"><div className="callout-head"><ShieldCheck size={16}/> {t("Patient ID & booklet code")}</div><p style={{margin:'10px 0'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="overview-patient-display-id">{profile.data?.patientDisplayId ?? t("Unavailable")}</code></p><p className="field-note">{approvalMode === 'ASK' ? t("Give this CM ID to your doctor. You will be asked to approve or reject their request before they can open your booklet.") : t("Give this CM ID to your doctor to grant immediate booklet access. You can revoke access at any time.")}</p><button className="btn small secondary" onClick={()=>onTab('Profile')} data-testid="button-view-profile">{t("View profile")} <ArrowRight size={13}/></button></div>
           </div>
         </section>
-        <div className="grid stats-grid"><Stat label="Medical records" value={profile.data?.recordCount ?? 0} note="Records in your secure file" icon={FileHeart}/><Stat label="Doctors with access" value={profile.data?.permissionsCount ?? 0} note="You control every connection" icon={Users}/><Stat label="Date of birth" value={user.dateOfBirth ? new Date(user.dateOfBirth).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : '—'} note={user.dateOfBirth ? dateLabel(user.dateOfBirth) : 'Add details to your profile'} icon={CalendarDays}/><Stat label="Emergency details" value={emergency ? 'Ready' : 'Add now'} note={emergency ? 'Available to your care team' : 'Help clinicians act with confidence'} icon={HeartPulse}/></div>
+        <div className="grid stats-grid"><Stat label={t("Medical records")} value={profile.data?.recordCount ?? 0} note={t("Records in your secure file")} icon={FileHeart}/><Stat label={t("Doctors with access")} value={profile.data?.permissionsCount ?? 0} note={t("You control every connection")} icon={Users}/><Stat label={t("Date of birth")} value={user.dateOfBirth ? new Date(user.dateOfBirth).toLocaleDateString(locale(),{month:'short',day:'numeric'}) : '—'} note={user.dateOfBirth ? dateLabel(user.dateOfBirth) : t("Add details to your profile")} icon={CalendarDays}/><Stat label={t("Emergency details")} value={emergency ? t('Ready') : t('Add now')} note={emergency ? t("Available to your care team") : t("Help clinicians act with confidence")} icon={HeartPulse}/></div>
         <section className="panel setup-panel" aria-labelledby="setup-checklist-title">
-          <div className="panel-head"><div><h2 className="panel-title" id="setup-checklist-title">Suggested account setup</h2><p className="panel-caption">Optional details can help your care team. This checklist is not a measure of your health record’s completeness.</p></div><span className="tag">{completedSetupItems} of {setupItems.length}</span></div>
+          <div className="panel-head"><div><h2 className="panel-title" id="setup-checklist-title">{t("Suggested account setup")}</h2><p className="panel-caption">{t("Optional details can help your care team. This checklist is not a measure of your health record’s completeness.")}</p></div><span className="tag">{completedSetupItems} {t("of")} {setupItems.length}</span></div>
           <div className="panel-body">
-            <div className="setup-progress" role="progressbar" aria-label="Suggested account setup" aria-valuemin={0} aria-valuemax={setupItems.length} aria-valuenow={completedSetupItems}><span style={{width:`${completedSetupItems / setupItems.length * 100}%`}}/></div>
-            <ul className="setup-list">{setupItems.map((item) => <li key={item.title}><span className={`setup-state ${item.complete ? 'complete' : ''}`} aria-hidden="true">{item.complete ? <Check size={13}/> : <Plus size={13}/>}</span><span className="setup-item-title">{item.title}{!item.complete && <small>Optional</small>}</span><button type="button" className="btn ghost small" onClick={()=>onTab(item.tab)} aria-label={`${item.complete ? 'Review' : 'Add'} ${item.title.toLowerCase()}`}>{item.complete ? 'Review' : 'Add'}</button></li>)}</ul>
+            <div className="setup-progress" role="progressbar" aria-label={t("Suggested account setup")} aria-valuemin={0} aria-valuemax={setupItems.length} aria-valuenow={completedSetupItems}><span style={{width:`${completedSetupItems / setupItems.length * 100}%`}}/></div>
+            <ul className="setup-list">{setupItems.map((item) => <li key={item.title}><span className={`setup-state ${item.complete ? 'complete' : ''}`} aria-hidden="true">{item.complete ? <Check size={13}/> : <Plus size={13}/>}</span><span className="setup-item-title">{item.title}{!item.complete && <small>{t("Optional")}</small>}</span><button type="button" className="btn ghost small" onClick={()=>onTab(item.tab)} aria-label={`${item.complete ? t("Review") : t("Add")} ${item.title.toLowerCase()}`}>{item.complete ? t("Review") : t("Add")}</button></li>)}</ul>
           </div>
         </section>
-        <div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Recent records</h2><p className="panel-caption">A view of your latest care history</p></div><button className="btn ghost small" onClick={()=>onTab('Records')} data-testid="button-all-records">All records <ArrowRight size={13}/></button></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.slice(0,4).map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []} patientDisplayId={profile.data?.patientDisplayId}/>) : <EmptyState icon={FileHeart} title="Your record begins here" children="When a clinician adds a visit or result, it will appear in this timeline."/>}</div></section>
-          <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Care essentials</h2><p className="panel-caption">Useful in a moment that matters</p></div><Shield size={17} color="#69a293"/></div><div className="panel-body"><div className="callout"><div className="callout-head"><HeartPulse size={16}/> Emergency summary</div><p>{emergency ? `${emergency.bloodGroup} blood group · ${emergency.allergies ? `Allergies: ${emergency.allergies}` : 'No allergies listed'}` : 'Add your blood group, allergies and an emergency contact.'}</p><button className="btn small secondary" onClick={()=>onTab('Emergency info')} data-testid="button-update-emergency">Review details <ArrowRight size={13}/></button></div><div style={{height:15}}/><div className="data-row"><span className="data-key">Contact</span><span className="data-value">{user.contactInfo || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Pending requests</span><span className="data-value">{requests.data?.length ?? '—'}</span></div></div></section></div>
+        <div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Recent records")}</h2><p className="panel-caption">{t("A view of your latest care history")}</p></div><button className="btn ghost small" onClick={()=>onTab('Records')} data-testid="button-all-records">{t("All records")} <ArrowRight size={13}/></button></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.slice(0,4).map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []} patientDisplayId={profile.data?.patientDisplayId}/>) : <EmptyState icon={FileHeart} title={t("Your record begins here")} children={t("When a clinician adds a visit or result, it will appear in this timeline.")}/>}</div></section>
+          <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Care essentials")}</h2><p className="panel-caption">{t("Useful in a moment that matters")}</p></div><Shield size={17} color="#69a293"/></div><div className="panel-body"><div className="callout"><div className="callout-head"><HeartPulse size={16}/> {t("Emergency summary")}</div><p>{emergency ? `${t('Blood group {0}', { 0: emergency.bloodGroup })} · ${emergency.allergies ? t("Allergies: {0}", { 0: emergency.allergies }) : t("No allergies listed")}` : t("Add your blood group, allergies and an emergency contact.")}</p><button className="btn small secondary" onClick={()=>onTab('Emergency info')} data-testid="button-update-emergency">{t("Review details")} <ArrowRight size={13}/></button></div><div style={{height:15}}/><div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{user.contactInfo || t("Not provided")}</span></div><div className="data-row"><span className="data-key">{t("Pending requests")}</span><span className="data-value">{requests.data?.length ?? '—'}</span></div></div></section></div>
       </>}
     </>}
     {tab === 'Profile' && <>
-      <Heading eyebrow="Patient account" title="Your profile" subtitle="Your CM ID identifies your profile and lets a doctor open your booklet."/>
+      <Heading eyebrow={t("Patient account")} title={t("Your profile")} subtitle={t("Your CM ID identifies your profile and lets a doctor open your booklet.")}/>
       {profile.isLoading ? <div className="skeleton"/> : profile.error ? <ErrorState error={profile.error} retry={() => profile.refetch()}/> : <>
         <section className="panel" style={{marginBottom:17}}>
-          <div className="panel-head"><div><h2 className="panel-title">Your CM ID & booklet access code</h2><p className="panel-caption">{approvalMode === 'ASK' ? 'Share this short code with a doctor. You approve each request before they see your booklet.' : 'Share this short code with a doctor to grant immediate booklet access.'}</p></div><span className="tag warning">Private</span></div>
+          <div className="panel-head"><div><h2 className="panel-title">{t("Your CM ID & booklet access code")}</h2><p className="panel-caption">{approvalMode === 'ASK' ? t("Share this short code with a doctor. You approve each request before they see your booklet.") : t("Share this short code with a doctor to grant immediate booklet access.")}</p></div><span className="tag warning">{t("Private")}</span></div>
           <div className="panel-body">
-            <div className="callout"><div className="callout-head"><KeyRound size={16}/> Patient CM ID</div><p style={{margin:'10px 0',overflowWrap:'anywhere'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-display-id">{profile.data?.patientDisplayId}</code></p><p className="field-note">{approvalMode === 'ASK' ? 'When a doctor enters this code, you approve or reject the request in Access control.' : 'Access is granted when a doctor enters this code.'} Revoking a doctor's access also changes your CM ID so that doctor cannot use the old code to reconnect. Share your current CM ID with any new doctor.</p></div>
+            <div className="callout"><div className="callout-head"><KeyRound size={16}/> {t("Patient CM ID")}</div><p style={{margin:'10px 0',overflowWrap:'anywhere'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-display-id">{profile.data?.patientDisplayId}</code></p><p className="field-note">{approvalMode === 'ASK' ? t("When a doctor enters this code, you approve or reject the request in Access control.") : t("Access is granted when a doctor enters this code.")} {t("Revoking a doctor's access also changes your CM ID so that doctor cannot use the old code to reconnect. Share your current CM ID with any new doctor.")}</p></div>
           </div>
         </section>
         <section className="panel">
-          <div className="panel-head"><div><h2 className="panel-title">Personal information</h2><p className="panel-caption">Details associated with your account</p></div><div className="avatar">{initials(profile.data?.user.name || user.name)}</div></div>
+          <div className="panel-head"><div><h2 className="panel-title">{t("Personal information")}</h2><p className="panel-caption">{t("Details associated with your account")}</p></div><div className="avatar">{initials(profile.data?.user.name || user.name)}</div></div>
           <div className="panel-body">
-            <div className="data-row"><span className="data-key">Name</span><span className="data-value">{profile.data?.user.name}</span></div>
-            <div className="data-row"><span className="data-key">Email address</span><span className="data-value">{profile.data?.user.email}</span></div>
-            <div className="data-row"><span className="data-key">Date of birth</span><span className="data-value">{dateLabel(profile.data?.user.dateOfBirth)}</span></div>
-            <div className="data-row"><span className="data-key">Contact</span><span className="data-value">{profile.data?.user.contactInfo || 'Not provided'}</span></div>
-            <div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(profile.data?.user.createdAt)}</span></div>
+            <div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{profile.data?.user.name}</span></div>
+            <div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{profile.data?.user.email}</span></div>
+            <div className="data-row"><span className="data-key">{t("Date of birth")}</span><span className="data-value">{dateLabel(profile.data?.user.dateOfBirth)}</span></div>
+            <div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{profile.data?.user.contactInfo || t("Not provided")}</span></div>
+            <div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(profile.data?.user.createdAt)}</span></div>
           </div>
         </section>
         <section className="panel" style={{marginTop:17}}>
-          <div className="panel-head"><div><h2 className="panel-title">Location</h2><p className="panel-caption">Optional. Add or update this later to appear in regional directories.</p></div></div>
+          <div className="panel-head"><div><h2 className="panel-title">{t("Location")}</h2><p className="panel-caption">{t("Optional. Add or update this later to appear in regional directories.")}</p></div></div>
           <div className="panel-body">
             <form onSubmit={savePatientLocation}>
               <LocationFields idPrefix="patient-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/>
-              <div className="form-actions"><button className="btn" type="submit" data-testid="button-save-patient-location">Save location</button></div>
+              <div className="form-actions"><button className="btn" type="submit" data-testid="button-save-patient-location">{t("Save location")}</button></div>
             </form>
           </div>
         </section>
         <PasswordChangeCard/>
       </>}
     </>}
-    {tab === 'Records' && <><Heading eyebrow="Your health history" title="Medical records" subtitle="Visits, diagnoses, prescriptions and test results shared with your care team." action={<div className="export-actions"><button className="btn secondary" onClick={()=>void prepareBookletDownload('summary')} disabled={bookletPreparing || profile.isLoading || records.isLoading || Boolean(profile.error || records.error)} data-testid="button-print-care-summary"><Printer size={15}/>{bookletPreparing ? 'Preparing…' : 'Print care summary'}</button><button className="btn" onClick={()=>void prepareBookletDownload('booklet')} disabled={bookletPreparing || profile.isLoading || records.isLoading || Boolean(profile.error || records.error)} data-testid="button-print-records"><Printer size={15}/>{bookletPreparing ? 'Preparing…' : 'Print full booklet'}</button></div>}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your record timeline</h2><p className="panel-caption">The booklet includes your full history and emergency information. Choose “Save as PDF” in the print dialog. Attached files are listed but remain separately downloadable.</p></div><span className="tag">{records.data?.length ?? 0} records</span></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []} patientDisplayId={profile.data?.patientDisplayId}/>) : <EmptyState icon={FileHeart} title="No records yet" children="Your medical records will appear here when a clinician adds them to your care history."/>}</div></section></>}
-    {tab === 'Access control' && <><Heading eyebrow="Your permissions" title="Who can see your records?" subtitle="Grant access to a clinician, choose how long it lasts, or remove access at any time." action={<button className="btn" onClick={()=>setGrantOpen(true)} data-testid="button-grant-access"><Plus size={15}/> Grant access</button>}/>
-      <div className="security-banner"><div><h3>You’re in control of your care circle.</h3><p>Clinicians can view your information only while access is active. You can revoke it whenever you need.</p></div><ShieldCheck size={34} className="security-symbol"/></div>
+    {tab === 'Records' && <><Heading eyebrow={t("Your health history")} title={t("Medical records")} subtitle={t("Visits, diagnoses, prescriptions and test results shared with your care team.")} action={<div className="export-actions"><button className="btn secondary" onClick={()=>void prepareBookletDownload('summary')} disabled={bookletPreparing || profile.isLoading || records.isLoading || Boolean(profile.error || records.error)} data-testid="button-print-care-summary"><Printer size={15}/>{bookletPreparing ? t("Preparing…") : t("Print care summary")}</button><button className="btn" onClick={()=>void prepareBookletDownload('booklet')} disabled={bookletPreparing || profile.isLoading || records.isLoading || Boolean(profile.error || records.error)} data-testid="button-print-records"><Printer size={15}/>{bookletPreparing ? t("Preparing…") : t("Print full booklet")}</button></div>}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your record timeline")}</h2><p className="panel-caption">{t("The booklet includes your full history and emergency information. Choose “Save as PDF” in the print dialog. Attached files are listed but remain separately downloadable.")}</p></div><span className="tag">{records.data?.length ?? 0} {t("records")}</span></div><div className="panel-body">{records.isLoading ? <div className="skeleton"/> : records.error ? <ErrorState error={records.error} retry={() => records.refetch()}/> : records.data?.length ? records.data.map((record)=><RecordRow key={record.id} record={record} records={records.data ?? []} patientDisplayId={profile.data?.patientDisplayId}/>) : <EmptyState icon={FileHeart} title={t("No records yet")} children={t("Your medical records will appear here when a clinician adds them to your care history.")}/>}</div></section></>}
+    {tab === 'Access control' && <><Heading eyebrow={t("Your permissions")} title={t("Who can see your records?")} subtitle={t("Grant access to a clinician, choose how long it lasts, or remove access at any time.")} action={<button className="btn" onClick={()=>setGrantOpen(true)} data-testid="button-grant-access"><Plus size={15}/> {t("Grant access")}</button>}/>
+      <div className="security-banner"><div><h3>{t("You’re in control of your care circle.")}</h3><p>{t("Clinicians can view your information only while access is active. You can revoke it whenever you need.")}</p></div><ShieldCheck size={34} className="security-symbol"/></div>
       {requests.isLoading || permissions.isLoading ? <div className="skeleton"/> : requests.error ? <ErrorState error={requests.error} retry={()=>requests.refetch()}/> : permissions.error ? <ErrorState error={permissions.error} retry={()=>permissions.refetch()}/> : <>
         <section className="panel" style={{marginBottom:17}} aria-labelledby="access-mode-title">
-          <div className="panel-head"><div><h2 className="panel-title" id="access-mode-title">When a doctor enters your CM ID</h2><p className="panel-caption">Choose how doctors get access to your booklet. You can change this at any time.</p></div></div>
+          <div className="panel-head"><div><h2 className="panel-title" id="access-mode-title">{t("When a doctor enters your CM ID")}</h2><p className="panel-caption">{t("Choose how doctors get access to your booklet. You can change this at any time.")}</p></div></div>
           <div className="panel-body">
             {accessSettings.error ? <ErrorState error={accessSettings.error} retry={()=>accessSettings.refetch()}/> : <fieldset className="choice-group" disabled={accessSettings.isLoading || updateAccessSettings.isPending}>
-              <legend className="sr-only">Access approval</legend>
+              <legend className="sr-only">{t("Access approval")}</legend>
               <label className={`choice-card ${approvalMode === 'AUTOMATIC' ? 'selected' : ''}`}>
                 <input type="radio" name="access-approval-mode" id="access-mode-automatic" value="AUTOMATIC" checked={approvalMode === 'AUTOMATIC'} onChange={()=>changeApprovalMode('AUTOMATIC')} data-testid="radio-access-automatic"/>
-                <span><strong>Give access automatically</strong><small>The doctor opens your booklet straight away and keeps access until you revoke it.</small></span>
+                <span><strong>{t("Give access automatically")}</strong><small>{t("The doctor opens your booklet straight away and keeps access until you revoke it.")}</small></span>
               </label>
               <label className={`choice-card ${approvalMode === 'ASK' ? 'selected' : ''}`}>
                 <input type="radio" name="access-approval-mode" id="access-mode-ask" value="ASK" checked={approvalMode === 'ASK'} onChange={()=>changeApprovalMode('ASK')} data-testid="radio-access-ask"/>
-                <span><strong>Ask me first</strong><small>You get a notification and approve or reject each doctor. Requests expire after 7 days.</small></span>
+                <span><strong>{t("Ask me first")}</strong><small>{t("You get a notification and approve or reject each doctor. Requests expire after 7 days.")}</small></span>
               </label>
             </fieldset>}
           </div>
         </section>
-        {(approvalMode === 'ASK' || Boolean(accessRequests.data?.length)) && <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Requests waiting for you</h2><p className="panel-caption">These doctors entered your CM ID and asked to open your booklet</p></div><span className="tag warning">{accessRequests.data?.length ?? 0} waiting</span></div><div className="panel-body">{accessRequests.isLoading ? <div className="skeleton"/> : accessRequests.error ? <ErrorState error={accessRequests.error} retry={()=>accessRequests.refetch()}/> : accessRequests.data?.length ? accessRequests.data.map((request)=><div className="data-row" key={request.id}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}{request.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.hospitalName || 'Hospital not provided'} · {new Date(request.requestedAt).toLocaleString()} · expires {dateLabel(request.expiresAt)}</small></span></div><div className="request-actions"><button className="btn small ghost" disabled={rejectRequest.isPending} onClick={()=>rejectAccessRequest(request)} data-testid={`button-reject-request-${request.id}`}><X size={13}/> Reject</button><button className="btn small" onClick={()=>{setApprovalDuration('until-revoked');setApprovingRequest(request);}} data-testid={`button-approve-request-${request.id}`}><Check size={13}/> Approve</button></div></div>) : <EmptyState icon={KeyRound} title="No requests waiting" children="When a doctor enters your CM ID, their request appears here for you to approve or reject."/>}</div></section>}
-        <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Emergency lookups</h2><p className="panel-caption">Doctors who looked you up by name and the reason they gave. You can give them full access if you know them.</p></div><span className="tag warning">{requests.data?.length ?? 0} recent</span></div><div className="panel-body">{requests.data?.length ? requests.data.map((request)=><div className="data-row" key={`${request.doctorId}-${request.searchedAt}`}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}{request.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.hospitalName || request.doctorEmail} · {dateLabel(request.searchedAt)}{request.reason ? <> · Reason: “{request.reason}”</> : null}</small></span></div><button className="btn small secondary" onClick={()=>{setGrantEmail(request.doctorEmail);setGrantOpen(true);}} data-testid={`button-review-request-${request.doctorId}`}>Review access</button></div>) : <EmptyState icon={KeyRound} title="No emergency lookups" children="When a doctor looks you up by name in an emergency, you will see who, where and why here."/>}</div></section>
-        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your active access</h2><p className="panel-caption">Only approved clinicians can see your records</p></div></div><div className="panel-body">{permissions.data?.filter(p=>p.granted).length ? permissions.data.filter(p=>p.granted).map((permission)=><div className="data-row" key={permission.id}><div className="person-cell"><div className="avatar">{initials(permission.doctorName)}</div><span>{permission.doctorName}{permission.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{permission.doctorEmail}</small></span></div><span className="tag">{permission.expiresAt ? `Until ${dateLabel(permission.expiresAt)}` : 'No expiration'}</span><button className="btn small ghost" disabled={revoke.isPending} onClick={()=>revokeDoctor(permission.doctorId)} data-testid={`button-revoke-${permission.doctorId}`}><Trash2 size={13}/> Revoke</button></div>) : <EmptyState icon={Shield} title="No clinicians have access" children="Grant access by entering a doctor's registered email address."/>}</div></section>
+        {(approvalMode === 'ASK' || Boolean(accessRequests.data?.length)) && <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">{t("Requests waiting for you")}</h2><p className="panel-caption">{t("These doctors entered your CM ID and asked to open your booklet")}</p></div><span className="tag warning">{accessRequests.data?.length ?? 0} {t("waiting")}</span></div><div className="panel-body">{accessRequests.isLoading ? <div className="skeleton"/> : accessRequests.error ? <ErrorState error={accessRequests.error} retry={()=>accessRequests.refetch()}/> : accessRequests.data?.length ? accessRequests.data.map((request)=><div className="data-row" key={request.id}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}{request.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> {t("Certified")}</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.hospitalName || t("Hospital not provided")} · {new Date(request.requestedAt).toLocaleString(locale())} {t("· expires")} {dateLabel(request.expiresAt)}</small></span></div><div className="request-actions"><button className="btn small ghost" disabled={rejectRequest.isPending} onClick={()=>rejectAccessRequest(request)} data-testid={`button-reject-request-${request.id}`}><X size={13}/> {t("Reject")}</button><button className="btn small" onClick={()=>{setApprovalDuration('until-revoked');setApprovingRequest(request);}} data-testid={`button-approve-request-${request.id}`}><Check size={13}/> {t("Approve")}</button></div></div>) : <EmptyState icon={KeyRound} title={t("No requests waiting")} children={t("When a doctor enters your CM ID, their request appears here for you to approve or reject.")}/>}</div></section>}
+        <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">{t("Emergency lookups")}</h2><p className="panel-caption">{t("Doctors who looked you up by name and the reason they gave. You can give them full access if you know them.")}</p></div><span className="tag warning">{requests.data?.length ?? 0} {t("recent")}</span></div><div className="panel-body">{requests.data?.length ? requests.data.map((request)=><div className="data-row" key={`${request.doctorId}-${request.searchedAt}`}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}{request.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> {t("Certified")}</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.hospitalName || request.doctorEmail} · {dateLabel(request.searchedAt)}{request.reason ? <> · {t("Reason: “{0}”", { 0: request.reason })}</> : null}</small></span></div><button className="btn small secondary" onClick={()=>{setGrantEmail(request.doctorEmail);setGrantOpen(true);}} data-testid={`button-review-request-${request.doctorId}`}>{t("Review access")}</button></div>) : <EmptyState icon={KeyRound} title={t("No emergency lookups")} children={t("When a doctor looks you up by name in an emergency, you will see who, where and why here.")}/>}</div></section>
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your active access")}</h2><p className="panel-caption">{t("Only approved clinicians can see your records")}</p></div></div><div className="panel-body">{permissions.data?.filter(p=>p.granted).length ? permissions.data.filter(p=>p.granted).map((permission)=><div className="data-row" key={permission.id}><div className="person-cell"><div className="avatar">{initials(permission.doctorName)}</div><span>{permission.doctorName}{permission.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> {t("Certified")}</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{permission.doctorEmail}</small></span></div><span className="tag">{permission.expiresAt ? t("Until {0}", { 0: dateLabel(permission.expiresAt) }) : t("No expiration")}</span><button className="btn small ghost" disabled={revoke.isPending} onClick={()=>revokeDoctor(permission.doctorId)} data-testid={`button-revoke-${permission.doctorId}`}><Trash2 size={13}/> {t("Revoke")}</button></div>) : <EmptyState icon={Shield} title={t("No clinicians have access")} children={t("Grant access by entering a doctor's registered email address.")}/>}</div></section>
       </>}
       <section className="panel" style={{marginTop:17}}>
-        <div className="panel-head"><div><h2 className="panel-title">Record access history</h2><p className="panel-caption">Doctors who viewed your emergency information, records, or attached documents.</p></div><span className="tag">{accessHistory.length} events</span></div>
+        <div className="panel-head"><div><h2 className="panel-title">{t("Record access history")}</h2><p className="panel-caption">{t("Doctors who viewed your emergency information, records, or attached documents.")}</p></div><span className="tag">{accessHistory.length} {t("events")}</span></div>
         <div className="panel-body">
           {accessHistoryLoading ? <div className="skeleton"/> : accessHistoryError ? <div className="error-state" role="alert">{accessHistoryError}</div> : accessHistory.length ? accessHistory.map((event) => <div className="data-row" key={event.id}>
-            <div className="person-cell"><div className="avatar">{initials(event.doctorName)}</div><span>{event.doctorName}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{event.hospitalName} · {event.action}</small></span></div>
-            <time className="data-value">{new Date(event.accessedAt).toLocaleString()}</time>
-          </div>) : <EmptyState icon={Shield} title="No doctor access recorded yet" children="When a clinician opens your shared information, the hospital and time will appear here."/>}
+            <div className="person-cell"><div className="avatar">{initials(event.doctorName)}</div><span>{event.doctorName}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{event.hospitalName} · {t(event.action)}</small></span></div>
+            <time className="data-value">{new Date(event.accessedAt).toLocaleString(locale())}</time>
+          </div>) : <EmptyState icon={Shield} title={t("No doctor access recorded yet")} children={t("When a clinician opens your shared information, the hospital and time will appear here.")}/>}
         </div>
       </section>
-      {approvingRequest && <Modal title="Approve booklet access" onClose={()=>setApprovingRequest(null)}><p className="subhead" style={{margin:'0 0 18px'}}>{approvingRequest.doctorName}{approvingRequest.hospitalName ? ` at ${approvingRequest.hospitalName}` : ''} will be able to see your medical records, emergency information and attached documents, and add new records.</p><form onSubmit={submitApproval}><div className="field"><label htmlFor="approval-duration">How long should access last?</label><select id="approval-duration" value={approvalDuration} onChange={e=>setApprovalDuration(e.target.value)} data-testid="select-approval-duration"><option value="until-revoked">Until I revoke it</option><option value="1">1 day</option><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select><p className="field-note" style={{marginTop:6}}>You can revoke access at any time from this page.</p></div><div className="form-actions"><button className="btn ghost" type="button" onClick={()=>setApprovingRequest(null)}>Cancel</button><button className="btn" type="submit" disabled={approveRequest.isPending} data-testid="button-confirm-approval">{approveRequest.isPending?'Saving…':'Approve access'}</button></div></form></Modal>}
-      {grantOpen && <Modal title="Grant a doctor access" onClose={()=>setGrantOpen(false)}><p className="subhead" style={{margin:'0 0 18px'}}>Choose a clinician and duration. They must have a verified Mon carnet doctor account.</p><form onSubmit={submitGrant}><div className="field"><label htmlFor="grant-email">Doctor’s email</label><input id="grant-email" type="email" required value={grantEmail} onChange={e=>setGrantEmail(e.target.value)} data-testid="input-doctor-email" placeholder="doctor@clinic.org"/></div><div className="field" style={{marginTop:14}}><label htmlFor="grant-duration">Access duration</label><select id="grant-duration" value={grantDays} onChange={e=>setGrantDays(e.target.value)} data-testid="select-duration"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="180">180 days</option><option value="365">1 year</option></select></div><div className="form-actions"><button className="btn ghost" type="button" onClick={()=>setGrantOpen(false)}>Cancel</button><button className="btn" type="submit" disabled={grant.isPending} data-testid="button-confirm-grant">{grant.isPending?'Saving…':'Grant access'}</button></div></form></Modal>}
+      {approvingRequest && <Modal title={t("Approve booklet access")} onClose={()=>setApprovingRequest(null)}><p className="subhead" style={{margin:'0 0 18px'}}>{approvingRequest.doctorName}{approvingRequest.hospitalName ? ` at ${approvingRequest.hospitalName}` : ''} {t("will be able to see your medical records, emergency information and attached documents, and add new records.")}</p><form onSubmit={submitApproval}><div className="field"><label htmlFor="approval-duration">{t("How long should access last?")}</label><select id="approval-duration" value={approvalDuration} onChange={e=>setApprovalDuration(e.target.value)} data-testid="select-approval-duration"><option value="until-revoked">{t("Until I revoke it")}</option><option value="1">{t("1 day")}</option><option value="7">{t("7 days")}</option><option value="30">{t("30 days")}</option><option value="90">{t("90 days")}</option><option value="365">{t("1 year")}</option></select><p className="field-note" style={{marginTop:6}}>{t("You can revoke access at any time from this page.")}</p></div><div className="form-actions"><button className="btn ghost" type="button" onClick={()=>setApprovingRequest(null)}>{t("Cancel")}</button><button className="btn" type="submit" disabled={approveRequest.isPending} data-testid="button-confirm-approval">{approveRequest.isPending?t("Saving…"):t("Approve access")}</button></div></form></Modal>}
+      {grantOpen && <Modal title={t("Grant a doctor access")} onClose={()=>setGrantOpen(false)}><p className="subhead" style={{margin:'0 0 18px'}}>{t("Choose a clinician and duration. They must have a verified Mon carnet doctor account.")}</p><form onSubmit={submitGrant}><div className="field"><label htmlFor="grant-email">{t("Doctor’s email")}</label><input id="grant-email" type="email" required value={grantEmail} onChange={e=>setGrantEmail(e.target.value)} data-testid="input-doctor-email" placeholder={t("doctor@clinic.org")}/></div><div className="field" style={{marginTop:14}}><label htmlFor="grant-duration">{t("Access duration")}</label><select id="grant-duration" value={grantDays} onChange={e=>setGrantDays(e.target.value)} data-testid="select-duration"><option value="7">{t("7 days")}</option><option value="30">{t("30 days")}</option><option value="90">{t("90 days")}</option><option value="180">{t("180 days")}</option><option value="365">{t("1 year")}</option></select></div><div className="form-actions"><button className="btn ghost" type="button" onClick={()=>setGrantOpen(false)}>{t("Cancel")}</button><button className="btn" type="submit" disabled={grant.isPending} data-testid="button-confirm-grant">{grant.isPending?t("Saving…"):t("Grant access")}</button></div></form></Modal>}
     </>}
-    {tab === 'Emergency info' && <><Heading eyebrow="Critical care details" title="Emergency information" subtitle="Keep important details current. Approved doctors can use this information to act quickly." action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-emergency"><Printer size={15}/> Print summary</button>}/><div className="security-banner"><div><h3>Made for the moments that matter.</h3><p>This concise summary supports safer urgent care when you cannot speak for yourself.</p></div><HeartPulse size={34} className="security-symbol"/></div>
-      {profile.isLoading ? <div className="skeleton"/> : profile.error ? <ErrorState error={profile.error} retry={()=>profile.refetch()}/> : <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your emergency card</h2><p className="panel-caption">{emergency ? `Last updated ${dateLabel(emergency.updatedAt)}` : 'No details saved yet'}</p></div><span className="tag">{user.name}</span></div><div className="panel-body"><form onSubmit={updateEmergencySubmit}><div className="form-grid"><div className="field"><label htmlFor="blood-group">Blood group</label><select id="blood-group" name="bloodGroup" defaultValue={emergency?.bloodGroup || 'Unknown'} data-testid="select-blood-group">{['A+','A-','B+','B-','AB+','AB-','O+','O-','Unknown'].map(g=><option value={g} key={g}>{g}</option>)}</select></div><div className="field"><label htmlFor="weight">Weight (kg)</label><input id="weight" name="weightKg" type="number" min="1" max="500" step="0.1" defaultValue={emergency?.weightKg ?? ''} required data-testid="input-weight"/></div><div className="field"><label htmlFor="height">Height (cm)</label><input id="height" name="heightCm" type="number" min="30" max="260" step="0.1" defaultValue={emergency?.heightCm ?? ''} required data-testid="input-height"/></div><div className="field"><label htmlFor="emergency-contact">Emergency contact</label><input id="emergency-contact" name="emergencyContact" defaultValue={emergency?.emergencyContact ?? ''} required maxLength={300} data-testid="input-emergency-contact" placeholder="Name and phone number"/></div><div className="field full"><label htmlFor="allergies">Allergies and critical notes</label><textarea id="allergies" name="allergies" defaultValue={emergency?.allergies ?? ''} maxLength={2000} data-testid="input-allergies" placeholder="List allergies, reactions, or important information. Write “None known” if applicable."/></div></div><div className="form-actions"><button className="btn" type="submit" disabled={updateEmergency.isPending} data-testid="button-save-emergency">{updateEmergency.isPending?'Saving…':<><Check size={15}/> Save emergency info</>}</button></div></form></div></section>}</>}
+    {tab === 'Emergency info' && <><Heading eyebrow={t("Critical care details")} title={t("Emergency information")} subtitle={t("Keep important details current. Approved doctors can use this information to act quickly.")} action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-emergency"><Printer size={15}/> {t("Print summary")}</button>}/><div className="security-banner"><div><h3>{t("Made for the moments that matter.")}</h3><p>{t("This concise summary supports safer urgent care when you cannot speak for yourself.")}</p></div><HeartPulse size={34} className="security-symbol"/></div>
+      {profile.isLoading ? <div className="skeleton"/> : profile.error ? <ErrorState error={profile.error} retry={()=>profile.refetch()}/> : <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your emergency card")}</h2><p className="panel-caption">{emergency ? t("Last updated {0}", { 0: dateLabel(emergency.updatedAt) }) : t("No details saved yet")}</p></div><span className="tag">{user.name}</span></div><div className="panel-body"><form onSubmit={updateEmergencySubmit}><div className="form-grid"><div className="field"><label htmlFor="blood-group">{t("Blood group")}</label><select id="blood-group" name="bloodGroup" defaultValue={emergency?.bloodGroup || 'Unknown'} data-testid="select-blood-group">{['A+','A-','B+','B-','AB+','AB-','O+','O-','Unknown'].map(g=><option value={g} key={g}>{g === 'Unknown' ? t('Unknown') : g}</option>)}</select></div><div className="field"><label htmlFor="weight">{t("Weight (kg)")}</label><input id="weight" name="weightKg" type="number" min="1" max="500" step="0.1" defaultValue={emergency?.weightKg ?? ''} required data-testid="input-weight"/></div><div className="field"><label htmlFor="height">{t("Height (cm)")}</label><input id="height" name="heightCm" type="number" min="30" max="260" step="0.1" defaultValue={emergency?.heightCm ?? ''} required data-testid="input-height"/></div><div className="field"><label htmlFor="emergency-contact">{t("Emergency contact")}</label><input id="emergency-contact" name="emergencyContact" defaultValue={emergency?.emergencyContact ?? ''} required maxLength={300} data-testid="input-emergency-contact" placeholder={t("Name and phone number")}/></div><div className="field full"><label htmlFor="allergies">{t("Allergies and critical notes")}</label><textarea id="allergies" name="allergies" defaultValue={emergency?.allergies ?? ''} maxLength={2000} data-testid="input-allergies" placeholder={t("List allergies, reactions, or important information. Write “None known” if applicable.")}/></div></div><div className="form-actions"><button className="btn" type="submit" disabled={updateEmergency.isPending} data-testid="button-save-emergency">{updateEmergency.isPending?t("Saving…"):<><Check size={15}/> {t("Save emergency info")}</>}</button></div></form></div></section>}</>}
     {toast && <div className="toast-message no-print" role="status">{toast}</div>}
     {bookletExport && (bookletExport.mode === 'summary'
       ? <PatientCareSummaryPrint user={bookletExport.profile.user} patientDisplayId={bookletExport.profile.patientDisplayId} emergency={bookletExport.profile.emergencyInfo} records={bookletExport.records} verification={bookletExport.verification}/>
@@ -932,11 +965,11 @@ function RecordRow({ record, records, onOpen, allowDownload = !onOpen, patientDi
   const [viewingRecord, setViewingRecord] = useState<MedicalRecord | null>(null);
   const history = records ?? [record];
   return <>
-    <button type="button" className="record-row" onClick={() => onOpen ? onOpen(record) : setViewingRecord(record)} aria-haspopup="dialog" aria-label={`Open ${record.recordType} record by ${record.doctorName}, ${dateLabel(record.createdAt)}`} data-testid={`button-open-record-${record.id}`}>
+    <button type="button" className="record-row" onClick={() => onOpen ? onOpen(record) : setViewingRecord(record)} aria-haspopup="dialog" aria-label={t("Open {0} record by {1}, {2}", { 0: t(record.recordType), 1: record.doctorName, 2: dateLabel(record.createdAt) })} data-testid={`button-open-record-${record.id}`}>
       <span className="record-icon"><FileHeart size={17}/></span>
-      <span className="record-main"><strong>{record.recordType} <span style={{fontWeight:500,color:'#81908b'}}>· {record.doctorName}</span></strong><span className="record-summary">{record.diagnosis || 'Care note'}{record.treatment ? ` — ${record.treatment}` : ''}</span>{record.followUpToRecordId !== null && <span className="record-followup-label">Linked follow-up</span>}</span>
+      <span className="record-main"><strong>{t(record.recordType)} <span style={{fontWeight:500,color:'#81908b'}}>· {record.doctorName}</span></strong><span className="record-summary">{record.diagnosis || t("Care note")}{record.treatment ? ` — ${record.treatment}` : ''}</span>{record.followUpToRecordId !== null && <span className="record-followup-label">{t("Linked follow-up")}</span>}</span>
       <time className="record-meta">{dateLabel(record.createdAt)}</time>
-      <span className="record-open-label">Open <ChevronRight size={13}/></span>
+      <span className="record-open-label">{t("Open")} <ChevronRight size={13}/></span>
     </button>
     {viewingRecord && !onOpen && <RecordDetailsModal record={viewingRecord} records={history} onClose={() => setViewingRecord(null)} onOpenRecord={setViewingRecord} allowDownload={allowDownload} patientDisplayId={patientDisplayId}/>}
   </>;
@@ -955,22 +988,22 @@ function DoctorPatientSummary({ records }: { records: MedicalRecord[] }) {
     .map(([type, count]) => `${type}: ${count}`)
     .join(' · ');
   return <section className="panel doctor-patient-summary" aria-labelledby="doctor-patient-summary-title">
-    <div className="panel-head"><div><h3 className="panel-title" id="doctor-patient-summary-title">Patient record summary</h3><p className="panel-caption">Factual overview of the records available under this active access grant.</p></div><span className="tag">{records.length} records</span></div>
+    <div className="panel-head"><div><h3 className="panel-title" id="doctor-patient-summary-title">{t("Patient record summary")}</h3><p className="panel-caption">{t("Factual overview of the records available under this active access grant.")}</p></div><span className="tag">{records.length} {t("records")}</span></div>
     <div className="panel-body">
       {latestRecord ? <>
-        <div className="data-row"><span className="data-key">Latest entry</span><span className="data-value">{latestRecord.recordType} · {dateLabel(latestRecord.createdAt)}</span></div>
-        <div className="data-row"><span className="data-key">Latest documented diagnosis</span><span className="data-value">{latestRecord.diagnosis || latestRecord.codedDiagnoses.map((item)=>item.diseaseCode.diseaseName).join(', ') || 'Not documented in the latest entry'}</span></div>
-        <div className="data-row"><span className="data-key">Latest recorded vitals</span><span className="data-value">{[
+        <div className="data-row"><span className="data-key">{t("Latest entry")}</span><span className="data-value">{t(latestRecord.recordType)} · {dateLabel(latestRecord.createdAt)}</span></div>
+        <div className="data-row"><span className="data-key">{t("Latest documented diagnosis")}</span><span className="data-value">{latestRecord.diagnosis || latestRecord.codedDiagnoses.map((item)=>item.diseaseCode.diseaseName).join(', ') || t("Not documented in the latest entry")}</span></div>
+        <div className="data-row"><span className="data-key">{t("Latest recorded vitals")}</span><span className="data-value">{[
           latestRecord.vitals.bloodPressure && `BP ${latestRecord.vitals.bloodPressure}`,
           latestRecord.vitals.heartRate && `${latestRecord.vitals.heartRate} bpm`,
           latestRecord.vitals.temperature && `${latestRecord.vitals.temperature} °C`,
           latestRecord.vitals.weightKg && `${latestRecord.vitals.weightKg} kg`,
-        ].filter(Boolean).join(' · ') || 'Not recorded in the latest entry'}</span></div>
-        {latestRecord.treatment && <div className="data-row"><span className="data-key">Latest recorded plan</span><span className="data-value">{latestRecord.treatment}</span></div>}
-        {latestRecord.medications.length > 0 && <div className="data-row"><span className="data-key">Medications in latest entry</span><span className="data-value">{latestRecord.medications.join(', ')}</span></div>}
-        <div className="data-row"><span className="data-key">Record types on file</span><span className="data-value">{typeSummary}</span></div>
-      </> : <p className="field-note">No clinical entries have been added to this record yet.</p>}
-      <p className="field-note summary-caveat">This is a factual summary of saved entries, not a medical assessment. Medication details are not reconciled against an external medication list.</p>
+        ].filter(Boolean).join(' · ') || t("Not recorded in the latest entry")}</span></div>
+        {latestRecord.treatment && <div className="data-row"><span className="data-key">{t("Latest recorded plan")}</span><span className="data-value">{latestRecord.treatment}</span></div>}
+        {latestRecord.medications.length > 0 && <div className="data-row"><span className="data-key">{t("Medications in latest entry")}</span><span className="data-value">{latestRecord.medications.join(', ')}</span></div>}
+        <div className="data-row"><span className="data-key">{t("Record types on file")}</span><span className="data-value">{typeSummary}</span></div>
+      </> : <p className="field-note">{t("No clinical entries have been added to this record yet.")}</p>}
+      <p className="field-note summary-caveat">{t("This is a factual summary of saved entries, not a medical assessment. Medication details are not reconciled against an external medication list.")}</p>
     </div>
   </section>;
 }
@@ -983,38 +1016,38 @@ function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFo
   const followUps = records.filter((item) => item.followUpToRecordId === record.id);
   return <Modal title={`${record.recordType} record`} onClose={onClose}>
     <div className="record-details" data-testid={`record-details-${record.id}`}>
-      <div className="record-detail-byline"><span className="tag">Entered by {record.doctorName}</span><div className="record-detail-actions"><time>{dateLabel(record.createdAt)}</time>{allowDownload && <button type="button" className="btn secondary small no-print" onClick={() => downloadMedicalRecord(record, patientDisplayId)} data-testid={`button-download-record-${record.id}`}><Download size={13}/> Download .txt</button>}</div></div>
-      <div className="notice record-readonly-note">{onCreateFollowUp ? 'This record is read-only. Add a linked follow-up to document a correction or new information.' : 'This record is read-only. Doctors add corrections or new information as linked follow-up records.'}</div>
-      {record.followUpToRecordId !== null && <section className="record-detail-section"><h3>Follows up on</h3>{parentRecord ? <button type="button" className="record-related-link" onClick={() => onOpenRecord(parentRecord)}><span><strong>{parentRecord.recordType}: {parentRecord.diagnosis || 'Care note'}</strong><small>By {parentRecord.doctorName} · {dateLabel(parentRecord.createdAt)}</small></span><ChevronRight size={15}/></button> : <p>Original record #{record.followUpToRecordId}</p>}</section>}
-      {followUps.length > 0 && <section className="record-detail-section"><h3>Linked follow-ups</h3>{followUps.map((followUp) => <button type="button" className="record-related-link" key={followUp.id} onClick={() => onOpenRecord(followUp)}><span><strong>{followUp.diagnosis || 'Follow-up note'}</strong><small>By {followUp.doctorName} · {dateLabel(followUp.createdAt)}</small></span><ChevronRight size={15}/></button>)}</section>}
-      <section className="record-detail-section"><h3>Diagnosis</h3><p>{record.diagnosis || 'No diagnosis documented.'}</p></section>
-       {record.codedDiagnoses.length > 0 && <section className="record-detail-section"><h3>Structured disease diagnoses</h3>{record.codedDiagnoses.map((diagnosis) => {
+      <div className="record-detail-byline"><span className="tag">{t("Entered by")} {record.doctorName}</span><div className="record-detail-actions"><time>{dateLabel(record.createdAt)}</time>{allowDownload && <button type="button" className="btn secondary small no-print" onClick={() => downloadMedicalRecord(record, patientDisplayId)} data-testid={`button-download-record-${record.id}`}><Download size={13}/> {t("Download .txt")}</button>}</div></div>
+      <div className="notice record-readonly-note">{onCreateFollowUp ? t("This record is read-only. Add a linked follow-up to document a correction or new information.") : t("This record is read-only. Doctors add corrections or new information as linked follow-up records.")}</div>
+      {record.followUpToRecordId !== null && <section className="record-detail-section"><h3>{t("Follows up on")}</h3>{parentRecord ? <button type="button" className="record-related-link" onClick={() => onOpenRecord(parentRecord)}><span><strong>{t(parentRecord.recordType)}: {parentRecord.diagnosis || t("Care note")}</strong><small>{t("By")} {parentRecord.doctorName} · {dateLabel(parentRecord.createdAt)}</small></span><ChevronRight size={15}/></button> : <p>{t("Original record #")}{record.followUpToRecordId}</p>}</section>}
+      {followUps.length > 0 && <section className="record-detail-section"><h3>{t("Linked follow-ups")}</h3>{followUps.map((followUp) => <button type="button" className="record-related-link" key={followUp.id} onClick={() => onOpenRecord(followUp)}><span><strong>{followUp.diagnosis || t("Follow-up note")}</strong><small>{t("By")} {followUp.doctorName} · {dateLabel(followUp.createdAt)}</small></span><ChevronRight size={15}/></button>)}</section>}
+      <section className="record-detail-section"><h3>{t("Diagnosis")}</h3><p>{record.diagnosis || t("No diagnosis documented.")}</p></section>
+       {record.codedDiagnoses.length > 0 && <section className="record-detail-section"><h3>{t("Structured disease diagnoses")}</h3>{record.codedDiagnoses.map((diagnosis) => {
          const supportingRecord = records.find((item) => item.id === diagnosis.supportingRecordId);
          return <article key={diagnosis.id} className="callout" data-testid={`coded-diagnosis-${diagnosis.id}`} style={{marginBottom:10}}>
            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
-             <strong>{diagnosis.diseaseCode.diseaseName}</strong>
-             <span className="tag">{diagnosis.status.replace('_', ' ')}</span>
+             <strong>{t(diagnosis.diseaseCode.diseaseName)}</strong>
+             <span className="tag">{t(diagnosis.status.replaceAll('_', ' '))}</span>
            </div>
            <p style={{margin:'7px 0 4px'}}>{diagnosis.diseaseCode.code} · {diagnosis.diseaseCode.codingSystem} {diagnosis.diseaseCode.release}</p>
-           <small>Diagnosis date {dateLabel(diagnosis.diagnosisDate)} · Onset {dateLabel(diagnosis.onsetDate)}</small>
+           <small>{t("Diagnosis date")} {dateLabel(diagnosis.diagnosisDate)} {t("· Onset")} {dateLabel(diagnosis.onsetDate)}</small>
            {diagnosis.notes && <p style={{marginBottom:0}}>{diagnosis.notes}</p>}
-           {supportingRecord && <button type="button" className="record-related-link" style={{marginTop:10}} onClick={() => onOpenRecord(supportingRecord)}><span><strong>Supporting record #{supportingRecord.id}</strong><small>{supportingRecord.recordType} · {dateLabel(supportingRecord.createdAt)}</small></span><ChevronRight size={15}/></button>}
-           {!supportingRecord && diagnosis.supportingRecordId !== null && <p style={{marginBottom:0}}>Supporting record #{diagnosis.supportingRecordId}</p>}
+           {supportingRecord && <button type="button" className="record-related-link" style={{marginTop:10}} onClick={() => onOpenRecord(supportingRecord)}><span><strong>{t("Supporting record #")}{supportingRecord.id}</strong><small>{t(supportingRecord.recordType)} · {dateLabel(supportingRecord.createdAt)}</small></span><ChevronRight size={15}/></button>}
+           {!supportingRecord && diagnosis.supportingRecordId !== null && <p style={{marginBottom:0}}>{t("Supporting record #")}{diagnosis.supportingRecordId}</p>}
          </article>;
        })}</section>}
-      <section className="record-detail-section"><h3>Treatment / plan</h3><p>{record.treatment || 'No treatment or plan documented.'}</p></section>
-      <section className="record-detail-section"><h3>Medications</h3><p>{record.medications.length ? record.medications.join(', ') : 'No medications documented.'}</p></section>
-      <section className="record-detail-section"><h3>Clinical notes</h3><p>{record.notes || 'No additional notes.'}</p></section>
-       {attachmentPath && <section className="record-detail-section"><h3>Attached document</h3><AttachmentDownloadLink patientId={record.patientId} objectPath={attachmentPath} fileName={attachmentName || 'Lab report'}/></section>}
-      <section className="record-detail-section"><h3>Vitals</h3>
+      <section className="record-detail-section"><h3>{t("Treatment / plan")}</h3><p>{record.treatment || t("No treatment or plan documented.")}</p></section>
+      <section className="record-detail-section"><h3>{t("Medications")}</h3><p>{record.medications.length ? record.medications.join(', ') : t("No medications documented.")}</p></section>
+      <section className="record-detail-section"><h3>{t("Clinical notes")}</h3><p>{record.notes || t("No additional notes.")}</p></section>
+       {attachmentPath && <section className="record-detail-section"><h3>{t("Attached document")}</h3><AttachmentDownloadLink patientId={record.patientId} objectPath={attachmentPath} fileName={attachmentName || t("Lab report")}/></section>}
+      <section className="record-detail-section"><h3>{t("Vitals")}</h3>
         <div className="record-vitals">
-          <div><span>Blood pressure</span><strong>{vitals.bloodPressure || 'Not recorded'}</strong></div>
-          <div><span>Heart rate</span><strong>{vitals.heartRate ? `${vitals.heartRate} bpm` : 'Not recorded'}</strong></div>
-          <div><span>Temperature</span><strong>{vitals.temperature ? `${vitals.temperature} °C` : 'Not recorded'}</strong></div>
-          <div><span>Weight</span><strong>{vitals.weightKg ? `${vitals.weightKg} kg` : 'Not recorded'}</strong></div>
+          <div><span>{t("Blood pressure")}</span><strong>{vitals.bloodPressure || t("Not recorded")}</strong></div>
+          <div><span>{t("Heart rate")}</span><strong>{vitals.heartRate ? `${vitals.heartRate} bpm` : t("Not recorded")}</strong></div>
+          <div><span>{t("Temperature")}</span><strong>{vitals.temperature ? `${vitals.temperature} °C` : t("Not recorded")}</strong></div>
+          <div><span>{t("Weight")}</span><strong>{vitals.weightKg ? `${vitals.weightKg} kg` : t("Not recorded")}</strong></div>
         </div>
       </section>
-      <div className="form-actions">{onCreateFollowUp && <button type="button" className="btn secondary" onClick={() => onCreateFollowUp(record)}>Add linked follow-up</button>}<button type="button" className="btn" onClick={onClose}>Close record</button></div>
+      <div className="form-actions">{onCreateFollowUp && <button type="button" className="btn secondary" onClick={() => onCreateFollowUp(record)}>{t("Add linked follow-up")}</button>}<button type="button" className="btn" onClick={onClose}>{t("Close record")}</button></div>
     </div>
   </Modal>;
 }
@@ -1028,7 +1061,7 @@ function AttachmentDownloadLink({ patientId, objectPath, fileName }: { patientId
     const popup = window.open('about:blank', '_blank');
     if (!popup) {
       setLoading(false);
-      setError('Allow pop-ups to open this private document.');
+      setError(t("Allow pop-ups to open this private document."));
       return;
     }
     popup.opener = null;
@@ -1038,7 +1071,7 @@ function AttachmentDownloadLink({ patientId, objectPath, fileName }: { patientId
         headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
       });
       const result = await response.json() as { downloadURL?: string; error?: string };
-      if (!response.ok || !result.downloadURL) throw new Error(result.error || 'Could not open this document.');
+      if (!response.ok || !result.downloadURL) throw new Error(result.error || t("Could not open this document."));
       popup.location.href = result.downloadURL;
     } catch (cause) {
       popup.close();
@@ -1047,11 +1080,11 @@ function AttachmentDownloadLink({ patientId, objectPath, fileName }: { patientId
       setLoading(false);
     }
   };
-  return <div><button type="button" className="btn small secondary" onClick={()=>void openDocument()} disabled={loading}><Download size={13}/>{loading ? 'Preparing…' : `Open ${fileName}`}</button>{error && <p className="field-note" role="alert">{error}</p>}</div>;
+  return <div><button type="button" className="btn small secondary" onClick={()=>void openDocument()} disabled={loading}><Download size={13}/>{loading ? t("Preparing…") : t("Open {0}", { 0: fileName })}</button>{error && <p className="field-note" role="alert">{error}</p>}</div>;
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  return <div role="presentation" onMouseDown={(e)=>{if(e.target===e.currentTarget)onClose();}} style={{position:'fixed',inset:0,zIndex:50,background:'#17343580',display:'flex',alignItems:'center',justifyContent:'center',overflowY:'auto',padding:16}}><section role="dialog" aria-modal="true" aria-label={title} className="panel" style={{width:'min(100%,440px)',maxHeight:'calc(100dvh - 32px)',display:'flex',flexDirection:'column',padding:0,overflow:'hidden',boxShadow:'0 22px 70px #17343540'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'20px 23px 12px',flexShrink:0}}><h2 className="panel-title">{title}</h2><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={16}/></button></div><div style={{padding:'4px 23px 23px',overflowY:'auto',minHeight:0,overscrollBehavior:'contain'}}>{children}</div></section></div>;
+  return <div role="presentation" onMouseDown={(e)=>{if(e.target===e.currentTarget)onClose();}} style={{position:'fixed',inset:0,zIndex:50,background:'#17343580',display:'flex',alignItems:'center',justifyContent:'center',overflowY:'auto',padding:16}}><section role="dialog" aria-modal="true" aria-label={title} className="panel" style={{width:'min(100%,440px)',maxHeight:'calc(100dvh - 32px)',display:'flex',flexDirection:'column',padding:0,overflow:'hidden',boxShadow:'0 22px 70px #17343540'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'20px 23px 12px',flexShrink:0}}><h2 className="panel-title">{title}</h2><button className="icon-button" onClick={onClose} aria-label={t("Close dialog")}><X size={16}/></button></div><div style={{padding:'4px 23px 23px',overflowY:'auto',minHeight:0,overscrollBehavior:'contain'}}>{children}</div></section></div>;
 }
 
 function DoctorView({ user, tab }: { user: User; tab: Tab }) {
@@ -1108,7 +1141,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       headers: { Authorization: authorization },
     }).then(async (response) => {
       const body = await response.json() as PendingMedicalAttachment[] | { error?: string };
-      if (!response.ok) throw new Error('error' in body ? body.error || 'Could not load pending lab reports.' : 'Could not load pending lab reports.');
+      if (!response.ok) throw new Error('error' in body ? body.error || t("Could not load pending lab reports.") : t("Could not load pending lab reports."));
       if (current && Array.isArray(body)) setPendingAttachments(body);
     }).catch((error) => {
       if (current) notify(errText(error));
@@ -1124,11 +1157,11 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const uploadLabDocument = async (file: File) => {
     if (patientId === null) return;
     if (pendingAttachments.length >= 5) {
-      notify('Attach up to five lab reports to one record. Remove a pending report before adding another.');
+      notify(t("Attach up to five lab reports to one record. Remove a pending report before adding another."));
       return;
     }
     if (!['application/pdf', 'image/png', 'image/jpeg'].includes(file.type) || file.size > 10 * 1024 * 1024) {
-      notify('Choose a PDF, PNG, or JPEG file smaller than 10 MB.');
+      notify(t("Choose a PDF, PNG, or JPEG file smaller than 10 MB."));
       return;
     }
     setUploadingDocument(true);
@@ -1141,7 +1174,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         body: JSON.stringify({ fileName: file.name, contentType: file.type, size: file.size }),
       });
       const upload = await response.json() as { attachmentId?: number; uploadURL?: string; error?: string };
-      if (!response.ok || !upload.uploadURL || !upload.attachmentId) throw new Error(upload.error || 'Could not prepare this document upload.');
+      if (!response.ok || !upload.uploadURL || !upload.attachmentId) throw new Error(upload.error || t("Could not prepare this document upload."));
       reserved = {
         id: upload.attachmentId,
         fileName: file.name,
@@ -1152,17 +1185,17 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       };
       setPendingAttachments((current) => [...current.filter((item) => item.id !== reserved!.id), reserved!]);
       const stored = await fetch(upload.uploadURL, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
-      if (!stored.ok) throw new Error('The document upload did not complete.');
+      if (!stored.ok) throw new Error(t("The document upload did not complete."));
       const completed = await fetch(`/api/doctor/patient/${patientId}/attachments/${upload.attachmentId}/complete`, {
         method: 'POST',
         headers: { Authorization: authorization },
       });
       const completion = await completed.json() as { error?: string };
-      if (!completed.ok) throw new Error(completion.error || 'The upload is saved; retry confirmation before saving the record.');
+      if (!completed.ok) throw new Error(completion.error || t("The upload is saved; retry confirmation before saving the record."));
       setPendingAttachments((current) => current.map((item) =>
         item.id === upload.attachmentId ? { ...item, status: 'READY' } : item,
       ));
-      notify('Lab report saved as a pending attachment. It will remain available if record saving is interrupted.');
+      notify(t("Lab report saved as a pending attachment. It will remain available if record saving is interrupted."));
     } catch (error) {
       if (reserved) setPendingAttachments((current) => current.some((item) => item.id === reserved!.id)
         ? current
@@ -1180,11 +1213,11 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
       });
       const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'The file is not ready yet.');
+      if (!response.ok) throw new Error(result.error || t("The file is not ready yet."));
       setPendingAttachments((current) => current.map((item) =>
         item.id === attachmentId ? { ...item, status: 'READY' } : item,
       ));
-      notify('Lab report is ready to attach.');
+      notify(t("Lab report is ready to attach."));
     } catch (error) {
       notify(errText(error));
     }
@@ -1198,7 +1231,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       });
       if (!response.ok) {
         const result = await response.json() as { error?: string };
-        throw new Error(result.error || 'Could not remove this pending upload.');
+        throw new Error(result.error || t("Could not remove this pending upload."));
       }
       setPendingAttachments((current) => current.filter((item) => item.id !== attachmentId));
     } catch (error) {
@@ -1215,13 +1248,13 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         body: JSON.stringify({ hospitalName: hospitalName.trim(), professionalMedicalNumber: professionalMedicalNumber.trim(), locationRegion, locationArrondissement }),
       });
       const body = await response.json() as User & { error?: string };
-      if (!response.ok) throw new Error(body.error || 'Could not save the hospital or clinic.');
+      if (!response.ok) throw new Error(body.error || t("Could not save the hospital or clinic."));
       setHospitalName(body.hospitalName ?? '');
       setProfessionalMedicalNumber(body.professionalMedicalNumber ?? '');
       setLocationRegion(body.locationRegion ?? null);
       setLocationArrondissement(body.locationArrondissement ?? null);
       qc.setQueryData(getGetDoctorProfileQueryKey(), body);
-      notify('Professional profile saved.');
+      notify(t("Professional profile saved."));
     } catch (error) {
       notify(errText(error));
     } finally {
@@ -1247,7 +1280,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const submitRecord = (values: DoctorRecordFormValues) => {
     if (patientId === null) return;
     if (values.codedDiagnoses.some((diagnosis) => diagnosis.diseaseCodeId === null)) {
-      notify('Choose a disease code for every structured diagnosis, or remove the empty row.');
+      notify(t("Choose a disease code for every structured diagnosis, or remove the empty row."));
       return;
     }
     const numOrNull = (value: string) => value.trim() ? Number(value) : null;
@@ -1261,7 +1294,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       diagnosis: values.diagnosis,
       treatment: values.treatment,
       medications: values.medications.split(',').map((item) => item.trim()).filter(Boolean),
-      notes: [values.notes.trim(), detailLines.length ? `Record details (${values.recordType}):\n${detailLines.join('\n')}` : ''].filter(Boolean).join('\n\n'),
+      notes: [values.notes.trim(), detailLines.length ? t("Record details ({0}):\n{1}", { 0: t(values.recordType), 1: detailLines.join('\n') }) : ''].filter(Boolean).join('\n\n'),
       followUpToRecordId: followUpSource?.id ?? null,
       attachmentIds: values.recordType === 'Lab Results'
         ? pendingAttachments.filter((attachment) => attachment.status === 'READY').map((attachment) => attachment.id)
@@ -1285,10 +1318,11 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       qc.invalidateQueries({ queryKey: getGetDoctorPatientRecordsQueryKey(patientId) });
       qc.invalidateQueries({ queryKey: getGetDoctorStatsQueryKey() });
       setPendingAttachments([]);
-      setEntryOpen(false); setFollowUpSource(null); setSelectedDiseaseCodes([]); setActiveCodeRow(null); setViewingRecord(record); notify('Record added to the patient file.');
+      setEntryOpen(false); setFollowUpSource(null); setSelectedDiseaseCodes([]); setActiveCodeRow(null); setViewingRecord(record); notify(t("Record added to the patient file."));
     }, onError: (error) => notify(errText(error)) });
   };
-  const lookupReason = [lookupReasonChoice, lookupReasonDetail.trim()].filter(Boolean).join(': ');
+  // The reason is sent in the doctor's language; the patient sees it as written.
+  const lookupReason = [lookupReasonChoice ? t(lookupReasonChoice) : '', lookupReasonDetail.trim()].filter(Boolean).join(': ');
   const submitEmergencyLookup = (event: FormEvent) => {
     event.preventDefault();
     setLookupError('');
@@ -1309,7 +1343,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       if (patient.status === 'PENDING') {
         setPatientId(null);
         setPatientDisplayId(null);
-        setAccessRequestNotice(`Request sent to ${patient.patientName} (${patient.patientDisplayId}). This patient approves each doctor first. You will get a notification when they decide; then enter the CM ID again to open the booklet.`);
+        setAccessRequestNotice(t("Request sent to {0} ({1}). This patient approves each doctor first. You will get a notification when they decide; then enter the CM ID again to open the booklet.", { 0: patient.patientName, 1: patient.patientDisplayId }));
         return;
       }
       setPatientId(patient.patientId);
@@ -1319,7 +1353,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       setFollowUpSource(null);
       qc.invalidateQueries({ queryKey: getGetDoctorPatientRecordsQueryKey(patient.patientId) });
       qc.invalidateQueries({ queryKey: getGetDoctorStatsQueryKey() });
-      notify(`Access granted to ${patient.patientName}’s medical booklet.`);
+      notify(t("Access granted to {0}’s medical booklet.", { 0: patient.patientName }));
     }, onError: (error) => notify(errText(error)) });
   };
   const addCodedDiagnosis = () => {
@@ -1352,73 +1386,73 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     setActiveCodeRow(null);
     setCodeSearch('');
   };
-  if (user.role === 'PENDING_DOCTOR') return <><Heading eyebrow="Clinician access" title={`Welcome, Dr. ${user.name}.`} subtitle="Your account is under review. After account approval, you can use clinical features. Credential verification is a separate manual review."/><div className="security-banner"><div><h3>Account approval in progress</h3><p>Our administrative team is reviewing your account. Your professional medical number is also checked separately before you receive a certified badge.</p></div><Clock3 size={33} className="security-symbol"/></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Account profile</h2><p className="panel-caption">Information submitted with your registration</p></div><span className="tag warning">Pending review</span></div><div className="panel-body"><div className="data-row"><span className="data-key">Name</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">Email</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">Professional medical number</span><span className="data-value">{user.professionalMedicalNumber || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Submitted</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/></>;
+  if (user.role === 'PENDING_DOCTOR') return <><Heading eyebrow={t("Clinician access")} title={t("Welcome, Dr. {0}.", { 0: user.name })} subtitle={t("Your account is under review. After account approval, you can use clinical features. Credential verification is a separate manual review.")}/><div className="security-banner"><div><h3>{t("Account approval in progress")}</h3><p>{t("Our administrative team is reviewing your account. Your professional medical number is also checked separately before you receive a certified badge.")}</p></div><Clock3 size={33} className="security-symbol"/></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account profile")}</h2><p className="panel-caption">{t("Information submitted with your registration")}</p></div><span className="tag warning">{t("Pending review")}</span></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Professional medical number")}</span><span className="data-value">{user.professionalMedicalNumber || t("Not provided")}</span></div><div className="data-row"><span className="data-key">{t("Submitted")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/></>;
   return <>
     {tab === 'Patients' && <>
-      <Heading eyebrow="Clinical workspace" title="Emergency lookup" subtitle="Find a patient's emergency information by full name when they cannot give you their CM ID."/>
-      <div className="security-banner"><div><h3>For emergencies only.</h3><p>Every lookup is recorded, and the patient is told who looked them up, where and why. For routine care, ask for the patient's CM ID and use Record entry.</p></div><ShieldCheck size={33} className="security-symbol"/></div>
-      <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Look up a patient</h2><p className="panel-caption">The full name must match exactly; word order, capitals and accents do not matter. Only emergency details are shown.</p></div></div><div className="panel-body">
+      <Heading eyebrow={t("Clinical workspace")} title={t("Emergency lookup")} subtitle={t("Find a patient's emergency information by full name when they cannot give you their CM ID.")}/>
+      <div className="security-banner"><div><h3>{t("For emergencies only.")}</h3><p>{t("Every lookup is recorded, and the patient is told who looked them up, where and why. For routine care, ask for the patient's CM ID and use Record entry.")}</p></div><ShieldCheck size={33} className="security-symbol"/></div>
+      <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">{t("Look up a patient")}</h2><p className="panel-caption">{t("The full name must match exactly; word order, capitals and accents do not matter. Only emergency details are shown.")}</p></div></div><div className="panel-body">
         <form onSubmit={submitEmergencyLookup}>
           <div className="form-grid">
-            <div className="field"><label htmlFor="lookup-name">Patient's full name</label><input id="lookup-name" required minLength={3} maxLength={120} value={lookupName} onChange={e=>setLookupName(e.target.value)} placeholder="e.g. Ngo Marie Claire" autoComplete="off" data-testid="input-lookup-name"/></div>
-            <div className="field"><label htmlFor="lookup-dob">Date of birth <span className="field-note">(optional)</span></label><input id="lookup-dob" type="date" value={lookupDob} onChange={e=>setLookupDob(e.target.value)} data-testid="input-lookup-dob"/></div>
-            <div className="field"><label htmlFor="lookup-reason">Reason</label><select id="lookup-reason" required value={lookupReasonChoice} onChange={e=>setLookupReasonChoice(e.target.value)} data-testid="select-lookup-reason"><option value="">Choose a reason</option><option>Patient unconscious or unable to communicate</option><option>Patient arrived without their CM ID</option><option>Urgent treatment needs allergy or blood group information</option><option>Other emergency</option></select></div>
-            <div className="field"><label htmlFor="lookup-reason-detail">Details {lookupReasonChoice === 'Other emergency' ? '' : <span className="field-note">(optional)</span>}</label><input id="lookup-reason-detail" maxLength={200} required={lookupReasonChoice === 'Other emergency'} minLength={lookupReasonChoice === 'Other emergency' ? 5 : undefined} value={lookupReasonDetail} onChange={e=>setLookupReasonDetail(e.target.value)} placeholder="e.g. Road accident, admitted to A&E" data-testid="input-lookup-reason-detail"/></div>
+            <div className="field"><label htmlFor="lookup-name">{t("Patient's full name")}</label><input id="lookup-name" required minLength={3} maxLength={120} value={lookupName} onChange={e=>setLookupName(e.target.value)} placeholder={t("e.g. Ngo Marie Claire")} autoComplete="off" data-testid="input-lookup-name"/></div>
+            <div className="field"><label htmlFor="lookup-dob">{t("Date of birth")} <span className="field-note">{t("(optional)")}</span></label><input id="lookup-dob" type="date" value={lookupDob} onChange={e=>setLookupDob(e.target.value)} data-testid="input-lookup-dob"/></div>
+            <div className="field"><label htmlFor="lookup-reason">{t("Reason")}</label><select id="lookup-reason" required value={lookupReasonChoice} onChange={e=>setLookupReasonChoice(e.target.value)} data-testid="select-lookup-reason"><option value="">{t("Choose a reason")}</option><option value="Patient unconscious or unable to communicate">{t("Patient unconscious or unable to communicate")}</option><option value="Patient arrived without their CM ID">{t("Patient arrived without their CM ID")}</option><option value="Urgent treatment needs allergy or blood group information">{t("Urgent treatment needs allergy or blood group information")}</option><option value="Other emergency">{t("Other emergency")}</option></select></div>
+            <div className="field"><label htmlFor="lookup-reason-detail">{t("Details")} {lookupReasonChoice === 'Other emergency' ? '' : <span className="field-note">{t("(optional)")}</span>}</label><input id="lookup-reason-detail" maxLength={200} required={lookupReasonChoice === 'Other emergency'} minLength={lookupReasonChoice === 'Other emergency' ? 5 : undefined} value={lookupReasonDetail} onChange={e=>setLookupReasonDetail(e.target.value)} placeholder={t("e.g. Road accident, admitted to A&E")} data-testid="input-lookup-reason-detail"/></div>
           </div>
-          <p className="field-note" style={{marginTop:10}}>The patient will see: “{lookupReason || 'your reason'}”.</p>
-          <div className="form-actions"><button className="btn ghost" type="button" onClick={clearEmergencyLookup}>Clear</button><button className="btn" type="submit" disabled={emergencyLookup.isPending} data-testid="button-emergency-lookup"><Search size={14}/> {emergencyLookup.isPending ? 'Looking up…' : 'Look up emergency information'}</button></div>
+          <p className="field-note" style={{marginTop:10}}>{t("The patient will see: “{0}”.", { 0: lookupReason || t("your reason") })}</p>
+          <div className="form-actions"><button className="btn ghost" type="button" onClick={clearEmergencyLookup}>{t("Clear")}</button><button className="btn" type="submit" disabled={emergencyLookup.isPending} data-testid="button-emergency-lookup"><Search size={14}/> {emergencyLookup.isPending ? t("Looking up…") : t("Look up emergency information")}</button></div>
         </form>
       </div></section>
-      {lookupError ? <div className="error-state" role="alert" data-testid="text-lookup-error">{lookupError}</div> : lookupResults === null ? null : !lookupResults.length ? <section className="panel"><EmptyState icon={Users} title="No emergency information found" children="No patient with this exact name has saved emergency details. Check the spelling, or add the date of birth." /></section> :
-        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Emergency information</h2><p className="panel-caption">{lookupResults.length} matching patient{lookupResults.length===1?'':'s'}. Confirm identity before acting on these details.</p></div></div><div className="panel-body">{lookupResults.map(({ emergencyInfo })=><article key={emergencyInfo.patientId} className="callout" style={{marginBottom:12}}><div className="callout-head"><HeartPulse size={16}/> {emergencyInfo.patientName}</div><div className="data-row"><span className="data-key">Blood group</span><span className="data-value">{emergencyInfo.bloodGroup}</span></div><div className="data-row"><span className="data-key">Allergies</span><span className="data-value">{emergencyInfo.allergies || 'None listed'}</span></div><div className="data-row"><span className="data-key">Emergency contact</span><span className="data-value">{emergencyInfo.emergencyContact || 'Not provided'}</span></div><div className="data-row"><span className="data-key">Height / weight</span><span className="data-value">{emergencyInfo.heightCm} cm · {emergencyInfo.weightKg} kg</span></div><small>Updated {dateLabel(emergencyInfo.updatedAt)}</small></article>)}</div></section>}
+      {lookupError ? <div className="error-state" role="alert" data-testid="text-lookup-error">{lookupError}</div> : lookupResults === null ? null : !lookupResults.length ? <section className="panel"><EmptyState icon={Users} title={t("No emergency information found")} children={t("No patient with this exact name has saved emergency details. Check the spelling, or add the date of birth.")} /></section> :
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Emergency information")}</h2><p className="panel-caption">{lookupResults.length === 1 ? t("1 matching patient. Confirm identity before acting on these details.") : t("{0} matching patients. Confirm identity before acting on these details.", { 0: lookupResults.length })}</p></div></div><div className="panel-body">{lookupResults.map(({ emergencyInfo })=><article key={emergencyInfo.patientId} className="callout" style={{marginBottom:12}}><div className="callout-head"><HeartPulse size={16}/> {emergencyInfo.patientName}</div><div className="data-row"><span className="data-key">{t("Blood group")}</span><span className="data-value">{emergencyInfo.bloodGroup}</span></div><div className="data-row"><span className="data-key">{t("Allergies")}</span><span className="data-value">{emergencyInfo.allergies || t("None listed")}</span></div><div className="data-row"><span className="data-key">{t("Emergency contact")}</span><span className="data-value">{emergencyInfo.emergencyContact || t("Not provided")}</span></div><div className="data-row"><span className="data-key">{t("Height / weight")}</span><span className="data-value">{emergencyInfo.heightCm} {t("cm ·")} {emergencyInfo.weightKg} {t("kg")}</span></div><small>{t("Updated")} {dateLabel(emergencyInfo.updatedAt)}</small></article>)}</div></section>}
     </>}
-    {entryOpen && canAccessSelectedPatient && <Modal title={followUpSource ? `Follow-up to ${followUpSource.recordType}` : `Add a record for ${patientDisplayId || 'patient'}`} onClose={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>
-        {followUpSource ? <div className="callout record-source-callout"><div className="callout-head"><FileHeart size={16}/> This entry will be linked to</div><p><strong>{followUpSource.recordType}: {followUpSource.diagnosis || 'Care note'}</strong><br/>By {followUpSource.doctorName} · {dateLabel(followUpSource.createdAt)}</p></div> : <p className="field-note record-create-note">Saved records are permanent. To correct or add details to an existing entry, open it and choose “Add linked follow-up.”</p>}
+    {entryOpen && canAccessSelectedPatient && <Modal title={followUpSource ? t("Follow-up to {0}", { 0: t(followUpSource.recordType) }) : t("Add a record for {0}", { 0: patientDisplayId || 'patient' })} onClose={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>
+        {followUpSource ? <div className="callout record-source-callout"><div className="callout-head"><FileHeart size={16}/> {t("This entry will be linked to")}</div><p><strong>{t(followUpSource.recordType)}: {followUpSource.diagnosis || t("Care note")}</strong><br/>{t("By")} {followUpSource.doctorName} · {dateLabel(followUpSource.createdAt)}</p></div> : <p className="field-note record-create-note">{t("Saved records are permanent. To correct or add details to an existing entry, open it and choose “Add linked follow-up.”")}</p>}
         <Form {...recordForm}>
         <form key={followUpSource?.id ?? 'new-record'} onSubmit={recordForm.handleSubmit(submitRecord)}>
           <div className="form-grid">
-            <div className="field"><label htmlFor="record-type">Record type</label><select id="record-type" {...recordTypeRegistration} onChange={recordTypeRegistration.onChange} data-testid="select-record-type">{followUpSource ? <option value="Follow-up">Follow-up</option> : ['Consultation','Diagnosis','Treatment','Lab Results','Prescription','Surgery','Emergency','Other'].map((type)=><option key={type}>{type}</option>)}</select></div>
+            <div className="field"><label htmlFor="record-type">{t("Record type")}</label><select id="record-type" {...recordTypeRegistration} onChange={recordTypeRegistration.onChange} data-testid="select-record-type">{followUpSource ? <option value="Follow-up">{t("Follow-up")}</option> : ['Consultation','Diagnosis','Treatment','Lab Results','Prescription','Surgery','Emergency','Other'].map((type)=><option key={type} value={type}>{t(type)}</option>)}</select></div>
             {(recordSpecificFields[recordForm.watch('recordType')] ?? []).map((field) => {
               const fieldId = `record-specific-${field.key}`;
               return <div className={`field ${field.key === 'immediateCare' || field.key === 'examFindings' || field.key === 'treatmentPlan' || field.key === 'monitoring' || field.key === 'progress' || field.key === 'nextSteps' || field.key === 'description' ? 'full' : ''}`} key={field.key}>
-                <label htmlFor={fieldId}>{field.label}</label>
+                <label htmlFor={fieldId}>{t(field.label)}</label>
                 {['immediateCare','examFindings','treatmentPlan','monitoring','progress','nextSteps','description'].includes(field.key)
                   ? <textarea id={fieldId} {...recordForm.register(`recordSpecific.${field.key}`)} data-testid={`input-${field.key}`}/>
                   : <input id={fieldId} type={field.type ?? 'text'} {...recordForm.register(`recordSpecific.${field.key}`)} data-testid={`input-${field.key}`}/>}
               </div>;
             })}
             {recordForm.watch('recordType') === 'Lab Results' && <div className="field full">
-              <label htmlFor="record-lab-document">Attach lab report <span className="field-note">PDF, PNG or JPEG · up to 10 MB per report</span></label>
+              <label htmlFor="record-lab-document">{t("Attach lab report")} <span className="field-note">{t("PDF, PNG or JPEG · up to 10 MB per report")}</span></label>
               <input id="record-lab-document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={uploadingDocument} onChange={(event)=>{const file=event.currentTarget.files?.[0];if(file)void uploadLabDocument(file);event.currentTarget.value='';}} data-testid="input-lab-document"/>
-              {uploadingDocument && <small>Uploading securely…</small>}
-              {!pendingAttachments.length && <small>Pending uploads stay available for seven days and remain linked to this patient if saving the record is interrupted.</small>}
+              {uploadingDocument && <small>{t("Uploading securely…")}</small>}
+              {!pendingAttachments.length && <small>{t("Pending uploads stay available for seven days and remain linked to this patient if saving the record is interrupted.")}</small>}
               {pendingAttachments.map((attachment) => <div key={attachment.id} className="callout" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginTop:10}}>
-                <div><strong>{attachment.fileName}</strong><br/><small>{attachment.status === 'READY' ? 'Ready to attach to this lab record' : 'Upload needs confirmation; retry before saving'}</small></div>
+                <div><strong>{attachment.fileName}</strong><br/><small>{attachment.status === 'READY' ? t("Ready to attach to this lab record") : t("Upload needs confirmation; retry before saving")}</small></div>
                 <div style={{display:'flex',gap:8,flexShrink:0}}>
-                  {attachment.status === 'UPLOADING' && <button type="button" className="btn small secondary" onClick={()=>void confirmPendingAttachment(attachment.id)}>Confirm upload</button>}
-                  <button type="button" className="btn small secondary" onClick={()=>void removePendingAttachment(attachment.id)}>Remove</button>
+                  {attachment.status === 'UPLOADING' && <button type="button" className="btn small secondary" onClick={()=>void confirmPendingAttachment(attachment.id)}>{t("Confirm upload")}</button>}
+                  <button type="button" className="btn small secondary" onClick={()=>void removePendingAttachment(attachment.id)}>{t("Remove")}</button>
                 </div>
               </div>)}
             </div>}
-            <div className="field"><label htmlFor="record-diagnosis">Diagnosis</label><input id="record-diagnosis" {...recordForm.register('diagnosis')} required maxLength={5000} data-testid="input-diagnosis"/></div>
+            <div className="field"><label htmlFor="record-diagnosis">{t("Diagnosis")}</label><input id="record-diagnosis" {...recordForm.register('diagnosis')} required maxLength={5000} data-testid="input-diagnosis"/></div>
             <div className="field full" style={{position:'relative'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
-                <label>Structured disease diagnoses <span style={{fontWeight:400,color:'#81908b'}}>(optional)</span></label>
-                <button type="button" className="btn small secondary" onClick={addCodedDiagnosis} data-testid="button-add-coded-diagnosis"><Plus size={13}/> Add code</button>
+                <label>{t("Structured disease diagnoses")} <span style={{fontWeight:400,color:'#81908b'}}>{t("(optional)")}</span></label>
+                <button type="button" className="btn small secondary" onClick={addCodedDiagnosis} data-testid="button-add-coded-diagnosis"><Plus size={13}/> {t("Add code")}</button>
               </div>
-              <p className="field-note">Search the versioned WHO ICD-10 catalogue. This supplements, and does not replace, the free-text diagnosis above.</p>
+              <p className="field-note">{t("Search the versioned WHO ICD-10 catalogue. This supplements, and does not replace, the free-text diagnosis above.")}</p>
               {codedDiagnosisFields.fields.map((field, index) => {
                 const selectedCode = selectedDiseaseCodes[index];
                 const searchIsActive = activeCodeRow === index;
                 return <div className="callout" key={field.id} style={{marginBottom:12}}>
                   <div className="field" style={{position:'relative'}}>
-                    <label htmlFor={`coded-diagnosis-code-${index}`}>Disease or code</label>
+                    <label htmlFor={`coded-diagnosis-code-${index}`}>{t("Disease or code")}</label>
                     <input
                       id={`coded-diagnosis-code-${index}`}
                       type="search"
                       autoComplete="off"
                       value={searchIsActive ? codeSearch : selectedCode?.diseaseName ?? ''}
-                      placeholder="Search by disease name or code"
+                      placeholder={t("Search by disease name or code")}
                       onFocus={() => { setActiveCodeRow(index); setCodeSearch(selectedCode?.diseaseName ?? ''); }}
                       onChange={(event) => {
                         setActiveCodeRow(index);
@@ -1438,51 +1472,51 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
                     />
                     {selectedCode && !searchIsActive && <small>{selectedCode.code} · {selectedCode.codingSystem} {selectedCode.release}</small>}
                     {searchIsActive && codeSearch.trim().length >= 2 && <div id={`disease-code-results-${index}`} role="listbox" style={{position:'absolute',top:'100%',left:0,right:0,zIndex:20,maxHeight:230,overflowY:'auto',background:'#fff',border:'1px solid #d7e3df',borderRadius:10,boxShadow:'0 12px 28px #17343520',padding:6}}>
-                      {diseaseCodeSearch.isLoading ? <p className="field-note" style={{padding:8}}>Searching catalogue…</p> : diseaseCodeSearch.error ? <div style={{padding:8}}><ErrorState error={diseaseCodeSearch.error} retry={()=>diseaseCodeSearch.refetch()}/></div> : diseaseCodeSearch.data?.length ? diseaseCodeSearch.data.map((code) => <button key={code.id} type="button" role="option" aria-selected={selectedCode?.id === code.id} className="record-related-link" style={{width:'100%',border:0,textAlign:'left'}} onMouseDown={(event)=>event.preventDefault()} onClick={()=>chooseDiseaseCode(index,code)} data-testid={`button-select-disease-code-${code.id}`}><span><strong>{code.diseaseName}</strong><small>{code.code} · {code.codingSystem} {code.release}</small></span><ChevronRight size={14}/></button>) : <p className="field-note" style={{padding:8}}>No active codes match that search.</p>}
+                      {diseaseCodeSearch.isLoading ? <p className="field-note" style={{padding:8}}>{t("Searching catalogue…")}</p> : diseaseCodeSearch.error ? <div style={{padding:8}}><ErrorState error={diseaseCodeSearch.error} retry={()=>diseaseCodeSearch.refetch()}/></div> : diseaseCodeSearch.data?.length ? diseaseCodeSearch.data.map((code) => <button key={code.id} type="button" role="option" aria-selected={selectedCode?.id === code.id} className="record-related-link" style={{width:'100%',border:0,textAlign:'left'}} onMouseDown={(event)=>event.preventDefault()} onClick={()=>chooseDiseaseCode(index,code)} data-testid={`button-select-disease-code-${code.id}`}><span><strong>{t(code.diseaseName)}</strong><small>{code.code} · {code.codingSystem} {code.release}</small></span><ChevronRight size={14}/></button>) : <p className="field-note" style={{padding:8}}>{t("No active codes match that search.")}</p>}
                     </div>}
                   </div>
                   <div className="form-grid" style={{marginTop:12}}>
-                    <div className="field"><label htmlFor={`coded-diagnosis-status-${index}`}>Status</label><select id={`coded-diagnosis-status-${index}`} {...recordForm.register(`codedDiagnoses.${index}.status` as const)} data-testid={`select-coded-diagnosis-status-${index}`}><option value="suspected">Suspected</option><option value="probable">Probable</option><option value="confirmed">Confirmed</option><option value="ruled_out">Ruled out</option></select></div>
-                    <div className="field"><label htmlFor={`coded-diagnosis-date-${index}`}>Diagnosis date</label><input id={`coded-diagnosis-date-${index}`} type="date" required {...recordForm.register(`codedDiagnoses.${index}.diagnosisDate` as const)} data-testid={`input-coded-diagnosis-date-${index}`}/></div>
-                    <div className="field"><label htmlFor={`coded-diagnosis-onset-${index}`}>Onset date</label><input id={`coded-diagnosis-onset-${index}`} type="date" {...recordForm.register(`codedDiagnoses.${index}.onsetDate` as const)} data-testid={`input-coded-diagnosis-onset-${index}`}/></div>
-                    <div className="field"><label htmlFor={`coded-diagnosis-support-${index}`}>Supporting record</label><select id={`coded-diagnosis-support-${index}`} {...recordForm.register(`codedDiagnoses.${index}.supportingRecordId` as const, {setValueAs:(value)=>value === '' ? null : Number(value)})} data-testid={`select-coded-diagnosis-support-${index}`}><option value="">None</option>{patientRecords.data?.map((item)=><option key={item.id} value={item.id}>#{item.id} · {item.recordType} · {dateLabel(item.createdAt)}</option>)}</select></div>
-                    <div className="field full"><label htmlFor={`coded-diagnosis-notes-${index}`}>Structured diagnosis notes</label><textarea id={`coded-diagnosis-notes-${index}`} maxLength={10000} {...recordForm.register(`codedDiagnoses.${index}.notes` as const)} data-testid={`input-coded-diagnosis-notes-${index}`}/></div>
+                    <div className="field"><label htmlFor={`coded-diagnosis-status-${index}`}>{t("Status")}</label><select id={`coded-diagnosis-status-${index}`} {...recordForm.register(`codedDiagnoses.${index}.status` as const)} data-testid={`select-coded-diagnosis-status-${index}`}><option value="suspected">{t("Suspected")}</option><option value="probable">{t("Probable")}</option><option value="confirmed">{t("Confirmed")}</option><option value="ruled_out">{t("Ruled out")}</option></select></div>
+                    <div className="field"><label htmlFor={`coded-diagnosis-date-${index}`}>{t("Diagnosis date")}</label><input id={`coded-diagnosis-date-${index}`} type="date" required {...recordForm.register(`codedDiagnoses.${index}.diagnosisDate` as const)} data-testid={`input-coded-diagnosis-date-${index}`}/></div>
+                    <div className="field"><label htmlFor={`coded-diagnosis-onset-${index}`}>{t("Onset date")}</label><input id={`coded-diagnosis-onset-${index}`} type="date" {...recordForm.register(`codedDiagnoses.${index}.onsetDate` as const)} data-testid={`input-coded-diagnosis-onset-${index}`}/></div>
+                    <div className="field"><label htmlFor={`coded-diagnosis-support-${index}`}>{t("Supporting record")}</label><select id={`coded-diagnosis-support-${index}`} {...recordForm.register(`codedDiagnoses.${index}.supportingRecordId` as const, {setValueAs:(value)=>value === '' ? null : Number(value)})} data-testid={`select-coded-diagnosis-support-${index}`}><option value="">{t("None")}</option>{patientRecords.data?.map((item)=><option key={item.id} value={item.id}>#{item.id} · {t(item.recordType)} · {dateLabel(item.createdAt)}</option>)}</select></div>
+                    <div className="field full"><label htmlFor={`coded-diagnosis-notes-${index}`}>{t("Structured diagnosis notes")}</label><textarea id={`coded-diagnosis-notes-${index}`} maxLength={10000} {...recordForm.register(`codedDiagnoses.${index}.notes` as const)} data-testid={`input-coded-diagnosis-notes-${index}`}/></div>
                   </div>
-                  <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}><button type="button" className="btn small ghost" onClick={()=>removeCodedDiagnosis(index)} aria-label={`Remove coded diagnosis ${index + 1}`} data-testid={`button-remove-coded-diagnosis-${index}`}><Trash2 size={13}/> Remove</button></div>
+                  <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}><button type="button" className="btn small ghost" onClick={()=>removeCodedDiagnosis(index)} aria-label={t("Remove coded diagnosis {0}", { 0: index + 1 })} data-testid={`button-remove-coded-diagnosis-${index}`}><Trash2 size={13}/> {t("Remove")}</button></div>
                 </div>;
               })}
             </div>
-            <div className="field full"><label htmlFor="record-treatment">Treatment / plan</label><textarea id="record-treatment" {...recordForm.register('treatment')} maxLength={5000} data-testid="input-treatment"/></div>
-            <div className="field full"><label htmlFor="record-meds">Medications</label><input id="record-meds" {...recordForm.register('medications')} placeholder="Separate medications with commas" data-testid="input-medications"/></div>
-            <div className="field"><label htmlFor="record-bp">Blood pressure</label><input id="record-bp" {...recordForm.register('bloodPressure')} placeholder="120/80" data-testid="input-vital-bp"/></div>
-            <div className="field"><label htmlFor="record-hr">Heart rate (bpm)</label><input id="record-hr" {...recordForm.register('heartRate')} type="number" min="30" max="200" data-testid="input-vital-heart-rate"/></div>
-            <div className="field"><label htmlFor="record-temp">Temperature (°C)</label><input id="record-temp" {...recordForm.register('temperature')} type="number" step=".1" min="30" max="45" data-testid="input-vital-temp"/></div>
-            <div className="field"><label htmlFor="record-weight">Weight (kg)</label><input id="record-weight" {...recordForm.register('weightKg')} type="number" step=".1" min="1" max="500" data-testid="input-vital-weight"/></div>
-            <div className="field full"><div className="template-field-heading"><label htmlFor="record-notes">Clinical notes</label><button className="btn ghost small" type="button" onClick={()=>{const notes=recordForm.getValues('notes');if(notes.trim()&&!window.confirm('Replace the current clinical notes with a structured template?'))return;recordForm.setValue('notes',recordNoteTemplate(recordForm.getValues('recordType')),{shouldDirty:true});}} data-testid="button-insert-record-template">Insert {recordForm.watch('recordType')} template</button></div><textarea id="record-notes" {...recordForm.register('notes')} maxLength={10000} data-testid="input-record-notes"/></div>
+            <div className="field full"><label htmlFor="record-treatment">{t("Treatment / plan")}</label><textarea id="record-treatment" {...recordForm.register('treatment')} maxLength={5000} data-testid="input-treatment"/></div>
+            <div className="field full"><label htmlFor="record-meds">{t("Medications")}</label><input id="record-meds" {...recordForm.register('medications')} placeholder={t("Separate medications with commas")} data-testid="input-medications"/></div>
+            <div className="field"><label htmlFor="record-bp">{t("Blood pressure")}</label><input id="record-bp" {...recordForm.register('bloodPressure')} placeholder="120/80" data-testid="input-vital-bp"/></div>
+            <div className="field"><label htmlFor="record-hr">{t("Heart rate (bpm)")}</label><input id="record-hr" {...recordForm.register('heartRate')} type="number" min="30" max="200" data-testid="input-vital-heart-rate"/></div>
+            <div className="field"><label htmlFor="record-temp">{t("Temperature (°C)")}</label><input id="record-temp" {...recordForm.register('temperature')} type="number" step=".1" min="30" max="45" data-testid="input-vital-temp"/></div>
+            <div className="field"><label htmlFor="record-weight">{t("Weight (kg)")}</label><input id="record-weight" {...recordForm.register('weightKg')} type="number" step=".1" min="1" max="500" data-testid="input-vital-weight"/></div>
+            <div className="field full"><div className="template-field-heading"><label htmlFor="record-notes">{t("Clinical notes")}</label><button className="btn ghost small" type="button" onClick={()=>{const notes=recordForm.getValues('notes');if(notes.trim()&&!window.confirm(t("Replace the current clinical notes with a structured template?")))return;recordForm.setValue('notes',recordNoteTemplate(recordForm.getValues('recordType')),{shouldDirty:true});}} data-testid="button-insert-record-template">{t("Insert {0} template", { 0: t(recordForm.watch('recordType')) })}</button></div><textarea id="record-notes" {...recordForm.register('notes')} maxLength={10000} data-testid="input-record-notes"/></div>
           </div>
-          <div className="form-actions"><button className="btn ghost" type="button" onClick={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>Cancel</button><button className="btn" type="submit" disabled={addRecord.isPending} data-testid="button-save-record">{addRecord.isPending?'Saving…':'Save record'}</button></div>
+          <div className="form-actions"><button className="btn ghost" type="button" onClick={()=>{setEntryOpen(false);setFollowUpSource(null);setActiveCodeRow(null);}}>{t("Cancel")}</button><button className="btn" type="submit" disabled={addRecord.isPending} data-testid="button-save-record">{addRecord.isPending?t("Saving…"):t("Save record")}</button></div>
         </form>
         </Form>
       </Modal>}
     {viewingRecord && canAccessSelectedPatient && <RecordDetailsModal record={viewingRecord} records={patientRecords.data ?? [viewingRecord]} onClose={()=>setViewingRecord(null)} onOpenRecord={setViewingRecord} onCreateFollowUp={startFollowUp} patientDisplayId={patientDisplayId ?? undefined}/>}
     {tab === 'Record entry' && <>
-      <Heading eyebrow="Clinical notes" title="Record entry" subtitle="Enter the patient's CM ID to open their booklet and add a new record."/>
-      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Open patient record</h2><p className="panel-caption">Entering a patient's CM ID opens their booklet straight away, unless the patient approves each doctor first. Patients can revoke access at any time.</p></div></div><div className="panel-body">
+      <Heading eyebrow={t("Clinical notes")} title={t("Record entry")} subtitle={t("Enter the patient's CM ID to open their booklet and add a new record.")}/>
+      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Open patient record")}</h2><p className="panel-caption">{t("Entering a patient's CM ID opens their booklet straight away, unless the patient approves each doctor first. Patients can revoke access at any time.")}</p></div></div><div className="panel-body">
         <form className="form-grid" onSubmit={submitPatientAccessCode}>
-          <div className="field"><label htmlFor="input-entry-patient-id">Patient CM ID</label><input id="input-entry-patient-id" type="text" minLength={8} maxLength={8} required value={patientAccessCode} onChange={(event)=>{setPatientAccessCode(event.target.value.toUpperCase());setPatientId(null);setPatientDisplayId(null);setViewingRecord(null);}} placeholder="CM123ABC" data-testid="input-entry-patient-id"/></div>
-          <div className="field" style={{alignSelf:'end'}}><button className="btn" type="submit" disabled={grantAccessById.isPending} data-testid="button-open-patient-record"><Search size={14}/> {grantAccessById.isPending ? 'Opening…' : 'Open history'}</button></div>
+          <div className="field"><label htmlFor="input-entry-patient-id">{t("Patient CM ID")}</label><input id="input-entry-patient-id" type="text" minLength={8} maxLength={8} required value={patientAccessCode} onChange={(event)=>{setPatientAccessCode(event.target.value.toUpperCase());setPatientId(null);setPatientDisplayId(null);setViewingRecord(null);}} placeholder={t("CM123ABC")} data-testid="input-entry-patient-id"/></div>
+          <div className="field" style={{alignSelf:'end'}}><button className="btn" type="submit" disabled={grantAccessById.isPending} data-testid="button-open-patient-record"><Search size={14}/> {grantAccessById.isPending ? t("Opening…") : t("Open history")}</button></div>
         </form>
-        {accessRequestNotice && <div className="callout" role="status" style={{marginTop:16}} data-testid="text-access-request-pending"><div className="callout-head"><Clock3 size={16}/> Waiting for the patient</div><p style={{marginBottom:0}}>{accessRequestNotice}</p></div>}
+        {accessRequestNotice && <div className="callout" role="status" style={{marginTop:16}} data-testid="text-access-request-pending"><div className="callout-head"><Clock3 size={16}/> {t("Waiting for the patient")}</div><p style={{marginBottom:0}}>{accessRequestNotice}</p></div>}
         {patientId !== null && <div style={{marginTop:20}}>
-          <div className="panel-head" style={{padding:'12px 0'}}><div><h2 className="panel-title">{patientDisplayId ?? 'Patient'} · Medical history</h2><p className="panel-caption">Read-only history. Add new information as a separate record or linked follow-up.</p></div>
-            {canAccessSelectedPatient && <button className="btn small" onClick={()=>{setFollowUpSource(null);setEntryOpen(true);}} data-testid="button-add-record"><Plus size={14}/> New record</button>}
+          <div className="panel-head" style={{padding:'12px 0'}}><div><h2 className="panel-title">{patientDisplayId ?? t("Patient")} {t("· Medical history")}</h2><p className="panel-caption">{t("Read-only history. Add new information as a separate record or linked follow-up.")}</p></div>
+            {canAccessSelectedPatient && <button className="btn small" onClick={()=>{setFollowUpSource(null);setEntryOpen(true);}} data-testid="button-add-record"><Plus size={14}/> {t("New record")}</button>}
           </div>
           {canAccessSelectedPatient && patientRecords.data && <DoctorPatientSummary records={patientRecords.data}/>}
-          {patientRecords.isLoading ? <div className="skeleton"/> : patientRecords.error ? <ErrorState error={patientRecords.error} retry={()=>patientRecords.refetch()}/> : patientRecords.data?.length ? patientRecords.data.map((record)=><RecordRow key={record.id} record={record} records={patientRecords.data ?? []} onOpen={setViewingRecord} patientDisplayId={patientDisplayId ?? undefined}/>) : <EmptyState icon={FileHeart} title="No records yet" children="This patient has granted access, but no clinician has added a record yet."/>}
+          {patientRecords.isLoading ? <div className="skeleton"/> : patientRecords.error ? <ErrorState error={patientRecords.error} retry={()=>patientRecords.refetch()}/> : patientRecords.data?.length ? patientRecords.data.map((record)=><RecordRow key={record.id} record={record} records={patientRecords.data ?? []} onOpen={setViewingRecord} patientDisplayId={patientDisplayId ?? undefined}/>) : <EmptyState icon={FileHeart} title={t("No records yet")} children={t("This patient has granted access, but no clinician has added a record yet.")}/>}
         </div>}
       </div></section>
     </>}
-    {tab === 'Profile' && <><Heading eyebrow="Clinician account" title="Your profile" subtitle="Your account identity for patients and the Mon carnet care network."/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Professional profile</h2><p className="panel-caption">Your hospital or clinic is shown in patient access logs.</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">Name</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">Email address</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">Account status</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">Credential status</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> Certified doctor</span>:<span className="tag warning">Manual verification pending</span>}</span></div><div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">Contact</span><span className="data-value">{profile.data?.contactInfo || 'Not provided'}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">Hospital or clinic</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder="Your hospital or clinic name" data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">Professional medical number</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder="License or registration number" data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?'Changing this number will remove your certified badge until an administrator verifies it again.':'An administrator manually checks this number before awarding your certified badge.'}</small></div><LocationFields idPrefix="doctor-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?'Saving…':'Save professional profile'}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your impact</h2><p className="panel-caption">Stats from your clinical activity</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">Patients treated</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">Records added</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">This month</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/></>}
+    {tab === 'Profile' && <><Heading eyebrow={t("Clinician account")} title={t("Your profile")} subtitle={t("Your account identity for patients and the Mon carnet care network.")}/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Professional profile")}</h2><p className="panel-caption">{t("Your hospital or clinic is shown in patient access logs.")}</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">{t("Account status")}</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">{t("Credential status")}</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> {t("Certified doctor")}</span>:<span className="tag warning">{t("Manual verification pending")}</span>}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{profile.data?.contactInfo || t("Not provided")}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">{t("Hospital or clinic")}</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder={t("Your hospital or clinic name")} data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">{t("Professional medical number")}</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder={t("License or registration number")} data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?t("Changing this number will remove your certified badge until an administrator verifies it again."):t("An administrator manually checks this number before awarding your certified badge.")}</small></div><LocationFields idPrefix="doctor-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?t("Saving…"):t("Save professional profile")}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your impact")}</h2><p className="panel-caption">{t("Stats from your clinical activity")}</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Patients treated")}</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">{t("Records added")}</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">{t("This month")}</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/></>}
     {toast && <div className="toast-message" role="status">{toast}</div>}
   </>;
 }
@@ -1521,23 +1555,22 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
     qc.invalidateQueries({queryKey:getGetAdminAnalyticsQueryKey()});
     qc.invalidateQueries({queryKey:getSearchUsersQueryKey()});
   };
-  const approveOne = (id:number) => approve.mutate({doctorId:id},{onSuccess:()=>{refresh();notify('Doctor account approved.')},onError:e=>notify(errText(e))});
+  const approveOne = (id:number) => approve.mutate({doctorId:id},{onSuccess:()=>{refresh();notify(t("Doctor account approved."))},onError:e=>notify(errText(e))});
   const setAccountActive = (account: User, isActive: boolean) => {
-    const action = isActive ? 'Restore' : 'Suspend';
-    if (!window.confirm(`${action} ${account.name}’s account? Account data will be kept.`)) return;
+    if (!window.confirm(isActive ? t("Restore {0}’s account? Account data will be kept.", { 0: account.name }) : t("Suspend {0}’s account? Account data will be kept.", { 0: account.name }))) return;
     updateUserStatus.mutate({userId:account.id,data:{isActive}},{
-      onSuccess:()=>{refresh();notify(`Account ${isActive?'restored':'suspended'}. Existing account data was kept.`)},
+      onSuccess:()=>{refresh();notify(isActive ? t("Account restored. Existing account data was kept.") : t("Account suspended. Existing account data was kept."))},
       onError:e=>notify(errText(e)),
     });
   };
   const resetPassword = (requestId: number) => {
     const request = passwordResetRequests.data?.find((item) => item.id === requestId);
-    if (!request || !window.confirm(`Confirm you have verified ${request.email}'s identity using a trusted contact method before resetting their password.`)) return;
+    if (!request || !window.confirm(t("Confirm you have verified {0}'s identity using a trusted contact method before resetting their password.", { 0: request.email }))) return;
     resetRequestedPassword.mutate({ requestId }, {
       onSuccess: (result) => {
         setTemporaryPassword({ email: result.email, password: result.temporaryPassword });
         qc.invalidateQueries({ queryKey: getGetAdminPasswordResetRequestsQueryKey() });
-        notify('Temporary password created. Share it only with the verified account owner.');
+        notify(t("Temporary password created. Share it only with the verified account owner."));
       },
       onError: (error) => notify(errText(error)),
     });
@@ -1547,49 +1580,49 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
     updateEpidemicThreshold.mutate({ diseaseCodeId, data: { threshold } }, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetAdminAnalyticsQueryKey() });
-        notify('Epidemic alert threshold updated.');
+        notify(t("Epidemic alert threshold updated."));
       },
-      onError: (error) => notify(`Could not update threshold: ${errText(error)}`),
+      onError: (error) => notify(t("Could not update threshold: {0}", { 0: errText(error) })),
       onSettled: () => setSavingThresholdId(null),
     });
   };
   const verifyOne = (doctor:User) => {
-    if (!doctor.professionalMedicalNumber || !window.confirm(`Have you manually validated ${doctor.name}’s professional medical number (${doctor.professionalMedicalNumber})?`)) return;
-    verifyDoctor.mutate({doctorId:doctor.id},{onSuccess:()=>{refresh();notify('Doctor credentials verified. Certified badge awarded.')},onError:e=>notify(errText(e))});
+    if (!doctor.professionalMedicalNumber || !window.confirm(t("Have you manually validated {0}’s professional medical number ({1})?", { 0: doctor.name, 1: doctor.professionalMedicalNumber }))) return;
+    verifyDoctor.mutate({doctorId:doctor.id},{onSuccess:()=>{refresh();notify(t("Doctor credentials verified. Certified badge awarded."))},onError:e=>notify(errText(e))});
   };
   const displayStats = analytics.data?.stats ?? stats.data;
   return <>
-    {tab==='System overview' && <><Heading eyebrow="Administration" title={`Good morning, ${user.name.split(' ')[0]}.`} subtitle="A clear view of the care network and the system’s operational health."/>
+    {tab==='System overview' && <><Heading eyebrow={t("Administration")} title={t("Good morning, {0}.", { 0: user.name.split(' ')[0] })} subtitle={t("A clear view of the care network and the system’s operational health.")}/>
       {stats.isLoading||analytics.isLoading?<div className="grid stats-grid">{[1,2,3,4].map(n=><div className="skeleton" key={n}/>)}</div>:stats.error||analytics.error?<ErrorState error={stats.error||analytics.error} retry={()=>{stats.refetch();analytics.refetch()}}/>:<>
-        <div className="grid stats-grid"><Stat label="Patients" value={displayStats?.totalPatients??0} note="Registered patient accounts" icon={Users}/><Stat label="Active doctors" value={displayStats?.activeDoctors??0} note="Approved clinical accounts" icon={Stethoscope}/><Stat label="Pending approvals" value={displayStats?.pendingDoctors??0} note="Clinician accounts to review" icon={Clock3}/><Stat label="Consultations" value={displayStats?.totalConsultations??0} note="Across the care network" icon={FileHeart}/></div>
+        <div className="grid stats-grid"><Stat label={t("Patients")} value={displayStats?.totalPatients??0} note={t("Registered patient accounts")} icon={Users}/><Stat label={t("Active doctors")} value={displayStats?.activeDoctors??0} note={t("Approved clinical accounts")} icon={Stethoscope}/><Stat label={t("Pending approvals")} value={displayStats?.pendingDoctors??0} note={t("Clinician accounts to review")} icon={Clock3}/><Stat label={t("Consultations")} value={displayStats?.totalConsultations??0} note={t("Across the care network")} icon={FileHeart}/></div>
         {analytics.data?.epidemicMetrics && <EpidemicAlerts metrics={analytics.data.epidemicMetrics}/>}
-        <div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">System health</h2><p className="panel-caption">Current status of essential services</p></div><span className="status-pill"><i className="status-dot"/> Live</span></div><div className="panel-body">{analytics.data?.systemStatus?.length?analytics.data.systemStatus.map((service)=><div className="data-row" key={service.name}><span className="person-cell"><span className="record-icon"><Activity size={15}/></span>{service.name}</span><span className={service.status==='Operational'?'tag':'tag warning'}>{service.status}</span></div>):<EmptyState icon={Activity} title="No status information" children="System status will appear here when available."/ >}</div></section>
-          <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Doctor approvals</h2><p className="panel-caption">Keep clinical access appropriately reviewed</p></div><button className="btn small secondary" onClick={()=>onTab('Doctor approvals')} data-testid="button-open-approvals" >Review</button></div><div className="panel-body">{pending.isLoading?<div className="skeleton"/>:pending.error?<ErrorState error={pending.error} retry={()=>pending.refetch()}/>:pending.data?.length?pending.data.slice(0,4).map(d=><div className="data-row" key={d.id}><div className="person-cell"><div className="avatar">{initials(d.name)}</div><span>{d.name}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{d.email}</small></span></div><button className="btn small secondary" onClick={()=>approveOne(d.id)} disabled={approve.isPending} data-testid={`button-approve-overview-${d.id}`}><Check size={13}/> Approve</button></div>):<EmptyState icon={BadgeCheck} title="No approvals waiting" children="New clinician registrations will appear here."/>}</div></section></div>
+        <div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("System health")}</h2><p className="panel-caption">{t("Current status of essential services")}</p></div><span className="status-pill"><i className="status-dot"/> {t("Live")}</span></div><div className="panel-body">{analytics.data?.systemStatus?.length?analytics.data.systemStatus.map((service)=><div className="data-row" key={service.name}><span className="person-cell"><span className="record-icon"><Activity size={15}/></span>{t(service.name)}</span><span className={service.status==='Operational'?'tag':'tag warning'}>{t(service.status)}</span></div>):<EmptyState icon={Activity} title={t("No status information")} children={t("System status will appear here when available.")}/ >}</div></section>
+          <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Doctor approvals")}</h2><p className="panel-caption">{t("Keep clinical access appropriately reviewed")}</p></div><button className="btn small secondary" onClick={()=>onTab('Doctor approvals')} data-testid="button-open-approvals" >{t("Review")}</button></div><div className="panel-body">{pending.isLoading?<div className="skeleton"/>:pending.error?<ErrorState error={pending.error} retry={()=>pending.refetch()}/>:pending.data?.length?pending.data.slice(0,4).map(d=><div className="data-row" key={d.id}><div className="person-cell"><div className="avatar">{initials(d.name)}</div><span>{d.name}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{d.email}</small></span></div><button className="btn small secondary" onClick={()=>approveOne(d.id)} disabled={approve.isPending} data-testid={`button-approve-overview-${d.id}`}><Check size={13}/> {t("Approve")}</button></div>):<EmptyState icon={BadgeCheck} title={t("No approvals waiting")} children={t("New clinician registrations will appear here.")}/>}</div></section></div>
       </>}
     </>}
-    {tab==='Doctor approvals' && <><Heading eyebrow="Clinical access" title="Doctor approvals" subtitle="Approve doctor accounts to enable clinical access; medical credential verification is a separate manual review."/><div className="tabs"><span className="tab active">Pending review</span></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Pending clinicians</h2><p className="panel-caption">Approve accounts to enable patient search and care documentation</p></div><span className="tag warning">{pending.data?.length??0} pending</span></div><div className="panel-body">{pending.isLoading?<div className="skeleton"/>:pending.error?<ErrorState error={pending.error} retry={()=>pending.refetch()}/>:pending.data?.length?pending.data.map(d=><div className="data-row" key={d.id}><div className="person-cell"><div className="avatar">{initials(d.name)}</div><span>{d.name}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{d.email} · Registered {dateLabel(d.createdAt)}</small><small style={{display:'block',fontWeight:400,color:'#687b8d',marginTop:3}}>Medical number: {d.professionalMedicalNumber||'Not submitted'}</small></span></div><span className="tag warning">Pending</span><button className="btn small" onClick={()=>approveOne(d.id)} disabled={approve.isPending} data-testid={`button-approve-${d.id}`}><Check size={13}/> Approve account</button></div>):<EmptyState icon={BadgeCheck} title="All caught up" children="There are no clinician accounts waiting for review."/>}</div></section>
-      <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2 className="panel-title">Doctor credential verification</h2><p className="panel-caption">Review the submitted medical number and award the certified badge after manual validation.</p></div></div><div className="panel-body"><SearchField value={doctorQuery} onChange={setDoctorQuery} placeholder="Doctor name or email" testId="input-doctor-approval-search"/>{doctorQuery.trim().length>=2&&(doctorSearch.isLoading?<div className="skeleton" style={{marginTop:14}}/>:doctorSearch.error?<ErrorState error={doctorSearch.error} retry={()=>doctorSearch.refetch()}/>:doctorSearch.data?.filter(d=>d.role==='DOCTOR'||d.role==='PENDING_DOCTOR').map(d=><UserResult key={d.id} user={d} action={<div className="row-actions">{!d.doctorVerified&&<button className="btn small secondary" onClick={()=>verifyOne(d)} disabled={!d.professionalMedicalNumber||verifyDoctor.isPending} data-testid={`button-verify-doctor-${d.id}`}><BadgeCheck size={13}/> Verify number</button>}<button className={`btn small ${d.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(d,!d.isActive)} disabled={updateUserStatus.isPending} data-testid={`button-toggle-doctor-${d.id}`}>{d.isActive?'Suspend':'Restore'}</button></div>}/>))}</div></section></>}
-    {tab==='User search' && <><Heading eyebrow="Network directory" title="User search" subtitle="Search all accounts, view account and doctor credential status, and suspend or restore accounts without deleting data."/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Search accounts</h2><p className="panel-caption">Search by name or email address</p></div></div><div className="panel-body"><SearchField value={userQuery} onChange={setUserQuery} placeholder="Name or email" testId="input-user-search"/>{userQuery.trim().length<2?<EmptyState icon={Users} title="Search the network" children="Enter at least two characters to find an account."/>:userSearch.isLoading?<div className="skeleton" style={{marginTop:15}}/>:userSearch.error?<ErrorState error={userSearch.error} retry={()=>userSearch.refetch()}/>:userSearch.data?.length?userSearch.data.map(u=><UserResult key={u.id} user={u} action={<button className={`btn small ${u.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(u,!u.isActive)} disabled={updateUserStatus.isPending||u.id===user.id} data-testid={`button-toggle-user-${u.id}`}>{u.isActive?'Suspend':'Restore'}</button>}/>):<EmptyState icon={Users} title="No matching accounts" children="Try a different spelling or email address."/>}</div></section></>}
-    {tab==='Password recovery' && <><Heading eyebrow="Account support" title="Password recovery" subtitle="Review account recovery requests. Verify each requester using a trusted contact method before creating a temporary password."/>
-      {temporaryPassword && <section className="panel" style={{marginBottom:18}}><div className="panel-head"><div><h2 className="panel-title">Temporary password created</h2><p className="panel-caption">Share this once with the verified account owner through a trusted channel.</p></div><button className="btn small secondary" onClick={()=>setTemporaryPassword(null)}>Hide</button></div><div className="panel-body"><div className="data-row"><span className="data-key">Account</span><span className="data-value">{temporaryPassword.email}</span></div><div className="data-row"><span className="data-key">Temporary password</span><span className="data-value" data-testid="temporary-password">{temporaryPassword.password}</span></div></div></section>}
-      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Pending requests</h2><p className="panel-caption">Requests are refreshed automatically every minute.</p></div><span className="tag warning">{passwordResetRequests.data?.length ?? 0} pending</span></div><div className="panel-body">{passwordResetRequests.isLoading?<div className="skeleton"/>:passwordResetRequests.error?<ErrorState error={passwordResetRequests.error} retry={()=>passwordResetRequests.refetch()}/>:passwordResetRequests.data?.length?passwordResetRequests.data.map((request)=><div className="data-row" key={request.id}><div><strong>{request.email}</strong><small style={{display:'block',color:'#92a09a',marginTop:4}}>Requested {dateLabel(request.requestedAt)}</small></div><button className="btn small secondary" onClick={()=>resetPassword(request.id)} disabled={resetRequestedPassword.isPending} data-testid={`button-reset-password-${request.id}`}>{resetRequestedPassword.isPending?'Resetting…':'Verify & reset'}</button></div>):<EmptyState icon={KeyRound} title="No requests waiting" children="New password recovery requests will appear here."/ >}</div></section>
+    {tab==='Doctor approvals' && <><Heading eyebrow={t("Clinical access")} title={t("Doctor approvals")} subtitle={t("Approve doctor accounts to enable clinical access; medical credential verification is a separate manual review.")}/><div className="tabs"><span className="tab active">{t("Pending review")}</span></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Pending clinicians")}</h2><p className="panel-caption">{t("Approve accounts to enable patient search and care documentation")}</p></div><span className="tag warning">{pending.data?.length??0} {t("pending")}</span></div><div className="panel-body">{pending.isLoading?<div className="skeleton"/>:pending.error?<ErrorState error={pending.error} retry={()=>pending.refetch()}/>:pending.data?.length?pending.data.map(d=><div className="data-row" key={d.id}><div className="person-cell"><div className="avatar">{initials(d.name)}</div><span>{d.name}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{d.email} {t("· Registered")} {dateLabel(d.createdAt)}</small><small style={{display:'block',fontWeight:400,color:'#687b8d',marginTop:3}}>{t("Medical number:")} {d.professionalMedicalNumber||t("Not submitted")}</small></span></div><span className="tag warning">{t("Pending")}</span><button className="btn small" onClick={()=>approveOne(d.id)} disabled={approve.isPending} data-testid={`button-approve-${d.id}`}><Check size={13}/> {t("Approve account")}</button></div>):<EmptyState icon={BadgeCheck} title={t("All caught up")} children={t("There are no clinician accounts waiting for review.")}/>}</div></section>
+      <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2 className="panel-title">{t("Doctor credential verification")}</h2><p className="panel-caption">{t("Review the submitted medical number and award the certified badge after manual validation.")}</p></div></div><div className="panel-body"><SearchField value={doctorQuery} onChange={setDoctorQuery} placeholder={t("Doctor name or email")} testId="input-doctor-approval-search"/>{doctorQuery.trim().length>=2&&(doctorSearch.isLoading?<div className="skeleton" style={{marginTop:14}}/>:doctorSearch.error?<ErrorState error={doctorSearch.error} retry={()=>doctorSearch.refetch()}/>:doctorSearch.data?.filter(d=>d.role==='DOCTOR'||d.role==='PENDING_DOCTOR').map(d=><UserResult key={d.id} user={d} action={<div className="row-actions">{!d.doctorVerified&&<button className="btn small secondary" onClick={()=>verifyOne(d)} disabled={!d.professionalMedicalNumber||verifyDoctor.isPending} data-testid={`button-verify-doctor-${d.id}`}><BadgeCheck size={13}/> {t("Verify number")}</button>}<button className={`btn small ${d.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(d,!d.isActive)} disabled={updateUserStatus.isPending} data-testid={`button-toggle-doctor-${d.id}`}>{d.isActive?t("Suspend"):t("Restore")}</button></div>}/>))}</div></section></>}
+    {tab==='User search' && <><Heading eyebrow={t("Network directory")} title={t("User search")} subtitle={t("Search all accounts, view account and doctor credential status, and suspend or restore accounts without deleting data.")}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Search accounts")}</h2><p className="panel-caption">{t("Search by name or email address")}</p></div></div><div className="panel-body"><SearchField value={userQuery} onChange={setUserQuery} placeholder={t("Name or email")} testId="input-user-search"/>{userQuery.trim().length<2?<EmptyState icon={Users} title={t("Search the network")} children={t("Enter at least two characters to find an account.")}/>:userSearch.isLoading?<div className="skeleton" style={{marginTop:15}}/>:userSearch.error?<ErrorState error={userSearch.error} retry={()=>userSearch.refetch()}/>:userSearch.data?.length?userSearch.data.map(u=><UserResult key={u.id} user={u} action={<button className={`btn small ${u.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(u,!u.isActive)} disabled={updateUserStatus.isPending||u.id===user.id} data-testid={`button-toggle-user-${u.id}`}>{u.isActive?t("Suspend"):t("Restore")}</button>}/>):<EmptyState icon={Users} title={t("No matching accounts")} children={t("Try a different spelling or email address.")}/>}</div></section></>}
+    {tab==='Password recovery' && <><Heading eyebrow={t("Account support")} title={t("Password recovery")} subtitle={t("Review account recovery requests. Verify each requester using a trusted contact method before creating a temporary password.")}/>
+      {temporaryPassword && <section className="panel" style={{marginBottom:18}}><div className="panel-head"><div><h2 className="panel-title">{t("Temporary password created")}</h2><p className="panel-caption">{t("Share this once with the verified account owner through a trusted channel.")}</p></div><button className="btn small secondary" onClick={()=>setTemporaryPassword(null)}>{t("Hide")}</button></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Account")}</span><span className="data-value">{temporaryPassword.email}</span></div><div className="data-row"><span className="data-key">{t("Temporary password")}</span><span className="data-value" data-testid="temporary-password">{temporaryPassword.password}</span></div></div></section>}
+      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Pending requests")}</h2><p className="panel-caption">{t("Requests are refreshed automatically every minute.")}</p></div><span className="tag warning">{passwordResetRequests.data?.length ?? 0} {t("pending")}</span></div><div className="panel-body">{passwordResetRequests.isLoading?<div className="skeleton"/>:passwordResetRequests.error?<ErrorState error={passwordResetRequests.error} retry={()=>passwordResetRequests.refetch()}/>:passwordResetRequests.data?.length?passwordResetRequests.data.map((request)=><div className="data-row" key={request.id}><div><strong>{request.email}</strong><small style={{display:'block',color:'#92a09a',marginTop:4}}>{t("Requested")} {dateLabel(request.requestedAt)}</small></div><button className="btn small secondary" onClick={()=>resetPassword(request.id)} disabled={resetRequestedPassword.isPending} data-testid={`button-reset-password-${request.id}`}>{resetRequestedPassword.isPending?t("Resetting…"):t("Verify & reset")}</button></div>):<EmptyState icon={KeyRound} title={t("No requests waiting")} children={t("New password recovery requests will appear here.")}/ >}</div></section>
     </>}
-    {tab==='Profile' && <><Heading eyebrow="Administrator account" title="Your profile" subtitle="Manage your administrator account and password."/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Account information</h2><p className="panel-caption">Current signed-in account</p></div><div className="avatar">{initials(user.name)}</div></div><div className="panel-body"><div className="data-row"><span className="data-key">Name</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">Email address</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">Role</span><span className="data-value">{user.role}</span></div><div className="data-row"><span className="data-key">Member since</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/></>}
-    {tab==='Analytics' && <><Heading eyebrow="Network insights" title="Care network analytics" subtitle="Aggregate care activity, service use by region and clinic, and potential epidemic signals. Small location cohorts are suppressed." action={<button className="btn secondary no-print" onClick={()=>window.print()} data-testid="button-print-analytics"><Printer size={15}/> Export report</button>}/>{analytics.isLoading?<div className="skeleton"/>:analytics.error?<ErrorState error={analytics.error} retry={()=>analytics.refetch()}/>:<>
-      <div className="analytics-report-note">Operational report · Activity totals are not measures of care quality or health outcomes. Regional and clinic activity is shown only for groups with at least {minimumAggregateGroupSize} distinct patients.</div>
+    {tab==='Profile' && <><Heading eyebrow={t("Administrator account")} title={t("Your profile")} subtitle={t("Manage your administrator account and password.")}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account information")}</h2><p className="panel-caption">{t("Current signed-in account")}</p></div><div className="avatar">{initials(user.name)}</div></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Role")}</span><span className="data-value">{user.role}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/></>}
+    {tab==='Analytics' && <><Heading eyebrow={t("Network insights")} title={t("Care network analytics")} subtitle={t("Aggregate care activity, service use by region and clinic, and potential epidemic signals. Small location cohorts are suppressed.")} action={<button className="btn secondary no-print" onClick={()=>window.print()} data-testid="button-print-analytics"><Printer size={15}/> {t("Export report")}</button>}/>{analytics.isLoading?<div className="skeleton"/>:analytics.error?<ErrorState error={analytics.error} retry={()=>analytics.refetch()}/>:<>
+      <div className="analytics-report-note">{t("Operational report · Activity totals are not measures of care quality or health outcomes. Regional and clinic activity is shown only for groups with at least")} {minimumAggregateGroupSize} {t("distinct patients.")}</div>
       <EpidemicAlerts metrics={analytics.data?.epidemicMetrics ?? []}/>
       <div className="no-print" style={{marginTop:18}}><EpidemicThresholds metrics={analytics.data?.epidemicMetrics ?? []} savingDiseaseCodeId={savingThresholdId} onSave={saveEpidemicThreshold}/></div>
       <div className="grid analytics-grid">
-        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Records over time</h2><p className="panel-caption">Monthly records added to patient files</p></div></div><div className="panel-body"><AnalyticsBarList items={(analytics.data?.monthlyRecords ?? []).map((item)=>({label:item.month,value:item.count}))} emptyTitle="No monthly activity" emptyDescription="Monthly record activity will appear here as care records are added."/></div></section>
-        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Record types</h2><p className="panel-caption">All-time clinical records by entry type</p></div></div><div className="panel-body"><AnalyticsBarList items={(analytics.data?.recordsByType ?? []).map((item)=>({label:item.recordType,value:item.count}))} emptyTitle="No record types" emptyDescription="Record type activity will appear as clinicians add records."/></div></section>
-        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Regional care activity</h2><p className="panel-caption">Distinct patients and records grouped by patient region; groups smaller than {minimumAggregateGroupSize} patients are hidden.</p></div></div><div className="panel-body">
-          {analytics.data?.regionalActivity.length ? <div className="analytics-table"><div className="analytics-table-head"><span>Region</span><span>Patients</span><span>Records</span></div>{analytics.data.regionalActivity.map((item)=><div className="analytics-table-row" key={item.region}><strong>{item.region}</strong><span>{item.patientCount}</span><span>{item.recordCount}</span></div>)}</div> : <EmptyState icon={Users} title="No reportable regional groups" children={`Regions with fewer than ${minimumAggregateGroupSize} distinct patients are suppressed.`}/>}
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Records over time")}</h2><p className="panel-caption">{t("Monthly records added to patient files")}</p></div></div><div className="panel-body"><AnalyticsBarList items={(analytics.data?.monthlyRecords ?? []).map((item)=>({label:item.month,value:item.count}))} emptyTitle={t("No monthly activity")} emptyDescription={t("Monthly record activity will appear here as care records are added.")}/></div></section>
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Record types")}</h2><p className="panel-caption">{t("All-time clinical records by entry type")}</p></div></div><div className="panel-body"><AnalyticsBarList items={(analytics.data?.recordsByType ?? []).map((item)=>({label:t(item.recordType),value:item.count}))} emptyTitle={t("No record types")} emptyDescription={t("Record type activity will appear as clinicians add records.")}/></div></section>
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Regional care activity")}</h2><p className="panel-caption">{t("Distinct patients and records grouped by patient region; groups smaller than")} {minimumAggregateGroupSize} {t("patients are hidden.")}</p></div></div><div className="panel-body">
+          {analytics.data?.regionalActivity.length ? <div className="analytics-table"><div className="analytics-table-head"><span>{t("Region")}</span><span>{t("Patients")}</span><span>{t("Records")}</span></div>{analytics.data.regionalActivity.map((item)=><div className="analytics-table-row" key={item.region}><strong>{item.region}</strong><span>{item.patientCount}</span><span>{item.recordCount}</span></div>)}</div> : <EmptyState icon={Users} title={t("No reportable regional groups")} children={t("Regions with fewer than {0} distinct patients are suppressed.", { 0: minimumAggregateGroupSize })}/>}
         </div></section>
-        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Clinic activity</h2><p className="panel-caption">Distinct patients and records by clinician-reported clinic; groups smaller than {minimumAggregateGroupSize} patients are hidden.</p></div></div><div className="panel-body">
-          {analytics.data?.clinicActivity.length ? <div className="analytics-table"><div className="analytics-table-head"><span>Clinic</span><span>Patients</span><span>Records</span></div>{analytics.data.clinicActivity.map((item)=><div className="analytics-table-row" key={`${item.hospitalName}-${item.region ?? ''}`}><strong>{item.hospitalName}<small>{item.region ?? 'Region not provided'}</small></strong><span>{item.patientCount}</span><span>{item.recordCount}</span></div>)}</div> : <EmptyState icon={Stethoscope} title="No reportable clinic groups" children={`Clinics with fewer than ${minimumAggregateGroupSize} distinct patients are suppressed.`}/>}
+        <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Clinic activity")}</h2><p className="panel-caption">{t("Distinct patients and records by clinician-reported clinic; groups smaller than")} {minimumAggregateGroupSize} {t("patients are hidden.")}</p></div></div><div className="panel-body">
+          {analytics.data?.clinicActivity.length ? <div className="analytics-table"><div className="analytics-table-head"><span>{t("Clinic")}</span><span>{t("Patients")}</span><span>{t("Records")}</span></div>{analytics.data.clinicActivity.map((item)=><div className="analytics-table-row" key={`${item.hospitalName}-${item.region ?? ''}`}><strong>{item.hospitalName}<small>{item.region ?? t("Region not provided")}</small></strong><span>{item.patientCount}</span><span>{item.recordCount}</span></div>)}</div> : <EmptyState icon={Stethoscope} title={t("No reportable clinic groups")} children={t("Clinics with fewer than {0} distinct patients are suppressed.", { 0: minimumAggregateGroupSize })}/>}
         </div></section>
       </div>
-      <div className="grid dashboard-grid analytics-summary-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">Network summary</h2><p className="panel-caption">Current active footprint</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">Patients</span><span className="data-value">{stats.data?.totalPatients??0}</span></div><div className="data-row"><span className="data-key">Active doctors</span><span className="data-value">{stats.data?.activeDoctors??0}</span></div><div className="data-row"><span className="data-key">Active permissions</span><span className="data-value">{stats.data?.activePermissions??0}</span></div><div className="data-row"><span className="data-key">Consultations</span><span className="data-value">{stats.data?.totalConsultations??0}</span></div></>}</div></section></div>
+      <div className="grid dashboard-grid analytics-summary-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Network summary")}</h2><p className="panel-caption">{t("Current active footprint")}</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Patients")}</span><span className="data-value">{stats.data?.totalPatients??0}</span></div><div className="data-row"><span className="data-key">{t("Active doctors")}</span><span className="data-value">{stats.data?.activeDoctors??0}</span></div><div className="data-row"><span className="data-key">{t("Active permissions")}</span><span className="data-value">{stats.data?.activePermissions??0}</span></div><div className="data-row"><span className="data-key">{t("Consultations")}</span><span className="data-value">{stats.data?.totalConsultations??0}</span></div></>}</div></section></div>
       </>}</>}
     {tab==='Directories & notices' && <AdminDirectoryNotices/>}
     {toast&&<div className="toast-message" role="status">{toast}</div>}
@@ -1629,7 +1662,7 @@ function InboxView() {
         headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
       });
       const body = await response.json() as NotificationInboxData & { error?: string };
-      if (!response.ok) throw new Error(body.error || 'Could not load your inbox.');
+      if (!response.ok) throw new Error(body.error || t("Could not load your inbox."));
       setInbox(body);
     } catch (cause) {
       setError(errText(cause));
@@ -1647,7 +1680,7 @@ function InboxView() {
         headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
       });
       const body = await response.json() as NotificationEntry & { error?: string };
-      if (!response.ok) throw new Error(body.error || 'Could not mark this notice as read.');
+      if (!response.ok) throw new Error(body.error || t("Could not mark this notice as read."));
       setInbox((current) => current ? {
         ...current,
         items: current.items.map((item) => item.id === notificationId ? body : item),
@@ -1661,16 +1694,16 @@ function InboxView() {
     }
   };
   return <>
-    <Heading eyebrow="In-app messages" title="Notification inbox" subtitle="Notices sent to you by Mon carnet administrators." action={<button className="btn secondary" onClick={() => void loadInbox()} disabled={loading}><Activity size={14}/> Refresh</button>}/>
+    <Heading eyebrow={t("In-app messages")} title={t("Notification inbox")} subtitle={t("Notices sent to you by Mon carnet administrators.")} action={<button className="btn secondary" onClick={() => void loadInbox()} disabled={loading}><Activity size={14}/> {t("Refresh")}</button>}/>
     {loading ? <div className="skeleton"/> : error && !inbox ? <ErrorState error={error} retry={() => void loadInbox()}/> : <>
       {error && <div className="error-state" role="alert">{error}</div>}
       <section className="panel">
-        <div className="panel-head"><div><h2 className="panel-title">Your notices</h2><p className="panel-caption">Messages remain in your inbox until your account is removed.</p></div><span className="tag">{inbox?.unreadCount ?? 0} unread</span></div>
+        <div className="panel-head"><div><h2 className="panel-title">{t("Your notices")}</h2><p className="panel-caption">{t("Messages remain in your inbox until your account is removed.")}</p></div><span className="tag">{inbox?.unreadCount ?? 0} {t("unread")}</span></div>
         <div className="panel-body">
           {inbox?.items.length ? inbox.items.map((item) => <article className="data-row" key={item.id}>
-            <div className="person-cell"><span className="record-icon"><Bell size={15}/></span><span><strong>{item.title}</strong><small style={{display:'block',whiteSpace:'pre-wrap',fontWeight:400,color:'#687b8d',marginTop:4}}>{item.body}</small><small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:5}}>{new Date(item.createdAt).toLocaleString()}</small></span></div>
-            {item.readAt ? <span className="tag">Read</span> : <button className="btn small secondary" onClick={() => void markRead(item.id)} disabled={markingId === item.id} data-testid={`button-mark-notification-read-${item.id}`}>{markingId === item.id ? 'Saving…' : 'Mark read'}</button>}
-          </article>) : <EmptyState icon={Bell} title="Your inbox is clear" children="Administrator notices sent to you will appear here."/>}
+            <div className="person-cell"><span className="record-icon"><Bell size={15}/></span><span><strong>{item.title}</strong><small style={{display:'block',whiteSpace:'pre-wrap',fontWeight:400,color:'#687b8d',marginTop:4}}>{item.body}</small><small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:5}}>{new Date(item.createdAt).toLocaleString(locale())}</small></span></div>
+            {item.readAt ? <span className="tag">{t("Read")}</span> : <button className="btn small secondary" onClick={() => void markRead(item.id)} disabled={markingId === item.id} data-testid={`button-mark-notification-read-${item.id}`}>{markingId === item.id ? t("Saving…") : t("Mark read")}</button>}
+          </article>) : <EmptyState icon={Bell} title={t("Your inbox is clear")} children={t("Administrator notices sent to you will appear here.")}/>}
         </div>
       </section>
     </>}
@@ -1712,7 +1745,7 @@ function AdminDirectoryNotices() {
       headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
     }).then(async (response) => {
       const body = await response.json() as DirectoryEntry[] & { error?: string };
-      if (!response.ok) throw new Error(body.error || 'Could not load this directory.');
+      if (!response.ok) throw new Error(body.error || t("Could not load this directory."));
       return body;
     }).then((data) => {
       if (active) setEntries(data);
@@ -1733,7 +1766,7 @@ function AdminDirectoryNotices() {
       });
       if (!response.ok) {
         const body = await response.json() as { error?: string };
-        throw new Error(body.error || 'Could not export this directory.');
+        throw new Error(body.error || t("Could not export this directory."));
       }
       const csv = await response.blob();
       const url = URL.createObjectURL(csv);
@@ -1765,15 +1798,15 @@ function AdminDirectoryNotices() {
         userIds?: number[];
       } = { title: title.trim(), body: message.trim(), targetType: target };
       if (target === 'REGION' || target === 'ARRONDISSEMENT') {
-        if (!region) throw new Error('Choose a region for location-based notices.');
+        if (!region) throw new Error(t("Choose a region for location-based notices."));
         payload.region = region;
       }
       if (target === 'ARRONDISSEMENT') {
-        if (!arrondissement) throw new Error('Choose an arrondissement for this notice.');
+        if (!arrondissement) throw new Error(t("Choose an arrondissement for this notice."));
         payload.arrondissement = arrondissement;
       }
       if (target === 'USERS') {
-        if (selectedUsers.size === 0) throw new Error('Select one or more users from the directory first.');
+        if (selectedUsers.size === 0) throw new Error(t("Select one or more users from the directory first."));
         payload.userIds = [...selectedUsers];
       }
       const response = await fetch('/api/admin/notifications', {
@@ -1782,8 +1815,8 @@ function AdminDirectoryNotices() {
         body: JSON.stringify(payload),
       });
       const body = await response.json() as { recipientCount?: number; error?: string };
-      if (!response.ok) throw new Error(body.error || 'Could not send this notice.');
-      setStatus(`Notice delivered to ${body.recipientCount ?? 0} users. Recipients were saved when the notice was sent.`);
+      if (!response.ok) throw new Error(body.error || t("Could not send this notice."));
+      setStatus(t("Notice delivered to {0} users. Recipients were saved when the notice was sent.", { 0: body.recipientCount ?? 0 }));
       setTitle('');
       setMessage('');
     } catch (cause) {
@@ -1802,38 +1835,38 @@ function AdminDirectoryNotices() {
     });
   };
   return <>
-    <Heading eyebrow="Network directory" title="Directories & notices" subtitle="Export regional lists, identify doctors awaiting credential verification, and send in-app notices."/>
+    <Heading eyebrow={t("Network directory")} title={t("Directories & notices")} subtitle={t("Export regional lists, identify doctors awaiting credential verification, and send in-app notices.")}/>
     <section className="panel">
-      <div className="panel-head"><div><h2 className="panel-title">Location directories</h2><p className="panel-caption">Patient lists omit email, contact, date of birth, and all medical-record details. Results show up to 500 entries; CSV exports up to 5,000.</p></div><button className="btn secondary" onClick={() => void downloadCsv()} disabled={exporting} data-testid="button-export-directory"><Download size={14}/>{exporting ? 'Preparing…' : 'Download CSV'}</button></div>
+      <div className="panel-head"><div><h2 className="panel-title">{t("Location directories")}</h2><p className="panel-caption">{t("Patient lists omit email, contact, date of birth, and all medical-record details. Results show up to 500 entries; CSV exports up to 5,000.")}</p></div><button className="btn secondary" onClick={() => void downloadCsv()} disabled={exporting} data-testid="button-export-directory"><Download size={14}/>{exporting ? t("Preparing…") : t("Download CSV")}</button></div>
       <div className="panel-body">
         <div className="form-grid">
-          <div className="field"><label htmlFor="directory-kind">Directory</label><select id="directory-kind" value={kind} onChange={(event) => { setKind(event.target.value as DirectoryEntry['kind']); setUncertifiedOnly(false); }} data-testid="select-directory-kind"><option value="PATIENTS">Patients</option><option value="DOCTORS">Doctors</option><option value="HOSPITALS">Hospitals / clinics</option></select></div>
-          <div className="field"><label htmlFor="directory-uncertified">Doctor certification</label><select id="directory-uncertified" value={uncertifiedOnly ? 'uncertified' : 'all'} onChange={(event) => setUncertifiedOnly(event.target.value === 'uncertified')} disabled={kind !== 'DOCTORS'} data-testid="select-uncertified-doctors"><option value="all">All doctors</option><option value="uncertified">Uncertified only</option></select></div>
+          <div className="field"><label htmlFor="directory-kind">{t("Directory")}</label><select id="directory-kind" value={kind} onChange={(event) => { setKind(event.target.value as DirectoryEntry['kind']); setUncertifiedOnly(false); }} data-testid="select-directory-kind"><option value="PATIENTS">{t("Patients")}</option><option value="DOCTORS">{t("Doctors")}</option><option value="HOSPITALS">{t("Hospitals / clinics")}</option></select></div>
+          <div className="field"><label htmlFor="directory-uncertified">{t("Doctor certification")}</label><select id="directory-uncertified" value={uncertifiedOnly ? 'uncertified' : 'all'} onChange={(event) => setUncertifiedOnly(event.target.value === 'uncertified')} disabled={kind !== 'DOCTORS'} data-testid="select-uncertified-doctors"><option value="all">{t("All doctors")}</option><option value="uncertified">{t("Uncertified only")}</option></select></div>
         </div>
         <LocationFields idPrefix="directory-location" region={region} arrondissement={arrondissement} onRegionChange={setRegion} onArrondissementChange={setArrondissement}/>
         {directoryLoading ? <div className="skeleton" style={{marginTop:16}}/> : directoryError ? <ErrorState error={directoryError} retry={() => setDirectoryReload((current) => current + 1)}/> : entries.length ? <div style={{marginTop:16}}>
           {entries.map((entry, index) => <div className="data-row" key={`${entry.userId ?? entry.name}-${entry.region}-${entry.arrondissement}-${index}`}>
-            {entry.userId !== null && kind !== 'HOSPITALS' && <input type="checkbox" checked={selectedUsers.has(entry.userId)} onChange={() => toggleSelectedUser(entry.userId!)} aria-label={`Select ${entry.name} for a notice`} data-testid={`checkbox-directory-user-${entry.userId}`}/>}
-            <div className="person-cell"><span className="record-icon">{entry.kind === 'HOSPITALS' ? <Activity size={15}/> : entry.kind === 'DOCTORS' ? <Stethoscope size={15}/> : <UserRound size={15}/>}</span><span>{entry.name}{entry.kind === 'DOCTORS' && <small style={{display:'block',fontWeight:400,color:entry.doctorVerified?'#267b62':'#9a6d2e',marginTop:3}}>{entry.doctorVerified ? 'Certified doctor' : 'Not certified'}</small>}</span></div>
-            <span className="data-value">{[entry.arrondissement, entry.region].filter(Boolean).join(', ') || 'Location not provided'}</span>
+            {entry.userId !== null && kind !== 'HOSPITALS' && <input type="checkbox" checked={selectedUsers.has(entry.userId)} onChange={() => toggleSelectedUser(entry.userId!)} aria-label={t("Select {0} for a notice", { 0: entry.name })} data-testid={`checkbox-directory-user-${entry.userId}`}/>}
+            <div className="person-cell"><span className="record-icon">{entry.kind === 'HOSPITALS' ? <Activity size={15}/> : entry.kind === 'DOCTORS' ? <Stethoscope size={15}/> : <UserRound size={15}/>}</span><span>{entry.name}{entry.kind === 'DOCTORS' && <small style={{display:'block',fontWeight:400,color:entry.doctorVerified?'#267b62':'#9a6d2e',marginTop:3}}>{entry.doctorVerified ? t("Certified doctor") : t("Not certified")}</small>}</span></div>
+            <span className="data-value">{[entry.arrondissement, entry.region].filter(Boolean).join(', ') || t("Location not provided")}</span>
             {entry.hospitalName && <span className="data-value">{entry.hospitalName}</span>}
           </div>)}
-          <p className="field-note">{kind === 'HOSPITALS' ? 'Hospitals are deduplicated by name and location from doctor profiles.' : `Showing up to 500 matching accounts. ${selectedUsers.size} selected for a possible notice.`}</p>
-        </div> : <EmptyState icon={Users} title="No matching entries" children="Try another region, arrondissement, or directory type."/>}
+          <p className="field-note">{kind === 'HOSPITALS' ? t("Hospitals are deduplicated by name and location from doctor profiles.") : t("Showing up to 500 matching accounts. {0} selected for a possible notice.", { 0: selectedUsers.size })}</p>
+        </div> : <EmptyState icon={Users} title={t("No matching entries")} children={t("Try another region, arrondissement, or directory type.")}/>}
       </div>
     </section>
     <section className="panel" style={{marginTop:18}}>
-      <div className="panel-head"><div><h2 className="panel-title">Send an in-app notice</h2><p className="panel-caption">The audience is snapshotted when sent, so later location changes do not change past recipients.</p></div></div>
+      <div className="panel-head"><div><h2 className="panel-title">{t("Send an in-app notice")}</h2><p className="panel-caption">{t("The audience is snapshotted when sent, so later location changes do not change past recipients.")}</p></div></div>
       <div className="panel-body">
         <form onSubmit={sendNotice}>
           <div className="form-grid">
-            <div className="field"><label htmlFor="notice-audience">Audience</label><select id="notice-audience" value={target} onChange={(event) => setTarget(event.target.value as NoticeTarget)} data-testid="select-notice-audience"><option value="ALL">All active users</option><option value="REGION">A region</option><option value="ARRONDISSEMENT">An arrondissement</option><option value="USERS">Selected users from the directory</option></select></div>
-            {(target === 'REGION' || target === 'ARRONDISSEMENT') && <div className="field"><label>Selected location</label><span className="data-value">{[arrondissement, region].filter(Boolean).join(', ') || 'Choose a location above'}</span></div>}
-            {target === 'USERS' && <div className="field"><label>Selected recipients</label><span className="data-value">{selectedUsers.size} selected in the directory above</span></div>}
-            <div className="field full"><label htmlFor="notice-title">Title</label><input id="notice-title" required maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} data-testid="input-notice-title"/></div>
-            <div className="field full"><label htmlFor="notice-message">Message</label><textarea id="notice-message" required maxLength={2000} value={message} onChange={(event) => setMessage(event.target.value)} data-testid="input-notice-message"/></div>
+            <div className="field"><label htmlFor="notice-audience">{t("Audience")}</label><select id="notice-audience" value={target} onChange={(event) => setTarget(event.target.value as NoticeTarget)} data-testid="select-notice-audience"><option value="ALL">{t("All active users")}</option><option value="REGION">{t("A region")}</option><option value="ARRONDISSEMENT">{t("An arrondissement")}</option><option value="USERS">{t("Selected users from the directory")}</option></select></div>
+            {(target === 'REGION' || target === 'ARRONDISSEMENT') && <div className="field"><label>{t("Selected location")}</label><span className="data-value">{[arrondissement, region].filter(Boolean).join(', ') || t("Choose a location above")}</span></div>}
+            {target === 'USERS' && <div className="field"><label>{t("Selected recipients")}</label><span className="data-value">{selectedUsers.size} {t("selected in the directory above")}</span></div>}
+            <div className="field full"><label htmlFor="notice-title">{t("Title")}</label><input id="notice-title" required maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} data-testid="input-notice-title"/></div>
+            <div className="field full"><label htmlFor="notice-message">{t("Message")}</label><textarea id="notice-message" required maxLength={2000} value={message} onChange={(event) => setMessage(event.target.value)} data-testid="input-notice-message"/></div>
           </div>
-          <div className="form-actions"><button className="btn" type="submit" disabled={sending} data-testid="button-send-notice"><Bell size={14}/>{sending ? 'Sending…' : 'Send notice'}</button></div>
+          <div className="form-actions"><button className="btn" type="submit" disabled={sending} data-testid="button-send-notice"><Bell size={14}/>{sending ? t("Sending…") : t("Send notice")}</button></div>
         </form>
         {status && <div className={statusError ? 'error-state' : 'notice'} role={statusError ? 'alert' : 'status'} style={{marginTop:12}}>{status}</div>}
       </div>
@@ -1845,7 +1878,7 @@ function SearchField({ value, onChange, placeholder, testId }: { value: string; 
   return <div className="searchbox"><Search size={15} color="#81918c"/><input type="search" value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} data-testid={testId}/></div>;
 }
 function UserResult({ user, action }: { user: User; action: ReactNode }) {
-  return <div className="data-row user-result" data-testid={`user-result-${user.id}`}><div className="person-cell"><div className="avatar">{initials(user.name)}</div><span>{user.name}{user.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{user.email}</small>{(user.role==='DOCTOR'||user.role==='PENDING_DOCTOR')&&<small style={{display:'block',fontWeight:400,color:'#687b8d',marginTop:3}}>Medical number: {user.professionalMedicalNumber||'Not submitted'} · {user.doctorVerified?'Verified':'Not verified'}</small>}</span></div><span className={user.status==='PENDING'||!user.isActive?'tag warning':'tag'}>{user.role.replaceAll('_',' ')} · {user.isActive?user.status.toLowerCase():'suspended'}</span>{action}</div>;
+  return <div className="data-row user-result" data-testid={`user-result-${user.id}`}><div className="person-cell"><div className="avatar">{initials(user.name)}</div><span>{user.name}{user.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> {t("Certified")}</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{user.email}</small>{(user.role==='DOCTOR'||user.role==='PENDING_DOCTOR')&&<small style={{display:'block',fontWeight:400,color:'#687b8d',marginTop:3}}>{t("Medical number:")} {user.professionalMedicalNumber||t("Not submitted")} · {user.doctorVerified?t("Verified"):t("Not verified")}</small>}</span></div><span className={user.status==='PENDING'||!user.isActive?'tag warning':'tag'}>{user.role.replaceAll('_',' ')} · {user.isActive?user.status.toLowerCase():'suspended'}</span>{action}</div>;
 }
 
 export default App;

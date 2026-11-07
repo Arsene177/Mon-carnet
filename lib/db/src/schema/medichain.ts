@@ -43,6 +43,8 @@ export const usersTable = pgTable(
     // Patients only. AUTOMATIC: a doctor entering the CM ID gets access until revoked.
     // ASK: the doctor's request waits until the patient approves or rejects it.
     accessApprovalMode: text("access_approval_mode").notNull().default("AUTOMATIC"),
+    // "fr" or "en": the language of the app and of notifications sent to this account.
+    preferredLanguage: text("preferred_language").notNull().default("fr"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

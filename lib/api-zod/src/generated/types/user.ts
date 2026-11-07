@@ -6,9 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AccountStatus } from './accountStatus';
+import type { Language } from './language';
 import type { Role } from './role';
 
 export interface User {
+  preferredLanguage: Language;
   id: number;
   email: string;
   name: string;

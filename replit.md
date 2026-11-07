@@ -34,6 +34,8 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Architecture decisions
 
+- French and English: user-facing text is written in English inside `t("...")` (`artifacts/medichain/src/lib/i18n.ts`); French lives in `src/lib/i18n-fr.ts`, keyed by the English text, with `{0}`/`{name}` placeholders. Missing French falls back to English. French is the default unless the device prefers English; the FR/EN switch is on the sign-in page and in the header. The choice is stored in the browser and on the account (`preferredLanguage`, `PUT /api/auth/language`), and server-generated notifications use the recipient's language (`artifacts/api-server/src/lib/notification-messages.ts`). Server error messages stay in English and are translated by the web app through the same dictionary. Values stored in the database (record types, regions, statuses) stay in English and are translated only when displayed. After adding or changing UI text, run `pnpm --filter @workspace/medichain run i18n:check`.
+
 - The shared Drizzle layer is used rather than adding a separate Prisma client, to keep one database access stack in this workspace.
 - Saved medical records are immutable; a Follow-up must reference an existing record for the same patient.
 

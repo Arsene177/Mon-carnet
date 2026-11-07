@@ -34,6 +34,7 @@ export const RegisterBody = zod.object({
   "name": zod.string().min(registerBodyNameMin).max(registerBodyNameMax),
   "email": zod.string().email().max(registerBodyEmailMax),
   "password": zod.string().min(registerBodyPasswordMin).max(registerBodyPasswordMax),
+  "preferredLanguage": zod.enum(['fr', 'en']).optional(),
   "role": zod.enum(['PATIENT', 'DOCTOR']),
   "dateOfBirth": zod.coerce.date().optional(),
   "contactInfo": zod.string().max(registerBodyContactInfoMax).optional(),
@@ -43,6 +44,7 @@ export const RegisterBody = zod.object({
 export const RegisterResponse = zod.object({
   "token": zod.string(),
   "user": zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -73,6 +75,7 @@ export const LoginBody = zod.object({
 export const LoginResponse = zod.object({
   "token": zod.string(),
   "user": zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -105,6 +108,30 @@ export const RequestPasswordResetResponse = zod.object({
 
 
 export const GetMeResponse = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+export const UpdateLanguageBody = zod.object({
+  "language": zod.enum(['fr', 'en'])
+})
+
+export const UpdateLanguageResponse = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -151,6 +178,7 @@ export const getPatientProfileResponsePatientAccessIdRegExp = new RegExp('^CM[A-
 
 export const GetPatientProfileResponse = zod.object({
   "user": zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -189,6 +217,7 @@ export const UpdatePatientLocationBody = zod.object({
 })
 
 export const UpdatePatientLocationResponse = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -422,6 +451,7 @@ export const GetPatientAccessHistoryResponse = zod.array(GetPatientAccessHistory
 
 
 export const GetDoctorProfileResponse = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -453,6 +483,7 @@ export const UpdateDoctorProfileBody = zod.object({
 })
 
 export const UpdateDoctorProfileResponse = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -859,6 +890,7 @@ export const UpdateAdminEpidemicThresholdResponse = zod.object({
 
 
 export const GetPendingDoctorsResponseItem = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -882,6 +914,7 @@ export const ApproveDoctorParams = zod.object({
 })
 
 export const ApproveDoctorResponse = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -904,6 +937,7 @@ export const RevokeDoctorParams = zod.object({
 })
 
 export const RevokeDoctorResponse = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -926,6 +960,7 @@ export const VerifyDoctorParams = zod.object({
 })
 
 export const VerifyDoctorResponse = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -952,6 +987,7 @@ export const UpdateAdminUserStatusBody = zod.object({
 })
 
 export const UpdateAdminUserStatusResponse = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -996,6 +1032,7 @@ export const SearchUsersQueryParams = zod.object({
 })
 
 export const SearchUsersResponseItem = zod.object({
+  "preferredLanguage": zod.enum(['fr', 'en']),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),

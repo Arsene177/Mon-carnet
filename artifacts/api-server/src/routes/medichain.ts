@@ -19,6 +19,8 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  UpdateLanguageBody,
+  UpdateLanguageResponse,
   EmergencyPatientLookupBody,
   EmergencyPatientLookupResponse,
   ApprovePatientAccessRequestBody,
@@ -113,6 +115,7 @@ import {
   passwordResetRequestsTable,
 } from "@workspace/db";
 import { emergencyLookupLimiter } from "../lib/rate-limits";
+import { languageOf, notificationMessages } from "../lib/notification-messages";
 import { createAccessToken, hashPassword, publicUser, requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
 
 const router: IRouter = Router();
@@ -490,6 +493,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
             ? input.dateOfBirth.toISOString().slice(0, 10)
             : null,
         contactInfo: input.contactInfo?.trim() || null,
+        preferredLanguage: input.preferredLanguage ?? "fr",
       })
       .returning();
     const user = publicUser(created);
@@ -562,6 +566,24 @@ router.post("/auth/password-reset-requests", async (req, res): Promise<void> => 
       message: "If an account exists for that email, an administrator will review your request.",
     }),
   );
+});
+
+router.put("/auth/language", requireAuth(), async (req, res): Promise<void> => {
+  const parsed = UpdateLanguageBody.safeParse(req.body);
+  if (!parsed.success) {
+    invalidBody(res, "Choose French or English.");
+    return;
+  }
+  const [user] = await db
+    .update(usersTable)
+    .set({ preferredLanguage: parsed.data.language })
+    .where(eq(usersTable.id, req.currentUser!.id))
+    .returning();
+  if (!user) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  res.json(UpdateLanguageResponse.parse(userResponse(user)));
 });
 
 router.get("/auth/me", requireAuth(), async (req, res): Promise<void> => {
@@ -934,6 +956,18 @@ router.get("/patient/access-requests", requireAuth("PATIENT"), async (req, res):
   }))));
 });
 
+async function recipientLanguage(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  userId: number,
+) {
+  const [user] = await tx
+    .select({ preferredLanguage: usersTable.preferredLanguage })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  return languageOf(user?.preferredLanguage);
+}
+
 async function resolvePendingAccessRequest(
   patientId: number,
   requestId: number,
@@ -993,8 +1027,11 @@ router.post("/patient/access-requests/:requestId/approve", requireAuth("PATIENT"
       batchId: randomUUID(),
       senderId: patient.id,
       recipientId: request.doctorId,
-      title: "Booklet access approved",
-      body: `${patient.name} approved your request. Enter their CM ID again in Record entry to open the booklet.${expiresAt ? ` Access ends on ${expiresAt.toISOString().slice(0, 10)}.` : ""}`,
+      ...notificationMessages.accessApproved(
+        await recipientLanguage(tx, request.doctorId),
+        patient.name,
+        expiresAt ? expiresAt.toISOString().slice(0, 10) : null,
+      ),
     });
   });
   if (!resolved || !permission) {
@@ -1023,8 +1060,7 @@ router.post("/patient/access-requests/:requestId/reject", requireAuth("PATIENT")
       batchId: randomUUID(),
       senderId: patient.id,
       recipientId: request.doctorId,
-      title: "Booklet access declined",
-      body: `${patient.name} declined your request to open their booklet.`,
+      ...notificationMessages.accessRejected(await recipientLanguage(tx, request.doctorId), patient.name),
     });
   });
   if (!resolved) {
@@ -1194,8 +1230,7 @@ router.post(
           batchId: randomUUID(),
           senderId: doctor.id,
           recipientId: patient.id,
-          title: "Your emergency information was viewed",
-          body: `${doctor.name}${doctor.hospitalName ? ` at ${doctor.hospitalName}` : ""} looked you up by name and viewed your emergency information. Reason given: "${reason}". If you do not recognise this, report it to Mon carnet support.`,
+          ...notificationMessages.emergencyLookup(languageOf(patient.preferredLanguage), doctor.name, doctor.hospitalName, reason),
         });
       });
       if (emergency) results.push({ emergencyInfo: emergencyResponse(emergency, patient.name) });
@@ -1304,8 +1339,7 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
           batchId: randomUUID(),
           senderId: doctor.id,
           recipientId: patient.id,
-          title: "A doctor asked to open your booklet",
-          body: `${doctor.name}${doctor.hospitalName ? ` (${doctor.hospitalName})` : ""} entered your CM ID and asked to see your medical records. Approve or reject the request in Access control. It expires after 7 days.`,
+          ...notificationMessages.accessRequested(languageOf(patient.preferredLanguage), doctor.name, doctor.hospitalName),
         });
       }
       await tx.insert(auditEventsTable).values({

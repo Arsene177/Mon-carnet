@@ -140,6 +140,7 @@ export function userResponse(user: typeof usersTable.$inferSelect) {
     professionalMedicalNumber: user.professionalMedicalNumber ?? null,
     doctorVerified: user.doctorVerified,
     isActive: user.isActive,
+    preferredLanguage: user.preferredLanguage === "en" ? "en" : "fr",
     createdAt: user.createdAt.toISOString(),
   };
 }

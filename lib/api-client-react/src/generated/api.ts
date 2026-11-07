@@ -52,6 +52,7 @@ import type {
   GetAdminDirectoryParams,
   GetMedicalAttachmentDownloadUrlParams,
   HealthStatus,
+  LanguageInput,
   LocationProfileInput,
   LoginInput,
   MedicalRecord,
@@ -494,6 +495,88 @@ export function useGetMe<TData = Awaited<ReturnType<typeof getMe>>, TError = Err
 
 
 
+
+export const getUpdateLanguageUrl = () => {
+
+
+
+
+  return `/api/auth/language`
+}
+
+export const updateLanguage = async (languageInput: LanguageInput, options?: Parameters<typeof customFetch>[1]): Promise<User> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<User>(getUpdateLanguageUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(languageInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateLanguageMutationKey = () => ['updateLanguage'] as const;
+
+export const getUpdateLanguageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLanguage>>, TError,UpdateLanguageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateLanguage>>, TError,UpdateLanguageMutationVariables, TContext> => {
+
+const mutationKey = getUpdateLanguageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateLanguage>>, UpdateLanguageMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateLanguage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateLanguageMutationResult = NonNullable<Awaited<ReturnType<typeof updateLanguage>>>
+    export type UpdateLanguageMutationBody = BodyType<LanguageInput>
+    export type UpdateLanguageMutationError = ErrorType<unknown>
+    export type UpdateLanguageMutationVariables = {data: BodyType<LanguageInput>}
+
+    export const useUpdateLanguage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLanguage>>, TError,UpdateLanguageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateLanguage>>,
+        TError,
+        UpdateLanguageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateLanguageMutationOptions(options));
+    }
 
 export const getChangePasswordUrl = () => {
 
