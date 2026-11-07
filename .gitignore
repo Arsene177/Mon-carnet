@@ -48,3 +48,10 @@ Thumbs.db
 .cache/
 .local/
 .env
+
+# Database backups and exports must never be committed (they contain personal health data)
+*.dump
+*.sql.gz
+*.backup
+.env.*
+!.env.example
