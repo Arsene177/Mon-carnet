@@ -15,6 +15,9 @@ Mon carnet lets patients manage emergency information and control which approved
 - `pnpm --filter @workspace/api-server run reset-users` — destructive one-time account reset; requires `RESET_ALL_USERS=DELETE_ALL_USERS` and `ADMIN_PASSWORD`, removes all users and linked patient data/attachments, then creates only `arsenedjonkoun5@gmail.com` as admin. Do not run the demo `seed` command afterward.
 - Required env: `DATABASE_URL` — Postgres connection string
 - Authentication uses `JWT_SECRET` or the existing `SESSION_SECRET` secret.
+- Optional env: `CORS_ALLOWED_ORIGINS` — comma-separated origins allowed to call the API from another origin (for example a future mobile app shell). Unset means same-origin only.
+- Optional env: `TRUST_PROXY` — number of reverse proxies in front of the API (default `1`), so rate limits see the real client address.
+- Rate limits (in memory, per server instance): 5 failed sign-ins per account per 15 minutes, 30 sign-in attempts per address per 15 minutes, 10 registrations and 5 password recovery requests per address per hour, 300 API requests per address per minute. Never commit database dumps; `*.dump` is ignored.
 
 ## Stack
 

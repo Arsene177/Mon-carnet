@@ -50,6 +50,7 @@ const errText = (error: unknown) => error instanceof Error ? error.message : 'So
 const loginErrorText = (error: unknown) => {
   if (typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number') {
     if (error.status === 401) return 'Email or password is incorrect. Check your details and try again.';
+    if (error.status === 429) return 'Too many sign-in attempts. Wait 15 minutes and try again, or use "Forgot password".';
     if (error.status >= 500) return 'Sign in is temporarily unavailable. Please try again shortly.';
   }
   if (error instanceof Error && /failed to fetch|network/i.test(error.message)) {
