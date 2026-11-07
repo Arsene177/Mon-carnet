@@ -1103,6 +1103,83 @@ export const ResetAdminRequestedPasswordResponse = zod.object({
 })
 
 
+export const ExportMyDataResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const GetMyDeletionRequestResponse = zod.union([zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['PENDING', 'CANCELLED', 'REJECTED', 'COMPLETED']),
+  "outcome": zod.union([zod.literal('ERASED'),zod.literal('CLOSED'),zod.literal(null)]).nullable(),
+  "reason": zod.string().nullable(),
+  "resolutionNote": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "resolvedAt": zod.coerce.date().nullable()
+}),zod.null()])
+
+
+export const requestAccountDeletionBodyPasswordMax = 128;
+
+export const requestAccountDeletionBodyReasonMax = 500;
+
+
+
+export const RequestAccountDeletionBody = zod.object({
+  "password": zod.string().min(1).max(requestAccountDeletionBodyPasswordMax).describe('Current password, to confirm it is the account owner.'),
+  "reason": zod.string().max(requestAccountDeletionBodyReasonMax).nullable()
+})
+
+export const RequestAccountDeletionResponse = zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['PENDING', 'CANCELLED', 'REJECTED', 'COMPLETED']),
+  "outcome": zod.union([zod.literal('ERASED'),zod.literal('CLOSED'),zod.literal(null)]).nullable(),
+  "reason": zod.string().nullable(),
+  "resolutionNote": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "resolvedAt": zod.coerce.date().nullable()
+})
+
+
+export const CancelAccountDeletionResponse = zod.void()
+
+
+export const GetAdminDeletionRequestsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "userId": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "reason": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "recordCount": zod.number().int().describe('Medical records in the patient\'s file, or written by the doctor.'),
+  "attachmentCount": zod.number().int()
+})
+export const GetAdminDeletionRequestsResponse = zod.array(GetAdminDeletionRequestsResponseItem)
+
+
+export const ResolveAdminDeletionRequestParams = zod.object({
+  "requestId": zod.coerce.number().int()
+})
+
+export const resolveAdminDeletionRequestBodyNoteMax = 500;
+
+
+
+export const ResolveAdminDeletionRequestBody = zod.object({
+  "action": zod.enum(['ERASE', 'CLOSE', 'REJECT']).describe('ERASE deletes the patient\'s account, records and files. CLOSE removes sign-in and contact details and revokes access but keeps medical records. REJECT keeps the account (a note is required).'),
+  "note": zod.string().max(resolveAdminDeletionRequestBodyNoteMax).nullable()
+})
+
+export const ResolveAdminDeletionRequestResponse = zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['PENDING', 'CANCELLED', 'REJECTED', 'COMPLETED']),
+  "outcome": zod.union([zod.literal('ERASED'),zod.literal('CLOSED'),zod.literal(null)]).nullable(),
+  "reason": zod.string().nullable(),
+  "resolutionNote": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "resolvedAt": zod.coerce.date().nullable()
+})
+
+
 export const GetAdminPossibleDuplicatesResponseItem = zod.object({
   "reason": zod.enum(['SAME_NAME_AND_BIRTH_YEAR']).describe('Same name in any word order and the same birth year. National ID numbers are unique, so they never repeat.'),
   "patients": zod.array(zod.object({

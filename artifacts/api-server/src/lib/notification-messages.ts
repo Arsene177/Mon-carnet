@@ -37,6 +37,16 @@ export const notificationMessages = {
       ? { title: "Accès au carnet refusé", body: `${patientName} a refusé votre demande d’ouverture de son carnet.` }
       : { title: "Booklet access declined", body: `${patientName} declined your request to open their booklet.` };
   },
+  deletionRequested(language: NotificationLanguage, accountName: string): Message {
+    return language === "fr"
+      ? { title: "Nouvelle demande de suppression de compte", body: `${accountName} a demandé la suppression de son compte. Traitez la demande dans Demandes de compte.` }
+      : { title: "New account deletion request", body: `${accountName} asked for their account to be deleted. Handle the request in Account requests.` };
+  },
+  deletionRejected(language: NotificationLanguage, note: string): Message {
+    return language === "fr"
+      ? { title: "Demande de suppression refusée", body: `Votre demande de suppression de compte a été refusée. Motif : « ${note} ».` }
+      : { title: "Deletion request declined", body: `Your account deletion request was declined. Reason: "${note}".` };
+  },
   emergencyLookup(language: NotificationLanguage, doctorName: string, hospital: string | null, reason: string): Message {
     return language === "fr"
       ? {

@@ -817,6 +817,89 @@ paths:
                 $ref: "#/components/schemas/AdminPasswordResetResult"
         "404":
           description: Request is no longer pending or account no longer exists
+  /account/data-export:
+    get:
+      operationId: exportMyData
+      tags: [auth]
+      responses:
+        "200":
+          description: Everything Mon carnet holds about the signed-in account, as JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /account/deletion-request:
+    get:
+      operationId: getMyDeletionRequest
+      tags: [auth]
+      responses:
+        "200":
+          description: The latest deletion request for this account, or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AccountDeletionRequest"
+                  - type: "null"
+    post:
+      operationId: requestAccountDeletion
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountDeletionInput"
+      responses:
+        "201":
+          description: Deletion request recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDeletionRequest"
+    delete:
+      operationId: cancelAccountDeletion
+      tags: [auth]
+      responses:
+        "204":
+          description: Pending request cancelled
+  /admin/deletion-requests:
+    get:
+      operationId: getAdminDeletionRequests
+      tags: [admin]
+      responses:
+        "200":
+          description: Pending account deletion requests, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminDeletionRequest"
+  /admin/deletion-requests/{requestId}/resolve:
+    post:
+      operationId: resolveAdminDeletionRequest
+      tags: [admin]
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeletionResolutionInput"
+      responses:
+        "200":
+          description: Request resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDeletionRequest"
   /admin/possible-duplicates:
     get:
       operationId: getAdminPossibleDuplicates
@@ -1295,6 +1378,45 @@ components:
       properties:
         doctorEmail: { type: string, format: email }
         durationDays: { type: integer, minimum: 1, maximum: 365 }
+    AccountDeletionInput:
+      type: object
+      required: [password, reason]
+      properties:
+        password: { type: string, minLength: 1, maxLength: 128, description: "Current password, to confirm it is the account owner." }
+        reason: { type: ["string", "null"], maxLength: 500 }
+    AccountDeletionRequest:
+      type: object
+      required: [id, status, outcome, reason, resolutionNote, requestedAt, resolvedAt]
+      properties:
+        id: { type: integer }
+        status: { type: string, enum: [PENDING, CANCELLED, REJECTED, COMPLETED] }
+        outcome: { type: ["string", "null"], enum: [ERASED, CLOSED, null] }
+        reason: { type: ["string", "null"] }
+        resolutionNote: { type: ["string", "null"] }
+        requestedAt: { type: string, format: date-time }
+        resolvedAt: { type: ["string", "null"], format: date-time }
+    AdminDeletionRequest:
+      type: object
+      required: [id, userId, name, email, role, reason, requestedAt, recordCount, attachmentCount]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        reason: { type: ["string", "null"] }
+        requestedAt: { type: string, format: date-time }
+        recordCount: { type: integer, description: "Medical records in the patient's file, or written by the doctor." }
+        attachmentCount: { type: integer }
+    DeletionResolutionInput:
+      type: object
+      required: [action, note]
+      properties:
+        action:
+          type: string
+          enum: [ERASE, CLOSE, REJECT]
+          description: "ERASE deletes the patient's account, records and files. CLOSE removes sign-in and contact details and revokes access but keeps medical records. REJECT keeps the account (a note is required)."
+        note: { type: ["string", "null"], maxLength: 500 }
     Sex:
       type: string
       enum: [FEMALE, MALE]

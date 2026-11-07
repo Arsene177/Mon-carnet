@@ -548,6 +548,91 @@ export interface PermissionGrantInput {
   durationDays: number;
 }
 
+export interface AccountDeletionInput {
+  /**
+     * Current password, to confirm it is the account owner.
+     * @minLength 1
+     * @maxLength 128
+     */
+  password: string;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  reason: string | null;
+}
+
+export type AccountDeletionRequestStatus = typeof AccountDeletionRequestStatus[keyof typeof AccountDeletionRequestStatus];
+
+
+export const AccountDeletionRequestStatus = {
+  PENDING: 'PENDING',
+  CANCELLED: 'CANCELLED',
+  REJECTED: 'REJECTED',
+  COMPLETED: 'COMPLETED',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AccountDeletionRequestOutcome = typeof AccountDeletionRequestOutcome[keyof typeof AccountDeletionRequestOutcome] | null;
+
+
+export const AccountDeletionRequestOutcome = {
+  ERASED: 'ERASED',
+  CLOSED: 'CLOSED',
+} as const;
+
+export interface AccountDeletionRequest {
+  id: number;
+  status: AccountDeletionRequestStatus;
+  /** @nullable */
+  outcome: AccountDeletionRequestOutcome;
+  /** @nullable */
+  reason: string | null;
+  /** @nullable */
+  resolutionNote: string | null;
+  requestedAt: string;
+  /** @nullable */
+  resolvedAt: string | null;
+}
+
+export interface AdminDeletionRequest {
+  id: number;
+  userId: number;
+  name: string;
+  email: string;
+  role: Role;
+  /** @nullable */
+  reason: string | null;
+  requestedAt: string;
+  /** Medical records in the patient's file, or written by the doctor. */
+  recordCount: number;
+  attachmentCount: number;
+}
+
+/**
+ * ERASE deletes the patient's account, records and files. CLOSE removes sign-in and contact details and revokes access but keeps medical records. REJECT keeps the account (a note is required).
+ */
+export type DeletionResolutionInputAction = typeof DeletionResolutionInputAction[keyof typeof DeletionResolutionInputAction];
+
+
+export const DeletionResolutionInputAction = {
+  ERASE: 'ERASE',
+  CLOSE: 'CLOSE',
+  REJECT: 'REJECT',
+} as const;
+
+export interface DeletionResolutionInput {
+  /** ERASE deletes the patient's account, records and files. CLOSE removes sign-in and contact details and revokes access but keeps medical records. REJECT keeps the account (a note is required). */
+  action: DeletionResolutionInputAction;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  note: string | null;
+}
+
 export interface PatientIdentityInput {
   sex: Sex;
   dateOfBirth: string;
@@ -861,6 +946,8 @@ export type SearchDiseaseCodesParams = {
  */
 query: string;
 };
+
+export type ExportMyData200 = { [key: string]: unknown };
 
 export type SearchUsersParams = {
 /**

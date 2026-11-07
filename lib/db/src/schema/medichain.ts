@@ -52,6 +52,8 @@ export const usersTable = pgTable(
     // "fr" or "en": the language of the app and of notifications sent to this account.
     preferredLanguage: text("preferred_language").notNull().default("fr"),
     isActive: boolean("is_active").notNull().default(true),
+    // Set when the account was closed after a deletion request. Closed accounts cannot sign in or be restored.
+    closedAt: timestamp("closed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -210,6 +212,31 @@ export const accessPermissionsTable = pgTable(
       table.doctorId,
     ),
     index("medichain_permission_expiry_index").on(table.expiresAt),
+  ],
+);
+
+export const accountDeletionRequestsTable = pgTable(
+  "medichain_account_deletion_requests",
+  {
+    id: serial("id").primaryKey(),
+    // No foreign key: the request is kept as evidence after the account itself is erased.
+    userId: integer("user_id").notNull(),
+    role: text("role").notNull(),
+    reason: text("reason"),
+    // PENDING, CANCELLED, REJECTED, COMPLETED
+    status: text("status").notNull().default("PENDING"),
+    // ERASED (account and medical data deleted) or CLOSED (sign-in and contact details removed, records kept)
+    outcome: text("outcome"),
+    resolutionNote: text("resolution_note"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: integer("resolved_by").references(() => usersTable.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    uniqueIndex("medichain_deletion_request_pending_unique")
+      .on(table.userId)
+      .where(sql`${table.status} = 'PENDING'`),
+    index("medichain_deletion_request_status_index").on(table.status, table.requestedAt),
   ],
 );
 

@@ -178,7 +178,7 @@ function privateObjectPathParts(objectPath: string) {
   return { bucketName, objectName };
 }
 
-async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET" | "DELETE", ttlSeconds: number) {
+export async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET" | "DELETE", ttlSeconds: number) {
   const { bucketName, objectName } = privateObjectPathParts(objectPath);
   const response = await fetch("http://127.0.0.1:1106/object-storage/signed-object-url", {
     method: "POST",
@@ -221,7 +221,7 @@ async function purgeExpiredMedicalAttachments() {
   }
 }
 
-function invalidBody(res: Response, message: string) {
+export function invalidBody(res: Response, message: string) {
   res.status(400).json({ error: message });
 }
 
@@ -363,7 +363,7 @@ async function codedDiagnosesByRecordId(recordIds: number[]) {
   return grouped;
 }
 
-async function recordsResponse(
+export async function recordsResponse(
   rows: Array<{
     record: typeof medicalRecordsTable.$inferSelect;
     doctorName: string;
@@ -400,7 +400,7 @@ function recordResponse(
 type PatientIdentity = Pick<typeof usersTable.$inferSelect, "name" | "sex" | "dateOfBirth" | "dateOfBirthEstimated">;
 
 /** True for a Postgres unique-constraint error, also when the ORM wraps it in `cause`. */
-function isUniqueViolation(error: unknown): boolean {
+export function isUniqueViolation(error: unknown): boolean {
   for (let current = error, depth = 0; current && typeof current === "object" && depth < 4; current = (current as { cause?: unknown }).cause, depth++) {
     if ("code" in current && (current as { code?: unknown }).code === "23505") return true;
   }
@@ -422,7 +422,7 @@ function isPlausibleBirthDate(value: Date): boolean {
   return value.getTime() <= Date.now() && year >= new Date().getUTCFullYear() - 130;
 }
 
-function emergencyResponse(
+export function emergencyResponse(
   info: typeof emergencyInfoTable.$inferSelect,
   patient: PatientIdentity,
 ) {
@@ -1032,7 +1032,7 @@ router.get("/patient/access-requests", requireAuth("PATIENT"), async (req, res):
   }))));
 });
 
-async function recipientLanguage(
+export async function recipientLanguage(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   userId: number,
 ) {
@@ -2359,12 +2359,16 @@ router.put("/admin/users/:userId/status", requireAuth("ADMIN"), async (req, res)
     return;
   }
   const [target] = await db
-    .select({ id: usersTable.id, role: usersTable.role, isActive: usersTable.isActive })
+    .select({ id: usersTable.id, role: usersTable.role, isActive: usersTable.isActive, closedAt: usersTable.closedAt })
     .from(usersTable)
     .where(eq(usersTable.id, parsedParams.data.userId))
     .limit(1);
   if (!target) {
     res.status(404).json({ error: "Account not found." });
+    return;
+  }
+  if (target.closedAt) {
+    res.status(409).json({ error: "This account was closed at the owner's request and cannot be restored." });
     return;
   }
   if (!parsedBody.data.isActive && target.role === "ADMIN" && target.isActive) {
