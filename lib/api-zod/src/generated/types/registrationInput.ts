@@ -23,6 +23,13 @@ export interface RegistrationInput {
      */
   password: string;
   preferredLanguage?: Language;
+  /**
+     * Must equal the current privacy policy and terms version.
+     * @maxLength 40
+     */
+  acceptedTermsVersion?: string;
+  /** Required (true) for patients. */
+  healthDataConsent?: boolean;
   sex?: Sex;
   dateOfBirthEstimated?: boolean;
   /** @maxLength 30 */

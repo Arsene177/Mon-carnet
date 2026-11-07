@@ -45,6 +45,18 @@ export const Language = {
 } as const;
 
 export interface User {
+  /**
+     * Version of the privacy policy and terms this account accepted.
+     * @nullable
+     */
+  termsVersion: string | null;
+  /** @nullable */
+  termsAcceptedAt: string | null;
+  /**
+     * Patients: when they consented to the processing of their health data.
+     * @nullable
+     */
+  healthDataConsentAt: string | null;
   sex: Sex | null;
   /** True when only the birth year is known; dateOfBirth is then 1 January of that year. */
   dateOfBirthEstimated: boolean;
@@ -98,6 +110,13 @@ export interface RegistrationInput {
      */
   password: string;
   preferredLanguage?: Language;
+  /**
+     * Must equal the current privacy policy and terms version.
+     * @maxLength 40
+     */
+  acceptedTermsVersion?: string;
+  /** Required (true) for patients. */
+  healthDataConsent?: boolean;
   sex?: Sex;
   dateOfBirthEstimated?: boolean;
   /** @maxLength 30 */
@@ -631,6 +650,12 @@ export interface DeletionResolutionInput {
      * @nullable
      */
   note: string | null;
+}
+
+export interface ConsentInput {
+  /** @maxLength 40 */
+  termsVersion: string;
+  healthDataConsent: boolean;
 }
 
 export interface PatientIdentityInput {

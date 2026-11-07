@@ -49,6 +49,7 @@ export * from './codedDiagnosis';
 export * from './codedDiagnosisInput';
 export * from './confirmMedicalAttachmentUpload200';
 export * from './confirmMedicalAttachmentUpload200Status';
+export * from './consentInput';
 export * from './deletionResolutionInput';
 export * from './deletionResolutionInputAction';
 export * from './diseaseCode';

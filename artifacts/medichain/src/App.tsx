@@ -18,7 +18,7 @@ import {
   getSearchDiseaseCodesQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
   useAddDoctorPatientRecord, useApproveDoctor, useChangePassword, useCreateBookletVerification, useGetAdminAnalytics, useGetAdminStats,
   useGetDoctorPatientRecords, useGetDoctorProfile, useGetDoctorStats, useGetMe, useGetNotificationInbox,
-  useApprovePatientAccessRequest, useUpdatePatientIdentity, useGetMyDeletionRequest, useRequestAccountDeletion, useCancelAccountDeletion, useGetAdminDeletionRequests, useResolveAdminDeletionRequest, useGetAdminPossibleDuplicates, useGetPatientAccessRequests, useGetPatientAccessSettings, useRejectPatientAccessRequest, useUpdatePatientAccessSettings,
+  useApprovePatientAccessRequest, useAcceptLegalTerms, useUpdatePatientIdentity, useGetMyDeletionRequest, useRequestAccountDeletion, useCancelAccountDeletion, useGetAdminDeletionRequests, useResolveAdminDeletionRequest, useGetAdminPossibleDuplicates, useGetPatientAccessRequests, useGetPatientAccessSettings, useRejectPatientAccessRequest, useUpdatePatientAccessSettings,
   useGetPatientPendingRequests, useGetPatientPermissions,
   useGetPatientProfile, useGetPatientRecords, useGetPendingDoctors, useGrantPatientPermission,
   useGrantPatientAccessById, useLogin, useRegister, useRevokePatientPermission, useEmergencyPatientLookup,
@@ -29,7 +29,8 @@ import type {
   AccessApprovalMode, AccessRequest, AdminEpidemicMetric, BookletVerificationIssue, DiseaseCode, EmergencyInfo, EmergencyInfoInput,
   AdminDeletionRequest, MedicalRecord, MedicalRecordInput, PatientBookletAccess, PatientSearchResult, PossibleDuplicateGroup, MedicalRecordRecordType, PatientProfile, User,
 } from '@workspace/api-client-react';
-import { CAMEROON_ARRONDISSEMENTS, CAMEROON_REGIONS } from '@workspace/api-zod';
+import { CAMEROON_ARRONDISSEMENTS, CAMEROON_REGIONS, LEGAL_DOCUMENTS_VERSION } from '@workspace/api-zod';
+import { LegalPage } from '@/pages/legal';
 import { Form } from '@/components/ui/form';
 import { useLocation } from 'wouter';
 import { OnboardingGuide } from '@/components/onboarding-guide';
@@ -318,7 +319,7 @@ function AccountRightsCard({ role }: { role: User['role'] }) {
   const latest = deletion.data ?? null;
   const pending = latest?.status === 'PENDING';
   return <section className="panel" style={{marginTop:17}} aria-labelledby="account-rights-title">
-    <div className="panel-head"><div><h2 className="panel-title" id="account-rights-title">{t('Your data and account')}</h2><p className="panel-caption">{t('Under Cameroon’s personal data protection law you can get a copy of your data and ask for your account to be deleted.')}</p></div><Shield size={17} color="#69a293"/></div>
+    <div className="panel-head"><div><h2 className="panel-title" id="account-rights-title">{t('Your data and account')}</h2><p className="panel-caption">{t('Under Cameroon’s personal data protection law you can get a copy of your data and ask for your account to be deleted.')} <LegalLinks/></p></div><Shield size={17} color="#69a293"/></div>
     <div className="panel-body">
       <div className="data-row"><span><strong>{t('Download my data')}</strong><small className="row-help">{role === 'PATIENT' ? t('A file with your profile, emergency information, medical records, who had access and your notifications.') : t('A file with your profile, the actions you took and your notifications.')}</small></span><button className="btn small secondary" type="button" onClick={() => void downloadData()} disabled={downloading} data-testid="button-download-my-data"><Download size={13}/> {downloading ? t('Preparing…') : t('Download')}</button></div>
       {role !== 'ADMIN' && <div className="deletion-block">
@@ -547,6 +548,7 @@ function Router() {
       window.clearInterval(interval);
     };
   }, [token, setLocation]);
+  if (location === '/privacy' || location === '/terms') return <LegalPage kind={location === '/privacy' ? 'privacy' : 'terms'}/>;
   if (location === '/' || location === '/login' || location === '/register' || !token) {
     if (token && me.data) {
       const target = me.data.role === 'ADMIN' ? '/admin' : me.data.role === 'DOCTOR' || me.data.role === 'PENDING_DOCTOR' ? '/doctor' : '/patient';
@@ -564,7 +566,49 @@ function Router() {
     setLocation(expected);
     return <LoadingScreen />;
   }
+  if (needsConsent(user)) return <ConsentScreen user={user} onSignOut={signOut}/>;
   return <Workspace user={user} onSignOut={signOut} />;
+}
+
+/** True when the account has not accepted the current privacy policy and terms. */
+function needsConsent(user: User) {
+  return user.termsVersion !== LEGAL_DOCUMENTS_VERSION || (user.role === 'PATIENT' && !user.healthDataConsentAt);
+}
+
+function LegalLinks() {
+  return <><a href="/terms" target="_blank" rel="noopener">{t('Terms of use')}</a> · <a href="/privacy" target="_blank" rel="noopener">{t('Privacy policy')}</a></>;
+}
+
+/** Asks an existing account to accept the current privacy policy and terms before continuing. */
+function ConsentScreen({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+  const qc = useQueryClient();
+  const accept = useAcceptLegalTerms();
+  const [terms, setTerms] = useState(false);
+  const [health, setHealth] = useState(false);
+  const [error, setError] = useState('');
+  const isPatient = user.role === 'PATIENT';
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    accept.mutate({ data: { termsVersion: LEGAL_DOCUMENTS_VERSION, healthDataConsent: isPatient ? health : false } }, {
+      onSuccess: (updated) => qc.setQueryData(getGetMeQueryKey(), updated),
+      onError: (e) => setError(errText(e)),
+    });
+  };
+  return <div className="login-page consent-page">
+    <main className="login-main">
+      <div className="login-language"><LanguageSwitcher signedIn/></div>
+      <form className="auth-card" onSubmit={submit}>
+        <div className="brand-inline"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
+        <h2>{user.termsVersion ? t('Our terms have changed') : t('Before you continue')}</h2>
+        <p className="subhead">{t('Please read and accept the terms of use and privacy policy to keep using Mon carnet.')}</p>
+        <label className="consent-line"><input type="checkbox" required checked={terms} onChange={(e) => setTerms(e.target.checked)} data-testid="checkbox-consent-terms"/><span>{t('I have read and accept the terms of use and the privacy policy.')} <LegalLinks/></span></label>
+        {isPatient && <label className="consent-line"><input type="checkbox" required checked={health} onChange={(e) => setHealth(e.target.checked)} data-testid="checkbox-consent-health"/><span>{t('I agree that Mon carnet processes my health data to keep my booklet and share it with the doctors I choose. I can withdraw this consent by deleting my account.')}</span></label>}
+        {error && <div className="error-state" role="alert">{error}</div>}
+        <div className="form-actions"><button className="btn ghost" type="button" onClick={onSignOut}>{t('Sign out')}</button><button className="btn" type="submit" disabled={accept.isPending} data-testid="button-accept-terms">{accept.isPending ? t('Saving…') : t('Accept and continue')}</button></div>
+      </form>
+    </main>
+  </div>;
 }
 
 function LoadingScreen() {
@@ -581,6 +625,8 @@ function AuthPage() {
   const [form, setForm] = useState({ name: '', email: '', password: '', contactInfo: '', professionalMedicalNumber: '', nationalIdNumber: '' });
   const [registerSex, setRegisterSex] = useState<Sex | ''>('');
   const [registerBirth, setRegisterBirth] = useState<BirthInput>(emptyBirthInput);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [healthConsent, setHealthConsent] = useState(false);
   const [feedback, setFeedback] = useState('');
   const login = useLogin();
   const register = useRegister();
@@ -616,7 +662,7 @@ function AuthPage() {
     } else {
       const dateOfBirth = role === 'PATIENT' ? birthDateToSend(registerBirth) : null;
       if (role === 'PATIENT' && (!registerSex || !dateOfBirth)) { setFeedback(t('Choose your sex and enter your date of birth, or your age if you do not know the exact date.')); return; }
-      register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, preferredLanguage: getLanguage(), ...(role === 'PATIENT' && dateOfBirth && registerSex ? { dateOfBirth, dateOfBirthEstimated: registerBirth.estimated, sex: registerSex, ...(form.nationalIdNumber.trim() ? { nationalIdNumber: form.nationalIdNumber.trim() } : {}) } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: onSession, onError: (error) => setFeedback(errText(error)) });
+      register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, preferredLanguage: getLanguage(), acceptedTermsVersion: LEGAL_DOCUMENTS_VERSION, healthDataConsent: role === 'PATIENT' && healthConsent, ...(role === 'PATIENT' && dateOfBirth && registerSex ? { dateOfBirth, dateOfBirthEstimated: registerBirth.estimated, sex: registerSex, ...(form.nationalIdNumber.trim() ? { nationalIdNumber: form.nationalIdNumber.trim() } : {}) } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: onSession, onError: (error) => setFeedback(errText(error)) });
     }
   };
   const flipMode = (next: 'login' | 'register') => { setMode(next); setRecoveringPassword(false); setResetSubmitted(false); setFeedback(''); setLocation(next === 'login' ? '/login' : '/register'); };
@@ -648,10 +694,14 @@ function AuthPage() {
           </>}
           <div className="field"><label htmlFor="auth-email">{t("Email address")}</label><input id="auth-email" type="email" value={form.email} onChange={onField('email')} required autoComplete="email" data-testid="input-email" placeholder={t("you@example.com")}/></div>
           {!recoveringPassword && <div className="field"><label htmlFor="auth-password">{t("Password")}</label><input id="auth-password" type="password" value={form.password} onChange={onField('password')} required minLength={mode === 'register' ? 8 : 1} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} data-testid="input-password" placeholder={mode === 'register' ? t("At least 8 characters") : t("Your password")}/></div>}
+          {!recoveringPassword && mode === 'register' && <div className="consent-group">
+            <label className="consent-line"><input type="checkbox" required checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} data-testid="checkbox-register-terms"/><span>{t('I have read and accept the terms of use and the privacy policy.')} <LegalLinks/></span></label>
+            {role === 'PATIENT' && <label className="consent-line"><input type="checkbox" required checked={healthConsent} onChange={(e) => setHealthConsent(e.target.checked)} data-testid="checkbox-register-health"/><span>{t('I agree that Mon carnet processes my health data to keep my booklet and share it with the doctors I choose. I can withdraw this consent by deleting my account.')}</span></label>}
+          </div>}
           {!resetSubmitted && <button className="btn auth-submit" type="submit" disabled={busy} data-testid="button-auth-submit">{busy ? t("Please wait…") : recoveringPassword ? t("Request password reset") : mode === 'login' ? <>{t("Sign in")} <ArrowRight size={15}/></> : <>{t("Create account")} <ArrowRight size={15}/></>}</button>}
         </form>
         {mode === 'login' && <button className="auth-link" type="button" onClick={() => { setRecoveringPassword(!recoveringPassword); setResetSubmitted(false); setFeedback(''); }}>{recoveringPassword ? t("Back to sign in") : t("Forgot password?")}</button>}
-        {!recoveringPassword && <div className="auth-foot"><LockKeyhole size={12}/> {t("Your health information is private and protected. Doctor accounts may require approval.")}</div>}
+        {!recoveringPassword && <div className="auth-foot"><LockKeyhole size={12}/> {t("Your health information is private and protected. Doctor accounts may require approval.")}<br/><LegalLinks/></div>}
       </div>
     </main>
   </div>;

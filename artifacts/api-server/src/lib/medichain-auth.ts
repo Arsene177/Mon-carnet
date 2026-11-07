@@ -143,6 +143,9 @@ export function userResponse(user: typeof usersTable.$inferSelect) {
     preferredLanguage: user.preferredLanguage === "en" ? "en" : "fr",
     sex: user.sex === "FEMALE" || user.sex === "MALE" ? user.sex : null,
     dateOfBirthEstimated: user.dateOfBirthEstimated,
+    termsVersion: user.termsVersion ?? null,
+    termsAcceptedAt: user.termsAcceptedAt?.toISOString() ?? null,
+    healthDataConsentAt: user.healthDataConsentAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
   };
 }

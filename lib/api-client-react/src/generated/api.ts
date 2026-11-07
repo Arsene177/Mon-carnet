@@ -45,6 +45,7 @@ import type {
   BookletVerificationResult,
   ChangePasswordInput,
   ConfirmMedicalAttachmentUpload200,
+  ConsentInput,
   DeletionResolutionInput,
   DiseaseCode,
   DoctorProfileInput,
@@ -3715,6 +3716,88 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getResetAdminRequestedPasswordMutationOptions(options));
+    }
+
+export const getAcceptLegalTermsUrl = () => {
+
+
+
+
+  return `/api/account/consent`
+}
+
+export const acceptLegalTerms = async (consentInput: ConsentInput, options?: Parameters<typeof customFetch>[1]): Promise<User> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<User>(getAcceptLegalTermsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(consentInput)
+  }
+);}
+
+
+
+
+
+export const getAcceptLegalTermsMutationKey = () => ['acceptLegalTerms'] as const;
+
+export const getAcceptLegalTermsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptLegalTerms>>, TError,AcceptLegalTermsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptLegalTerms>>, TError,AcceptLegalTermsMutationVariables, TContext> => {
+
+const mutationKey = getAcceptLegalTermsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptLegalTerms>>, AcceptLegalTermsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  acceptLegalTerms(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptLegalTermsMutationResult = NonNullable<Awaited<ReturnType<typeof acceptLegalTerms>>>
+    export type AcceptLegalTermsMutationBody = BodyType<ConsentInput>
+    export type AcceptLegalTermsMutationError = ErrorType<unknown>
+    export type AcceptLegalTermsMutationVariables = {data: BodyType<ConsentInput>}
+
+    export const useAcceptLegalTerms = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptLegalTerms>>, TError,AcceptLegalTermsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acceptLegalTerms>>,
+        TError,
+        AcceptLegalTermsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAcceptLegalTermsMutationOptions(options));
     }
 
 export const getExportMyDataUrl = () => {

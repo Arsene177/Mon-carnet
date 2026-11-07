@@ -11,6 +11,18 @@ import type { Role } from './role';
 import type { Sex } from './sex';
 
 export interface User {
+  /**
+     * Version of the privacy policy and terms this account accepted.
+     * @nullable
+     */
+  termsVersion: string | null;
+  /** @nullable */
+  termsAcceptedAt: Date | null;
+  /**
+     * Patients: when they consented to the processing of their health data.
+     * @nullable
+     */
+  healthDataConsentAt: Date | null;
   sex: Sex | null;
   /** True when only the birth year is known; dateOfBirth is then 1 January of that year. */
   dateOfBirthEstimated: boolean;

@@ -100,7 +100,7 @@ import {
   VerifyDoctorParams,
   VerifyDoctorResponse,
 } from "@workspace/api-zod";
-import { isValidCameroonLocation } from "@workspace/api-zod";
+import { isValidCameroonLocation, LEGAL_DOCUMENTS_VERSION } from "@workspace/api-zod";
 import {
   auditEventsTable,
   bookletExportsTable,
@@ -506,6 +506,10 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     invalidBody(res, "Patient registration requires sex and a valid date of birth or age.");
     return;
   }
+  if (input.acceptedTermsVersion !== LEGAL_DOCUMENTS_VERSION || (input.role === "PATIENT" && input.healthDataConsent !== true)) {
+    invalidBody(res, "Accept the terms of use and privacy policy to create an account. Patients must also consent to the processing of their health data.");
+    return;
+  }
   const nationalIdNumber = input.role === "PATIENT" ? normalizeNationalId(input.nationalIdNumber) : null;
   if (nationalIdNumber && !/^[A-Z0-9]{5,20}$/.test(nationalIdNumber)) {
     invalidBody(res, "Enter the ID card number as it appears on the card (letters and digits only).");
@@ -534,6 +538,9 @@ router.post("/auth/register", async (req, res): Promise<void> => {
             : null,
         contactInfo: input.contactInfo?.trim() || null,
         preferredLanguage: input.preferredLanguage ?? "fr",
+        termsVersion: LEGAL_DOCUMENTS_VERSION,
+        termsAcceptedAt: new Date(),
+        healthDataConsentAt: input.role === "PATIENT" ? new Date() : null,
         sex: input.role === "PATIENT" ? input.sex : null,
         dateOfBirthEstimated: input.role === "PATIENT" ? Boolean(input.dateOfBirthEstimated) : false,
         nationalIdNumber,

@@ -19,6 +19,9 @@ import {
   usersTable,
 } from "@workspace/db";
 import {
+  AcceptLegalTermsBody,
+  AcceptLegalTermsResponse,
+  LEGAL_DOCUMENTS_VERSION,
   CancelAccountDeletionResponse,
   GetAdminDeletionRequestsResponse,
   GetMyDeletionRequestResponse,
@@ -47,6 +50,29 @@ function deletionResponse(row: DeletionRow) {
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
   };
 }
+
+router.post("/account/consent", requireAuth(), async (req, res): Promise<void> => {
+  const parsed = AcceptLegalTermsBody.safeParse(req.body);
+  const isPatient = req.currentUser!.role === "PATIENT";
+  if (!parsed.success || parsed.data.termsVersion !== LEGAL_DOCUMENTS_VERSION || (isPatient && !parsed.data.healthDataConsent)) {
+    invalidBody(res, "Accept the current terms of use and privacy policy. Patients must also consent to the processing of their health data.");
+    return;
+  }
+  const now = new Date();
+  const [updated] = await db
+    .update(usersTable)
+    .set({ termsVersion: LEGAL_DOCUMENTS_VERSION, termsAcceptedAt: now, ...(isPatient ? { healthDataConsentAt: now } : {}) })
+    .where(eq(usersTable.id, req.currentUser!.id))
+    .returning();
+  await db.insert(auditEventsTable).values({
+    actorUserId: req.currentUser!.id,
+    patientId: isPatient ? req.currentUser!.id : null,
+    action: "LEGAL_TERMS_ACCEPTED",
+    entityType: "account",
+    entityId: req.currentUser!.id,
+  });
+  res.json(AcceptLegalTermsResponse.parse(userResponse(updated!)));
+});
 
 router.get("/account/data-export", requireAuth(), async (req, res): Promise<void> => {
   const userId = req.currentUser!.id;
