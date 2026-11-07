@@ -351,6 +351,64 @@ export const GetPatientPendingRequestsResponseItem = zod.object({
 export const GetPatientPendingRequestsResponse = zod.array(GetPatientPendingRequestsResponseItem)
 
 
+export const GetPatientAccessSettingsResponse = zod.object({
+  "accessApprovalMode": zod.enum(['AUTOMATIC', 'ASK']).describe('AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient\'s approval.')
+})
+
+
+export const UpdatePatientAccessSettingsBody = zod.object({
+  "accessApprovalMode": zod.enum(['AUTOMATIC', 'ASK']).describe('AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient\'s approval.')
+})
+
+export const UpdatePatientAccessSettingsResponse = zod.object({
+  "accessApprovalMode": zod.enum(['AUTOMATIC', 'ASK']).describe('AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient\'s approval.')
+})
+
+
+export const GetPatientAccessRequestsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "doctorId": zod.number().int(),
+  "doctorName": zod.string(),
+  "doctorEmail": zod.string().email(),
+  "doctorVerified": zod.boolean(),
+  "hospitalName": zod.string().nullable(),
+  "requestedAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date()
+})
+export const GetPatientAccessRequestsResponse = zod.array(GetPatientAccessRequestsResponseItem)
+
+
+export const ApprovePatientAccessRequestParams = zod.object({
+  "requestId": zod.coerce.number().int()
+})
+
+export const approvePatientAccessRequestBodyDurationDaysMax = 365;
+
+
+
+export const ApprovePatientAccessRequestBody = zod.object({
+  "durationDays": zod.number().int().min(1).max(approvePatientAccessRequestBodyDurationDaysMax).nullable().describe('Number of days the access lasts, or null to keep access until the patient revokes it.')
+})
+
+export const ApprovePatientAccessRequestResponse = zod.object({
+  "id": zod.number().int(),
+  "doctorId": zod.number().int(),
+  "doctorName": zod.string(),
+  "doctorEmail": zod.string().email(),
+  "doctorVerified": zod.boolean(),
+  "granted": zod.boolean(),
+  "grantedAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date().nullable()
+})
+
+
+export const RejectPatientAccessRequestParams = zod.object({
+  "requestId": zod.coerce.number().int()
+})
+
+export const RejectPatientAccessRequestResponse = zod.void()
+
+
 export const GetPatientAccessHistoryResponseItem = zod.object({
   "id": zod.number().int(),
   "doctorName": zod.string(),
@@ -452,6 +510,7 @@ export const grantPatientAccessByIdResponsePatientDisplayIdRegExp = new RegExp('
 
 
 export const GrantPatientAccessByIdResponse = zod.object({
+  "status": zod.enum(['GRANTED', 'PENDING']).describe('PENDING means the patient must approve the request before the booklet opens.'),
   "patientId": zod.number().int(),
   "patientDisplayId": zod.string().min(grantPatientAccessByIdResponsePatientDisplayIdMin).max(grantPatientAccessByIdResponsePatientDisplayIdMax).regex(grantPatientAccessByIdResponsePatientDisplayIdRegExp),
   "patientName": zod.string()

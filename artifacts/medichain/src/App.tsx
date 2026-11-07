@@ -11,12 +11,14 @@ import {
 import {
   getGetAdminAnalyticsQueryKey, getGetAdminStatsQueryKey, getGetDoctorProfileQueryKey, getGetMeQueryKey,
   getGetNotificationInboxQueryKey,
+  getGetPatientAccessRequestsQueryKey, getGetPatientAccessSettingsQueryKey,
   getGetPatientPendingRequestsQueryKey, getGetPatientPermissionsQueryKey, getGetAdminPasswordResetRequestsQueryKey,
   getGetPatientProfileQueryKey, getGetPatientRecordsQueryKey, getGetPendingDoctorsQueryKey,
   getGetDoctorPatientRecordsQueryKey, getGetDoctorStatsQueryKey,
   getSearchDiseaseCodesQueryKey, getSearchPatientsQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
   useAddDoctorPatientRecord, useApproveDoctor, useChangePassword, useCreateBookletVerification, useGetAdminAnalytics, useGetAdminStats,
   useGetDoctorPatientRecords, useGetDoctorProfile, useGetDoctorStats, useGetMe, useGetNotificationInbox,
+  useApprovePatientAccessRequest, useGetPatientAccessRequests, useGetPatientAccessSettings, useRejectPatientAccessRequest, useUpdatePatientAccessSettings,
   useGetPatientPendingRequests, useGetPatientPermissions,
   useGetPatientProfile, useGetPatientRecords, useGetPendingDoctors, useGrantPatientPermission,
   useGrantPatientAccessById, useLogin, useRegister, useRevokePatientPermission, useSearchPatients,
@@ -24,7 +26,7 @@ import {
   useRequestPasswordReset, useGetAdminPasswordResetRequests, useResetAdminRequestedPassword,
 } from '@workspace/api-client-react';
 import type {
-  AdminEpidemicMetric, BookletVerificationIssue, DiseaseCode, EmergencyInfo, EmergencyInfoInput,
+  AccessApprovalMode, AccessRequest, AdminEpidemicMetric, BookletVerificationIssue, DiseaseCode, EmergencyInfo, EmergencyInfoInput,
   MedicalRecord, MedicalRecordInput, MedicalRecordRecordType, PatientProfile, User,
 } from '@workspace/api-client-react';
 import { CAMEROON_ARRONDISSEMENTS, CAMEROON_REGIONS } from '@workspace/api-zod';
@@ -672,6 +674,14 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const records = useGetPatientRecords();
   const permissions = useGetPatientPermissions();
   const requests = useGetPatientPendingRequests();
+  const accessSettings = useGetPatientAccessSettings();
+  const accessRequests = useGetPatientAccessRequests({ query: { queryKey: getGetPatientAccessRequestsQueryKey(), refetchInterval: 30_000 } });
+  const updateAccessSettings = useUpdatePatientAccessSettings();
+  const approveRequest = useApprovePatientAccessRequest();
+  const rejectRequest = useRejectPatientAccessRequest();
+  const [approvingRequest, setApprovingRequest] = useState<AccessRequest | null>(null);
+  const [approvalDuration, setApprovalDuration] = useState('until-revoked');
+  const approvalMode: AccessApprovalMode = accessSettings.data?.accessApprovalMode ?? 'AUTOMATIC';
   const qc = useQueryClient();
   const [grantOpen, setGrantOpen] = useState(false);
   const [grantEmail, setGrantEmail] = useState('');
@@ -738,6 +748,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     qc.invalidateQueries({ queryKey: getGetPatientProfileQueryKey() });
     qc.invalidateQueries({ queryKey: getGetPatientPermissionsQueryKey() });
     qc.invalidateQueries({ queryKey: getGetPatientPendingRequestsQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetPatientAccessRequestsQueryKey() });
   };
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 3000); };
   const savePatientLocation = async (event: FormEvent<HTMLFormElement>) => {
@@ -760,6 +771,31 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const submitGrant = (event: FormEvent) => {
     event.preventDefault();
     grant.mutate({ data: { doctorEmail: grantEmail.trim(), durationDays: Number(grantDays) } }, { onSuccess: () => { invalidate(); setGrantOpen(false); setGrantEmail(''); notify('Access updated.'); }, onError: (e) => notify(errText(e)) });
+  };
+  const changeApprovalMode = (accessApprovalMode: AccessApprovalMode) => {
+    if (accessApprovalMode === approvalMode) return;
+    updateAccessSettings.mutate({ data: { accessApprovalMode } }, {
+      onSuccess: (settings) => {
+        qc.setQueryData(getGetPatientAccessSettingsQueryKey(), settings);
+        notify(settings.accessApprovalMode === 'ASK' ? 'Doctors now need your approval to open your booklet.' : 'Doctors who enter your CM ID now get access straight away.');
+      },
+      onError: (e) => notify(errText(e)),
+    });
+  };
+  const submitApproval = (event: FormEvent) => {
+    event.preventDefault();
+    if (!approvingRequest) return;
+    const durationDays = approvalDuration === 'until-revoked' ? null : Number(approvalDuration);
+    approveRequest.mutate({ requestId: approvingRequest.id, data: { durationDays } }, {
+      onSuccess: () => { invalidate(); setApprovingRequest(null); notify(`${approvingRequest.doctorName} can now open your booklet.`); },
+      onError: (e) => { invalidate(); setApprovingRequest(null); notify(errText(e)); },
+    });
+  };
+  const rejectAccessRequest = (request: AccessRequest) => {
+    rejectRequest.mutate({ requestId: request.id }, {
+      onSuccess: () => { invalidate(); notify(`You declined ${request.doctorName}’s request.`); },
+      onError: (e) => { invalidate(); notify(errText(e)); },
+    });
   };
   const revokeDoctor = (doctorId: number) => {
     if (!window.confirm('Remove this doctor’s access to your records?')) return;
@@ -801,7 +837,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
         <section className="panel" style={{marginBottom:17}}>
           <div className="panel-head"><div><h2 className="panel-title">Your Patient ID</h2><p className="panel-caption">Your CM ID is also the code your doctor uses to open your booklet.</p></div><Shield size={17} color="#d99125"/></div>
           <div className="panel-body">
-            <div className="callout"><div className="callout-head"><ShieldCheck size={16}/> Patient ID & booklet code</div><p style={{margin:'10px 0'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="overview-patient-display-id">{profile.data?.patientDisplayId ?? 'Unavailable'}</code></p><p className="field-note">Give this CM ID to your doctor to grant immediate booklet access. You can revoke access at any time.</p><button className="btn small secondary" onClick={()=>onTab('Profile')} data-testid="button-view-profile">View profile <ArrowRight size={13}/></button></div>
+            <div className="callout"><div className="callout-head"><ShieldCheck size={16}/> Patient ID & booklet code</div><p style={{margin:'10px 0'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="overview-patient-display-id">{profile.data?.patientDisplayId ?? 'Unavailable'}</code></p><p className="field-note">{approvalMode === 'ASK' ? 'Give this CM ID to your doctor. You will be asked to approve or reject their request before they can open your booklet.' : 'Give this CM ID to your doctor to grant immediate booklet access. You can revoke access at any time.'}</p><button className="btn small secondary" onClick={()=>onTab('Profile')} data-testid="button-view-profile">View profile <ArrowRight size={13}/></button></div>
           </div>
         </section>
         <div className="grid stats-grid"><Stat label="Medical records" value={profile.data?.recordCount ?? 0} note="Records in your secure file" icon={FileHeart}/><Stat label="Doctors with access" value={profile.data?.permissionsCount ?? 0} note="You control every connection" icon={Users}/><Stat label="Date of birth" value={user.dateOfBirth ? new Date(user.dateOfBirth).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : '—'} note={user.dateOfBirth ? dateLabel(user.dateOfBirth) : 'Add details to your profile'} icon={CalendarDays}/><Stat label="Emergency details" value={emergency ? 'Ready' : 'Add now'} note={emergency ? 'Available to your care team' : 'Help clinicians act with confidence'} icon={HeartPulse}/></div>
@@ -820,9 +856,9 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
       <Heading eyebrow="Patient account" title="Your profile" subtitle="Your CM ID identifies your profile and lets a doctor open your booklet."/>
       {profile.isLoading ? <div className="skeleton"/> : profile.error ? <ErrorState error={profile.error} retry={() => profile.refetch()}/> : <>
         <section className="panel" style={{marginBottom:17}}>
-          <div className="panel-head"><div><h2 className="panel-title">Your CM ID & booklet access code</h2><p className="panel-caption">Share this short code with a doctor to grant immediate booklet access.</p></div><span className="tag warning">Private</span></div>
+          <div className="panel-head"><div><h2 className="panel-title">Your CM ID & booklet access code</h2><p className="panel-caption">{approvalMode === 'ASK' ? 'Share this short code with a doctor. You approve each request before they see your booklet.' : 'Share this short code with a doctor to grant immediate booklet access.'}</p></div><span className="tag warning">Private</span></div>
           <div className="panel-body">
-            <div className="callout"><div className="callout-head"><KeyRound size={16}/> Patient CM ID</div><p style={{margin:'10px 0',overflowWrap:'anywhere'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-display-id">{profile.data?.patientDisplayId}</code></p><p className="field-note">Access is granted when a doctor enters this code. Revoking a doctor's access also changes your CM ID so that doctor cannot use the old code to reconnect. Share your current CM ID with any new doctor.</p></div>
+            <div className="callout"><div className="callout-head"><KeyRound size={16}/> Patient CM ID</div><p style={{margin:'10px 0',overflowWrap:'anywhere'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-display-id">{profile.data?.patientDisplayId}</code></p><p className="field-note">{approvalMode === 'ASK' ? 'When a doctor enters this code, you approve or reject the request in Access control.' : 'Access is granted when a doctor enters this code.'} Revoking a doctor's access also changes your CM ID so that doctor cannot use the old code to reconnect. Share your current CM ID with any new doctor.</p></div>
           </div>
         </section>
         <section className="panel">
@@ -851,6 +887,23 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     {tab === 'Access control' && <><Heading eyebrow="Your permissions" title="Who can see your records?" subtitle="Grant access to a clinician, choose how long it lasts, or remove access at any time." action={<button className="btn" onClick={()=>setGrantOpen(true)} data-testid="button-grant-access"><Plus size={15}/> Grant access</button>}/>
       <div className="security-banner"><div><h3>You’re in control of your care circle.</h3><p>Clinicians can view your information only while access is active. You can revoke it whenever you need.</p></div><ShieldCheck size={34} className="security-symbol"/></div>
       {requests.isLoading || permissions.isLoading ? <div className="skeleton"/> : requests.error ? <ErrorState error={requests.error} retry={()=>requests.refetch()}/> : permissions.error ? <ErrorState error={permissions.error} retry={()=>permissions.refetch()}/> : <>
+        <section className="panel" style={{marginBottom:17}} aria-labelledby="access-mode-title">
+          <div className="panel-head"><div><h2 className="panel-title" id="access-mode-title">When a doctor enters your CM ID</h2><p className="panel-caption">Choose how doctors get access to your booklet. You can change this at any time.</p></div></div>
+          <div className="panel-body">
+            {accessSettings.error ? <ErrorState error={accessSettings.error} retry={()=>accessSettings.refetch()}/> : <fieldset className="choice-group" disabled={accessSettings.isLoading || updateAccessSettings.isPending}>
+              <legend className="sr-only">Access approval</legend>
+              <label className={`choice-card ${approvalMode === 'AUTOMATIC' ? 'selected' : ''}`}>
+                <input type="radio" name="access-approval-mode" id="access-mode-automatic" value="AUTOMATIC" checked={approvalMode === 'AUTOMATIC'} onChange={()=>changeApprovalMode('AUTOMATIC')} data-testid="radio-access-automatic"/>
+                <span><strong>Give access automatically</strong><small>The doctor opens your booklet straight away and keeps access until you revoke it.</small></span>
+              </label>
+              <label className={`choice-card ${approvalMode === 'ASK' ? 'selected' : ''}`}>
+                <input type="radio" name="access-approval-mode" id="access-mode-ask" value="ASK" checked={approvalMode === 'ASK'} onChange={()=>changeApprovalMode('ASK')} data-testid="radio-access-ask"/>
+                <span><strong>Ask me first</strong><small>You get a notification and approve or reject each doctor. Requests expire after 7 days.</small></span>
+              </label>
+            </fieldset>}
+          </div>
+        </section>
+        {(approvalMode === 'ASK' || Boolean(accessRequests.data?.length)) && <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Requests waiting for you</h2><p className="panel-caption">These doctors entered your CM ID and asked to open your booklet</p></div><span className="tag warning">{accessRequests.data?.length ?? 0} waiting</span></div><div className="panel-body">{accessRequests.isLoading ? <div className="skeleton"/> : accessRequests.error ? <ErrorState error={accessRequests.error} retry={()=>accessRequests.refetch()}/> : accessRequests.data?.length ? accessRequests.data.map((request)=><div className="data-row" key={request.id}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}{request.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.hospitalName || 'Hospital not provided'} · {new Date(request.requestedAt).toLocaleString()} · expires {dateLabel(request.expiresAt)}</small></span></div><div className="request-actions"><button className="btn small ghost" disabled={rejectRequest.isPending} onClick={()=>rejectAccessRequest(request)} data-testid={`button-reject-request-${request.id}`}><X size={13}/> Reject</button><button className="btn small" onClick={()=>{setApprovalDuration('until-revoked');setApprovingRequest(request);}} data-testid={`button-approve-request-${request.id}`}><Check size={13}/> Approve</button></div></div>) : <EmptyState icon={KeyRound} title="No requests waiting" children="When a doctor enters your CM ID, their request appears here for you to approve or reject."/>}</div></section>}
         <section className="panel" style={{marginBottom:17}}><div className="panel-head"><div><h2 className="panel-title">Clinician requests</h2><p className="panel-caption">A doctor searched for your care profile</p></div><span className="tag warning">{requests.data?.length ?? 0} pending</span></div><div className="panel-body">{requests.data?.length ? requests.data.map((request)=><div className="data-row" key={`${request.doctorId}-${request.searchedAt}`}><div className="person-cell"><div className="avatar">{initials(request.doctorName)}</div><span>{request.doctorName}{request.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{request.doctorEmail} · {dateLabel(request.searchedAt)}</small></span></div><button className="btn small secondary" onClick={()=>{setGrantEmail(request.doctorEmail);setGrantOpen(true);}} data-testid={`button-review-request-${request.doctorId}`}>Review access</button></div>) : <EmptyState icon={KeyRound} title="No requests to review" children="When a doctor asks to see your profile, you can decide whether to grant access here."/>}</div></section>
         <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Your active access</h2><p className="panel-caption">Only approved clinicians can see your records</p></div></div><div className="panel-body">{permissions.data?.filter(p=>p.granted).length ? permissions.data.filter(p=>p.granted).map((permission)=><div className="data-row" key={permission.id}><div className="person-cell"><div className="avatar">{initials(permission.doctorName)}</div><span>{permission.doctorName}{permission.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> Certified</span>}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{permission.doctorEmail}</small></span></div><span className="tag">{permission.expiresAt ? `Until ${dateLabel(permission.expiresAt)}` : 'No expiration'}</span><button className="btn small ghost" disabled={revoke.isPending} onClick={()=>revokeDoctor(permission.doctorId)} data-testid={`button-revoke-${permission.doctorId}`}><Trash2 size={13}/> Revoke</button></div>) : <EmptyState icon={Shield} title="No clinicians have access" children="Grant access by entering a doctor's registered email address."/>}</div></section>
       </>}
@@ -863,6 +916,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
           </div>) : <EmptyState icon={Shield} title="No doctor access recorded yet" children="When a clinician opens your shared information, the hospital and time will appear here."/>}
         </div>
       </section>
+      {approvingRequest && <Modal title="Approve booklet access" onClose={()=>setApprovingRequest(null)}><p className="subhead" style={{margin:'0 0 18px'}}>{approvingRequest.doctorName}{approvingRequest.hospitalName ? ` at ${approvingRequest.hospitalName}` : ''} will be able to see your medical records, emergency information and attached documents, and add new records.</p><form onSubmit={submitApproval}><div className="field"><label htmlFor="approval-duration">How long should access last?</label><select id="approval-duration" value={approvalDuration} onChange={e=>setApprovalDuration(e.target.value)} data-testid="select-approval-duration"><option value="until-revoked">Until I revoke it</option><option value="1">1 day</option><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select><p className="field-note" style={{marginTop:6}}>You can revoke access at any time from this page.</p></div><div className="form-actions"><button className="btn ghost" type="button" onClick={()=>setApprovingRequest(null)}>Cancel</button><button className="btn" type="submit" disabled={approveRequest.isPending} data-testid="button-confirm-approval">{approveRequest.isPending?'Saving…':'Approve access'}</button></div></form></Modal>}
       {grantOpen && <Modal title="Grant a doctor access" onClose={()=>setGrantOpen(false)}><p className="subhead" style={{margin:'0 0 18px'}}>Choose a clinician and duration. They must have a verified Mon carnet doctor account.</p><form onSubmit={submitGrant}><div className="field"><label htmlFor="grant-email">Doctor’s email</label><input id="grant-email" type="email" required value={grantEmail} onChange={e=>setGrantEmail(e.target.value)} data-testid="input-doctor-email" placeholder="doctor@clinic.org"/></div><div className="field" style={{marginTop:14}}><label htmlFor="grant-duration">Access duration</label><select id="grant-duration" value={grantDays} onChange={e=>setGrantDays(e.target.value)} data-testid="select-duration"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="180">180 days</option><option value="365">1 year</option></select></div><div className="form-actions"><button className="btn ghost" type="button" onClick={()=>setGrantOpen(false)}>Cancel</button><button className="btn" type="submit" disabled={grant.isPending} data-testid="button-confirm-grant">{grant.isPending?'Saving…':'Grant access'}</button></div></form></Modal>}
     </>}
     {tab === 'Emergency info' && <><Heading eyebrow="Critical care details" title="Emergency information" subtitle="Keep important details current. Approved doctors can use this information to act quickly." action={<button className="btn secondary" onClick={()=>window.print()} data-testid="button-print-emergency"><Printer size={15}/> Print summary</button>}/><div className="security-banner"><div><h3>Made for the moments that matter.</h3><p>This concise summary supports safer urgent care when you cannot speak for yourself.</p></div><HeartPulse size={34} className="security-symbol"/></div>
@@ -1034,6 +1088,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const codeSearchParams = useMemo(() => ({ query: codeSearch.trim().length >= 2 ? codeSearch.trim() : '__' }), [codeSearch]);
   const searchResults = useSearchPatients(params, { query: { enabled: search.trim().length >= 2, queryKey: getSearchPatientsQueryKey(params), retry: false } });
   const grantAccessById = useGrantPatientAccessById();
+  const [accessRequestNotice, setAccessRequestNotice] = useState('');
   const diseaseCodeSearch = useSearchDiseaseCodes(codeSearchParams, { query: { enabled: activeDoctor && entryOpen && activeCodeRow !== null && codeSearch.trim().length >= 2, queryKey: getSearchDiseaseCodesQueryKey(codeSearchParams), retry: false } });
   const patientRecords = useGetDoctorPatientRecords(patientId ?? 0, { query: { enabled: patientId !== null, queryKey: getGetDoctorPatientRecordsQueryKey(patientId ?? 0), retry: false } });
   const addRecord = useAddDoctorPatientRecord();
@@ -1231,8 +1286,15 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   };
   const submitPatientAccessCode = (event: FormEvent) => {
     event.preventDefault();
+    setAccessRequestNotice('');
     grantAccessById.mutate({ data: { patientDisplayId: patientAccessCode.trim().toUpperCase() } }, { onSuccess: (patient) => {
       setPatientAccessCode('');
+      if (patient.status === 'PENDING') {
+        setPatientId(null);
+        setPatientDisplayId(null);
+        setAccessRequestNotice(`Request sent to ${patient.patientName} (${patient.patientDisplayId}). This patient approves each doctor first. You will get a notification when they decide; then enter the CM ID again to open the booklet.`);
+        return;
+      }
       setPatientId(patient.patientId);
       setPatientDisplayId(patient.patientDisplayId);
       setEntryOpen(false);
@@ -1377,11 +1439,12 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     {viewingRecord && canAccessSelectedPatient && <RecordDetailsModal record={viewingRecord} records={patientRecords.data ?? [viewingRecord]} onClose={()=>setViewingRecord(null)} onOpenRecord={setViewingRecord} onCreateFollowUp={startFollowUp} patientDisplayId={patientDisplayId ?? undefined}/>}
     {tab === 'Record entry' && <>
       <Heading eyebrow="Clinical notes" title="Record entry" subtitle="Enter the patient's CM ID to open their booklet and add a new record."/>
-      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Open patient record</h2><p className="panel-caption">Entering the patient's CM ID grants immediate access, which they can revoke at any time.</p></div></div><div className="panel-body">
+      <section className="panel"><div className="panel-head"><div><h2 className="panel-title">Open patient record</h2><p className="panel-caption">Entering a patient's CM ID opens their booklet straight away, unless the patient approves each doctor first. Patients can revoke access at any time.</p></div></div><div className="panel-body">
         <form className="form-grid" onSubmit={submitPatientAccessCode}>
           <div className="field"><label htmlFor="input-entry-patient-id">Patient CM ID</label><input id="input-entry-patient-id" type="text" minLength={8} maxLength={8} required value={patientAccessCode} onChange={(event)=>{setPatientAccessCode(event.target.value.toUpperCase());setPatientId(null);setPatientDisplayId(null);setViewingRecord(null);}} placeholder="CM123ABC" data-testid="input-entry-patient-id"/></div>
           <div className="field" style={{alignSelf:'end'}}><button className="btn" type="submit" disabled={grantAccessById.isPending} data-testid="button-open-patient-record"><Search size={14}/> {grantAccessById.isPending ? 'Opening…' : 'Open history'}</button></div>
         </form>
+        {accessRequestNotice && <div className="callout" role="status" style={{marginTop:16}} data-testid="text-access-request-pending"><div className="callout-head"><Clock3 size={16}/> Waiting for the patient</div><p style={{marginBottom:0}}>{accessRequestNotice}</p></div>}
         {patientId !== null && <div style={{marginTop:20}}>
           <div className="panel-head" style={{padding:'12px 0'}}><div><h2 className="panel-title">{patientDisplayId ?? 'Patient'} · Medical history</h2><p className="panel-caption">Read-only history. Add new information as a separate record or linked follow-up.</p></div>
             {canAccessSelectedPatient && <button className="btn small" onClick={()=>{setFollowUpSource(null);setEntryOpen(true);}} data-testid="button-add-record"><Plus size={14}/> New record</button>}

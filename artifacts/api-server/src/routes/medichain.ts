@@ -19,6 +19,14 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  ApprovePatientAccessRequestBody,
+  ApprovePatientAccessRequestParams,
+  ApprovePatientAccessRequestResponse,
+  GetPatientAccessRequestsResponse,
+  GetPatientAccessSettingsResponse,
+  RejectPatientAccessRequestParams,
+  UpdatePatientAccessSettingsBody,
+  UpdatePatientAccessSettingsResponse,
   AddDoctorPatientRecordBody,
   AddDoctorPatientRecordParams,
   AddDoctorPatientRecordResponse,
@@ -101,6 +109,7 @@ import {
   accessPermissionsTable,
   patientSearchesTable,
   notificationsTable,
+  accessRequestsTable,
   passwordResetRequestsTable,
 } from "@workspace/db";
 import { createAccessToken, hashPassword, publicUser, requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
@@ -396,6 +405,10 @@ function emergencyResponse(
     updatedAt: info.updatedAt.toISOString(),
   };
 }
+
+const ACCESS_REQUEST_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const accessRequestCutoff = () => new Date(Date.now() - ACCESS_REQUEST_LIFETIME_MS);
 
 async function getActivePermission(patientId: number, doctorId: number) {
   const [permission] = await db
@@ -863,6 +876,161 @@ router.get("/patient/pending-requests", requireAuth("PATIENT"), async (req, res)
   res.json(GetPatientPendingRequestsResponse.parse(response));
 });
 
+router.get("/patient/access-settings", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const [user] = await db
+    .select({ accessApprovalMode: usersTable.accessApprovalMode })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.currentUser!.id))
+    .limit(1);
+  res.json(GetPatientAccessSettingsResponse.parse({ accessApprovalMode: user?.accessApprovalMode ?? "AUTOMATIC" }));
+});
+
+router.put("/patient/access-settings", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const parsed = UpdatePatientAccessSettingsBody.safeParse(req.body);
+  if (!parsed.success) {
+    invalidBody(res, "Choose automatic access or ask me first.");
+    return;
+  }
+  const patientId = req.currentUser!.id;
+  await db.transaction(async (tx) => {
+    await tx
+      .update(usersTable)
+      .set({ accessApprovalMode: parsed.data.accessApprovalMode })
+      .where(eq(usersTable.id, patientId));
+    await tx.insert(auditEventsTable).values({
+      actorUserId: patientId,
+      patientId,
+      action: `ACCESS_APPROVAL_MODE_${parsed.data.accessApprovalMode}`,
+      entityType: "access_settings",
+    });
+  });
+  res.json(UpdatePatientAccessSettingsResponse.parse({ accessApprovalMode: parsed.data.accessApprovalMode }));
+});
+
+router.get("/patient/access-requests", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const rows = await db
+    .select({ request: accessRequestsTable, doctor: usersTable })
+    .from(accessRequestsTable)
+    .innerJoin(usersTable, eq(accessRequestsTable.doctorId, usersTable.id))
+    .where(and(
+      eq(accessRequestsTable.patientId, req.currentUser!.id),
+      eq(accessRequestsTable.status, "PENDING"),
+      gte(accessRequestsTable.requestedAt, accessRequestCutoff()),
+      eq(usersTable.isActive, true),
+    ))
+    .orderBy(desc(accessRequestsTable.requestedAt));
+  res.json(GetPatientAccessRequestsResponse.parse(rows.map(({ request, doctor }) => ({
+    id: request.id,
+    doctorId: doctor.id,
+    doctorName: doctor.name,
+    doctorEmail: doctor.email,
+    doctorVerified: doctor.doctorVerified,
+    hospitalName: request.hospitalName,
+    requestedAt: request.requestedAt.toISOString(),
+    expiresAt: new Date(request.requestedAt.getTime() + ACCESS_REQUEST_LIFETIME_MS).toISOString(),
+  }))));
+});
+
+async function resolvePendingAccessRequest(
+  patientId: number,
+  requestId: number,
+  status: "APPROVED" | "REJECTED",
+  onResolved: (
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    request: typeof accessRequestsTable.$inferSelect,
+  ) => Promise<void>,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [request] = await tx
+      .update(accessRequestsTable)
+      .set({ status, resolvedAt: new Date() })
+      .where(and(
+        eq(accessRequestsTable.id, requestId),
+        eq(accessRequestsTable.patientId, patientId),
+        eq(accessRequestsTable.status, "PENDING"),
+        gte(accessRequestsTable.requestedAt, accessRequestCutoff()),
+      ))
+      .returning();
+    if (!request) return false;
+    await onResolved(tx, request);
+    return true;
+  });
+}
+
+router.post("/patient/access-requests/:requestId/approve", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const params = ApprovePatientAccessRequestParams.safeParse(req.params);
+  const body = ApprovePatientAccessRequestBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    invalidBody(res, "Choose how long the doctor can access your booklet.");
+    return;
+  }
+  const patient = req.currentUser!;
+  let permission: typeof accessPermissionsTable.$inferSelect | undefined;
+  const resolved = await resolvePendingAccessRequest(patient.id, params.data.requestId, "APPROVED", async (tx, request) => {
+    const grantedAt = new Date();
+    const expiresAt = body.data.durationDays === null
+      ? null
+      : new Date(grantedAt.getTime() + body.data.durationDays * 24 * 60 * 60 * 1000);
+    [permission] = await tx
+      .insert(accessPermissionsTable)
+      .values({ patientId: patient.id, doctorId: request.doctorId, granted: true, grantedAt, expiresAt })
+      .onConflictDoUpdate({
+        target: [accessPermissionsTable.patientId, accessPermissionsTable.doctorId],
+        set: { granted: true, grantedAt, expiresAt },
+      })
+      .returning();
+    await tx.insert(auditEventsTable).values({
+      actorUserId: patient.id,
+      patientId: patient.id,
+      action: "PATIENT_ACCESS_REQUEST_APPROVED",
+      entityType: "access_request",
+      entityId: request.id,
+    });
+    await tx.insert(notificationsTable).values({
+      batchId: randomUUID(),
+      senderId: patient.id,
+      recipientId: request.doctorId,
+      title: "Booklet access approved",
+      body: `${patient.name} approved your request. Enter their CM ID again in Record entry to open the booklet.${expiresAt ? ` Access ends on ${expiresAt.toISOString().slice(0, 10)}.` : ""}`,
+    });
+  });
+  if (!resolved || !permission) {
+    res.status(404).json({ error: "This request is no longer waiting for a decision." });
+    return;
+  }
+  res.json(ApprovePatientAccessRequestResponse.parse(await permissionResponse(permission)));
+});
+
+router.post("/patient/access-requests/:requestId/reject", requireAuth("PATIENT"), async (req, res): Promise<void> => {
+  const params = RejectPatientAccessRequestParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid request." });
+    return;
+  }
+  const patient = req.currentUser!;
+  const resolved = await resolvePendingAccessRequest(patient.id, params.data.requestId, "REJECTED", async (tx, request) => {
+    await tx.insert(auditEventsTable).values({
+      actorUserId: patient.id,
+      patientId: patient.id,
+      action: "PATIENT_ACCESS_REQUEST_REJECTED",
+      entityType: "access_request",
+      entityId: request.id,
+    });
+    await tx.insert(notificationsTable).values({
+      batchId: randomUUID(),
+      senderId: patient.id,
+      recipientId: request.doctorId,
+      title: "Booklet access declined",
+      body: `${patient.name} declined your request to open their booklet.`,
+    });
+  });
+  if (!resolved) {
+    res.status(404).json({ error: "This request is no longer waiting for a decision." });
+    return;
+  }
+  res.status(204).send();
+});
+
 router.get("/patient/access-history", requireAuth("PATIENT"), async (req, res): Promise<void> => {
   const patientId = req.currentUser!.id;
   const rows = await db
@@ -1026,6 +1194,81 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
     return;
   }
   const patient = await ensurePatientIdentifiers(matchedPatient);
+  const doctor = req.currentUser!;
+  const accessResponse = (status: "GRANTED" | "PENDING") =>
+    GrantPatientAccessByIdResponse.parse({
+      status,
+      patientId: patient.id,
+      patientDisplayId: patient.patientDisplayId,
+      patientName: patient.name,
+    });
+
+  if (patient.accessApprovalMode === "ASK") {
+    if (await getActivePermission(patient.id, doctor.id)) {
+      res.json(accessResponse("GRANTED"));
+      return;
+    }
+    const [recentRejection] = await db
+      .select({ id: accessRequestsTable.id })
+      .from(accessRequestsTable)
+      .where(and(
+        eq(accessRequestsTable.patientId, patient.id),
+        eq(accessRequestsTable.doctorId, doctor.id),
+        eq(accessRequestsTable.status, "REJECTED"),
+        gte(accessRequestsTable.resolvedAt, new Date(Date.now() - REJECTION_COOLDOWN_MS)),
+      ))
+      .limit(1);
+    if (recentRejection) {
+      res.status(429).json({
+        error: "This patient declined your request recently. Speak with the patient before asking again tomorrow.",
+      });
+      return;
+    }
+    await db.transaction(async (tx) => {
+      const now = new Date();
+      await tx
+        .update(accessRequestsTable)
+        .set({ status: "EXPIRED", resolvedAt: now })
+        .where(and(
+          eq(accessRequestsTable.patientId, patient.id),
+          eq(accessRequestsTable.doctorId, doctor.id),
+          eq(accessRequestsTable.status, "PENDING"),
+          lt(accessRequestsTable.requestedAt, accessRequestCutoff()),
+        ));
+      const [existing] = await tx
+        .update(accessRequestsTable)
+        .set({ requestedAt: now, hospitalName: doctor.hospitalName })
+        .where(and(
+          eq(accessRequestsTable.patientId, patient.id),
+          eq(accessRequestsTable.doctorId, doctor.id),
+          eq(accessRequestsTable.status, "PENDING"),
+        ))
+        .returning({ id: accessRequestsTable.id });
+      const request = existing ?? (await tx
+        .insert(accessRequestsTable)
+        .values({ patientId: patient.id, doctorId: doctor.id, hospitalName: doctor.hospitalName, requestedAt: now })
+        .returning({ id: accessRequestsTable.id }))[0];
+      if (!existing) {
+        await tx.insert(notificationsTable).values({
+          batchId: randomUUID(),
+          senderId: doctor.id,
+          recipientId: patient.id,
+          title: "A doctor asked to open your booklet",
+          body: `${doctor.name}${doctor.hospitalName ? ` (${doctor.hospitalName})` : ""} entered your CM ID and asked to see your medical records. Approve or reject the request in Access control. It expires after 7 days.`,
+        });
+      }
+      await tx.insert(auditEventsTable).values({
+        actorUserId: doctor.id,
+        patientId: patient.id,
+        action: "PATIENT_ACCESS_REQUESTED",
+        entityType: "access_request",
+        entityId: request?.id,
+        hospitalName: doctor.hospitalName,
+      });
+    });
+    res.json(accessResponse("PENDING"));
+    return;
+  }
 
   const grantedAt = new Date();
   await db.transaction(async (tx) => {
@@ -1057,13 +1300,7 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
     });
   });
 
-  res.json(
-    GrantPatientAccessByIdResponse.parse({
-      patientId: patient.id,
-      patientDisplayId: patient.patientDisplayId,
-      patientName: patient.name,
-    }),
-  );
+  res.json(accessResponse("GRANTED"));
 });
 
 router.get(

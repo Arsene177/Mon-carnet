@@ -340,3 +340,15 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
   .tour-card { padding:16px; }
   .tour-actions { align-items:flex-end; }
 }
+/* Patient access approval setting */
+.choice-group { border:0; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+.choice-group:disabled { opacity:.7; }
+.choice-card { display:flex; align-items:flex-start; gap:11px; padding:15px; border:1px solid #e3e0d7; border-radius:13px; background:#fff; cursor:pointer; }
+.choice-card:hover { border-color:#b9d3c8; }
+.choice-card.selected { border-color:#467267; background:#f2f8f4; }
+.choice-card:focus-within { outline:2px solid #467267; outline-offset:2px; }
+.choice-card input { margin-top:3px; accent-color:#467267; }
+.choice-card strong { display:block; color:#24403b; font-size:13px; }
+.choice-card small { display:block; color:#788683; font-size:11px; line-height:1.5; margin-top:4px; }
+.request-actions { display:flex; gap:8px; flex-shrink:0; }
+@media (max-width:560px) { .data-row:has(.request-actions) { flex-direction:column; align-items:flex-start; } }

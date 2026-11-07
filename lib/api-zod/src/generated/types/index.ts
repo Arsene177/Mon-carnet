@@ -6,7 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './accessApprovalMode';
 export * from './accessPermission';
+export * from './accessRequest';
+export * from './accessRequestApprovalInput';
+export * from './accessSettings';
 export * from './accountStatus';
 export * from './adminAnalytics';
 export * from './adminAnalyticsClinicActivityItem';
@@ -70,6 +74,7 @@ export * from './passwordResetRequestInput';
 export * from './patientAccessCodeInput';
 export * from './patientAccessEvent';
 export * from './patientBookletAccess';
+export * from './patientBookletAccessStatus';
 export * from './patientProfile';
 export * from './patientSearchRequest';
 export * from './patientSearchResult';

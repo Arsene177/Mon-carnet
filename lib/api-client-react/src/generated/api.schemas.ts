@@ -518,6 +518,43 @@ export interface PermissionGrantInput {
 }
 
 /**
+ * AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient's approval.
+ */
+export type AccessApprovalMode = typeof AccessApprovalMode[keyof typeof AccessApprovalMode];
+
+
+export const AccessApprovalMode = {
+  AUTOMATIC: 'AUTOMATIC',
+  ASK: 'ASK',
+} as const;
+
+export interface AccessSettings {
+  accessApprovalMode: AccessApprovalMode;
+}
+
+export interface AccessRequest {
+  id: number;
+  doctorId: number;
+  doctorName: string;
+  doctorEmail: string;
+  doctorVerified: boolean;
+  /** @nullable */
+  hospitalName: string | null;
+  requestedAt: string;
+  expiresAt: string;
+}
+
+export interface AccessRequestApprovalInput {
+  /**
+     * Number of days the access lasts, or null to keep access until the patient revokes it.
+     * @minimum 1
+     * @maximum 365
+     * @nullable
+     */
+  durationDays: number | null;
+}
+
+/**
  * The patient's CM ID, which also grants booklet access when entered by a doctor.
  */
 export interface PatientAccessCodeInput {
@@ -530,7 +567,20 @@ export interface PatientAccessCodeInput {
   patientDisplayId: string;
 }
 
+/**
+ * PENDING means the patient must approve the request before the booklet opens.
+ */
+export type PatientBookletAccessStatus = typeof PatientBookletAccessStatus[keyof typeof PatientBookletAccessStatus];
+
+
+export const PatientBookletAccessStatus = {
+  GRANTED: 'GRANTED',
+  PENDING: 'PENDING',
+} as const;
+
 export interface PatientBookletAccess {
+  /** PENDING means the patient must approve the request before the booklet opens. */
+  status: PatientBookletAccessStatus;
   patientId: number;
   /**
      * @minLength 8

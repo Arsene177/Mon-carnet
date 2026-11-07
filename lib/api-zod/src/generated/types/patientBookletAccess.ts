@@ -5,8 +5,11 @@
  * Medichain secure medical records API
  * OpenAPI spec version: 0.1.0
  */
+import type { PatientBookletAccessStatus } from './patientBookletAccessStatus';
 
 export interface PatientBookletAccess {
+  /** PENDING means the patient must approve the request before the booklet opens. */
+  status: PatientBookletAccessStatus;
   patientId: number;
   /**
      * @minLength 8

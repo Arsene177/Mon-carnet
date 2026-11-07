@@ -40,6 +40,9 @@ export const usersTable = pgTable(
     patientAccessId: text("patient_access_id"),
     dateOfBirth: date("date_of_birth", { mode: "string" }),
     contactInfo: text("contact_info"),
+    // Patients only. AUTOMATIC: a doctor entering the CM ID gets access until revoked.
+    // ASK: the doctor's request waits until the patient approves or rejects it.
+    accessApprovalMode: text("access_approval_mode").notNull().default("AUTOMATIC"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -198,6 +201,32 @@ export const accessPermissionsTable = pgTable(
       table.doctorId,
     ),
     index("medichain_permission_expiry_index").on(table.expiresAt),
+  ],
+);
+
+export const accessRequestsTable = pgTable(
+  "medichain_access_requests",
+  {
+    id: serial("id").primaryKey(),
+    patientId: integer("patient_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    doctorId: integer("doctor_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    hospitalName: text("hospital_name"),
+    // PENDING, APPROVED or REJECTED
+    status: text("status").notNull().default("PENDING"),
+    requestedAt: timestamp("requested_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("medichain_access_request_pending_unique")
+      .on(table.patientId, table.doctorId)
+      .where(sql`${table.status} = 'PENDING'`),
+    index("medichain_access_request_patient_index").on(table.patientId, table.requestedAt),
   ],
 );
 

@@ -21,6 +21,9 @@ import type {
 
 import type {
   AccessPermission,
+  AccessRequest,
+  AccessRequestApprovalInput,
+  AccessSettings,
   AdminAnalytics,
   AdminDirectoryEntry,
   AdminEpidemicThreshold,
@@ -1310,6 +1313,381 @@ export function useGetPatientPendingRequests<TData = Awaited<ReturnType<typeof g
 
 
 
+
+export const getGetPatientAccessSettingsUrl = () => {
+
+
+
+
+  return `/api/patient/access-settings`
+}
+
+export const getPatientAccessSettings = async ( options?: Parameters<typeof customFetch>[1]): Promise<AccessSettings> => {
+
+  return customFetch<AccessSettings>(getGetPatientAccessSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPatientAccessSettingsQueryKey = () => {
+    return [
+    `/api/patient/access-settings`
+    ] as const;
+    }
+
+
+export const getGetPatientAccessSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getPatientAccessSettings>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPatientAccessSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPatientAccessSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPatientAccessSettings>>> = ({ signal }) => getPatientAccessSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPatientAccessSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPatientAccessSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getPatientAccessSettings>>>
+export type GetPatientAccessSettingsQueryError = ErrorType<unknown>
+
+
+
+export function useGetPatientAccessSettings<TData = Awaited<ReturnType<typeof getPatientAccessSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPatientAccessSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPatientAccessSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdatePatientAccessSettingsUrl = () => {
+
+
+
+
+  return `/api/patient/access-settings`
+}
+
+export const updatePatientAccessSettings = async (accessSettings: AccessSettings, options?: Parameters<typeof customFetch>[1]): Promise<AccessSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AccessSettings>(getUpdatePatientAccessSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(accessSettings)
+  }
+);}
+
+
+
+
+
+export const getUpdatePatientAccessSettingsMutationKey = () => ['updatePatientAccessSettings'] as const;
+
+export const getUpdatePatientAccessSettingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePatientAccessSettings>>, TError,UpdatePatientAccessSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePatientAccessSettings>>, TError,UpdatePatientAccessSettingsMutationVariables, TContext> => {
+
+const mutationKey = getUpdatePatientAccessSettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePatientAccessSettings>>, UpdatePatientAccessSettingsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updatePatientAccessSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePatientAccessSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updatePatientAccessSettings>>>
+    export type UpdatePatientAccessSettingsMutationBody = BodyType<AccessSettings>
+    export type UpdatePatientAccessSettingsMutationError = ErrorType<unknown>
+    export type UpdatePatientAccessSettingsMutationVariables = {data: BodyType<AccessSettings>}
+
+    export const useUpdatePatientAccessSettings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePatientAccessSettings>>, TError,UpdatePatientAccessSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePatientAccessSettings>>,
+        TError,
+        UpdatePatientAccessSettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdatePatientAccessSettingsMutationOptions(options));
+    }
+
+export const getGetPatientAccessRequestsUrl = () => {
+
+
+
+
+  return `/api/patient/access-requests`
+}
+
+export const getPatientAccessRequests = async ( options?: Parameters<typeof customFetch>[1]): Promise<AccessRequest[]> => {
+
+  return customFetch<AccessRequest[]>(getGetPatientAccessRequestsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPatientAccessRequestsQueryKey = () => {
+    return [
+    `/api/patient/access-requests`
+    ] as const;
+    }
+
+
+export const getGetPatientAccessRequestsQueryOptions = <TData = Awaited<ReturnType<typeof getPatientAccessRequests>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPatientAccessRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPatientAccessRequestsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPatientAccessRequests>>> = ({ signal }) => getPatientAccessRequests({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPatientAccessRequests>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPatientAccessRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof getPatientAccessRequests>>>
+export type GetPatientAccessRequestsQueryError = ErrorType<unknown>
+
+
+
+export function useGetPatientAccessRequests<TData = Awaited<ReturnType<typeof getPatientAccessRequests>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPatientAccessRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPatientAccessRequestsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApprovePatientAccessRequestUrl = (requestId: number,) => {
+
+
+
+
+  return `/api/patient/access-requests/${requestId}/approve`
+}
+
+export const approvePatientAccessRequest = async (requestId: number,
+    accessRequestApprovalInput: AccessRequestApprovalInput, options?: Parameters<typeof customFetch>[1]): Promise<AccessPermission> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AccessPermission>(getApprovePatientAccessRequestUrl(requestId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(accessRequestApprovalInput)
+  }
+);}
+
+
+
+
+
+export const getApprovePatientAccessRequestMutationKey = () => ['approvePatientAccessRequest'] as const;
+
+export const getApprovePatientAccessRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approvePatientAccessRequest>>, TError,ApprovePatientAccessRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approvePatientAccessRequest>>, TError,ApprovePatientAccessRequestMutationVariables, TContext> => {
+
+const mutationKey = getApprovePatientAccessRequestMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approvePatientAccessRequest>>, ApprovePatientAccessRequestMutationVariables> = (props) => {
+          const {requestId,data} = props ?? {};
+
+          return  approvePatientAccessRequest(requestId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApprovePatientAccessRequestMutationResult = NonNullable<Awaited<ReturnType<typeof approvePatientAccessRequest>>>
+    export type ApprovePatientAccessRequestMutationBody = BodyType<AccessRequestApprovalInput>
+    export type ApprovePatientAccessRequestMutationError = ErrorType<void>
+    export type ApprovePatientAccessRequestMutationVariables = {requestId: number;data: BodyType<AccessRequestApprovalInput>}
+
+    export const useApprovePatientAccessRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approvePatientAccessRequest>>, TError,ApprovePatientAccessRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approvePatientAccessRequest>>,
+        TError,
+        ApprovePatientAccessRequestMutationVariables,
+        TContext
+      > => {
+      return useMutation(getApprovePatientAccessRequestMutationOptions(options));
+    }
+
+export const getRejectPatientAccessRequestUrl = (requestId: number,) => {
+
+
+
+
+  return `/api/patient/access-requests/${requestId}/reject`
+}
+
+export const rejectPatientAccessRequest = async (requestId: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getRejectPatientAccessRequestUrl(requestId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRejectPatientAccessRequestMutationKey = () => ['rejectPatientAccessRequest'] as const;
+
+export const getRejectPatientAccessRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectPatientAccessRequest>>, TError,RejectPatientAccessRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rejectPatientAccessRequest>>, TError,RejectPatientAccessRequestMutationVariables, TContext> => {
+
+const mutationKey = getRejectPatientAccessRequestMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectPatientAccessRequest>>, RejectPatientAccessRequestMutationVariables> = (props) => {
+          const {requestId} = props ?? {};
+
+          return  rejectPatientAccessRequest(requestId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RejectPatientAccessRequestMutationResult = NonNullable<Awaited<ReturnType<typeof rejectPatientAccessRequest>>>
+
+    export type RejectPatientAccessRequestMutationError = ErrorType<void>
+    export type RejectPatientAccessRequestMutationVariables = {requestId: number}
+
+    export const useRejectPatientAccessRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectPatientAccessRequest>>, TError,RejectPatientAccessRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rejectPatientAccessRequest>>,
+        TError,
+        RejectPatientAccessRequestMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRejectPatientAccessRequestMutationOptions(options));
+    }
 
 export const getGetPatientAccessHistoryUrl = () => {
 

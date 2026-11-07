@@ -256,6 +256,86 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/PatientSearchRequest"
+  /patient/access-settings:
+    get:
+      operationId: getPatientAccessSettings
+      tags: [patient]
+      responses:
+        "200":
+          description: How doctors get access when they enter the patient's CM ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessSettings"
+    put:
+      operationId: updatePatientAccessSettings
+      tags: [patient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessSettings"
+      responses:
+        "200":
+          description: Access settings saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessSettings"
+  /patient/access-requests:
+    get:
+      operationId: getPatientAccessRequests
+      tags: [patient]
+      responses:
+        "200":
+          description: Doctor access requests waiting for the patient's decision
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccessRequest"
+  /patient/access-requests/{requestId}/approve:
+    post:
+      operationId: approvePatientAccessRequest
+      tags: [patient]
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessRequestApprovalInput"
+      responses:
+        "200":
+          description: Request approved and access granted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessPermission"
+        "404":
+          description: Request not found or no longer pending
+  /patient/access-requests/{requestId}/reject:
+    post:
+      operationId: rejectPatientAccessRequest
+      tags: [patient]
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Request rejected
+        "404":
+          description: Request not found or no longer pending
   /patient/access-history:
     get:
       operationId: getPatientAccessHistory
@@ -328,7 +408,7 @@ paths:
               $ref: "#/components/schemas/PatientAccessCodeInput"
       responses:
         "200":
-          description: Patient booklet access granted using the patient's CM ID
+          description: Access granted, or a request sent to the patient when they approve each doctor
           content:
             application/json:
               schema:
@@ -336,7 +416,7 @@ paths:
         "404":
           description: Patient CM ID not found
         "429":
-          description: Too many incorrect CM IDs
+          description: Too many incorrect CM IDs, or the patient recently declined this doctor
   /doctor/patient/{patientId}/attachments/upload-url:
     post:
       operationId: requestPatientAttachmentUpload
@@ -1152,6 +1232,36 @@ components:
       properties:
         doctorEmail: { type: string, format: email }
         durationDays: { type: integer, minimum: 1, maximum: 365 }
+    AccessApprovalMode:
+      type: string
+      enum: [AUTOMATIC, ASK]
+      description: AUTOMATIC grants access until revoked when a doctor enters the CM ID; ASK waits for the patient's approval.
+    AccessSettings:
+      type: object
+      required: [accessApprovalMode]
+      properties:
+        accessApprovalMode: { $ref: "#/components/schemas/AccessApprovalMode" }
+    AccessRequest:
+      type: object
+      required: [id, doctorId, doctorName, doctorEmail, doctorVerified, hospitalName, requestedAt, expiresAt]
+      properties:
+        id: { type: integer }
+        doctorId: { type: integer }
+        doctorName: { type: string }
+        doctorEmail: { type: string, format: email }
+        doctorVerified: { type: boolean }
+        hospitalName: { type: ["string", "null"] }
+        requestedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    AccessRequestApprovalInput:
+      type: object
+      required: [durationDays]
+      properties:
+        durationDays:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 365
+          description: Number of days the access lasts, or null to keep access until the patient revokes it.
     PatientAccessCodeInput:
       type: object
       description: The patient's CM ID, which also grants booklet access when entered by a doctor.
@@ -1165,8 +1275,12 @@ components:
           description: The patient's CM ID and booklet access code.
     PatientBookletAccess:
       type: object
-      required: [patientId, patientDisplayId, patientName]
+      required: [status, patientId, patientDisplayId, patientName]
       properties:
+        status:
+          type: string
+          enum: [GRANTED, PENDING]
+          description: PENDING means the patient must approve the request before the booklet opens.
         patientId: { type: integer }
         patientDisplayId: { type: string, minLength: 8, maxLength: 8, pattern: "^CM[A-Z0-9]{6}$" }
         patientName: { type: string }
