@@ -19,6 +19,7 @@ async function buildAll() {
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/seed.ts"),
       path.resolve(artifactDir, "src/reset-users.ts"),
+      path.resolve(artifactDir, "src/backup.ts"),
     ],
     platform: "node",
     bundle: true,

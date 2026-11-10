@@ -53,5 +53,8 @@ Thumbs.db
 *.dump
 *.sql.gz
 *.backup
+*.mcbk
+/backups/
+artifacts/api-server/backups/
 .env.*
 !.env.example

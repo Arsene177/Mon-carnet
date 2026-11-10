@@ -9,6 +9,10 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "seed": "pnpm run build && node --enable-source-maps ./dist/seed.mjs",
     "reset-users": "pnpm run build && node --enable-source-maps ./dist/reset-users.mjs",
+    "backup": "pnpm run build && node --enable-source-maps ./dist/backup.mjs backup",
+    "backup:verify": "pnpm run build && node --enable-source-maps ./dist/backup.mjs verify",
+    "backup:restore": "pnpm run build && node --enable-source-maps ./dist/backup.mjs restore",
+    "backup:download": "pnpm run build && node --enable-source-maps ./dist/backup.mjs download",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm run build && node --test --test-concurrency=1 tests/*.test.mjs"
   },
@@ -29,6 +33,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "catalog:",
+    "@types/pg": "8.23.1",
     "esbuild": "0.28.2",
     "esbuild-plugin-pino": "^2.3.3",
     "pg": "8.23.0",
