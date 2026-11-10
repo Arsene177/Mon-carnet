@@ -875,6 +875,19 @@ paths:
                 $ref: "#/components/schemas/User"
         "400":
           description: Invalid account status change
+  /admin/security-events:
+    get:
+      operationId: getAdminSecurityEvents
+      tags: [admin]
+      responses:
+        "200":
+          description: The 200 most recent security events (kept 12 months)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SecurityEvent"
   /admin/users/{userId}/mfa/reset:
     post:
       operationId: resetAdminUserMfa
@@ -1192,6 +1205,18 @@ components:
         contactInfo: { type: ["string", "null"] }
         isActive: { type: boolean }
         createdAt: { type: string, format: date-time }
+    SecurityEvent:
+      type: object
+      required: [id, type, severity, createdAt, ipAddress, details]
+      properties:
+        id: { type: integer }
+        type: { type: string }
+        severity: { type: string, enum: [info, warning, critical] }
+        createdAt: { type: string, format: date-time }
+        ipAddress: { type: ["string", "null"] }
+        details:
+          type: object
+          additionalProperties: true
     SessionToken:
       type: object
       required: [token]

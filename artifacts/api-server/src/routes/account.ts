@@ -33,6 +33,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
 import { languageOf, notificationMessages } from "../lib/notification-messages";
+import { recordSecurityEvent } from "../lib/security-events";
 import { createSignedObjectUrl, emergencyResponse, invalidBody, isUniqueViolation, recordsResponse } from "./medichain";
 
 const router: IRouter = Router();
@@ -397,6 +398,19 @@ router.post("/admin/deletion-requests/:requestId/resolve", requireAuth("ADMIN"),
   if (!resolved) {
     res.status(404).json({ error: "This request is no longer waiting for a decision." });
     return;
+  }
+  if (action !== "REJECT") {
+    await recordSecurityEvent({
+      type: action === "ERASE" ? "ACCOUNT_ERASED" : "ACCOUNT_CLOSED",
+      severity: action === "ERASE" ? "warning" : "info",
+      userId: req.currentUser!.id,
+      // Erasure must not leave the person's name behind, so only the role and request number are kept.
+      details: action === "ERASE"
+        ? { adminName: req.currentUser!.name, role: user.role, deletionRequestId: request.id }
+        : { adminName: req.currentUser!.name, accountName: user.name, role: user.role, deletionRequestId: request.id },
+      subject: String(user.id),
+      actingAdminId: req.currentUser!.id,
+    });
   }
   res.json(ResolveAdminDeletionRequestResponse.parse(deletionResponse(resolved)));
 });

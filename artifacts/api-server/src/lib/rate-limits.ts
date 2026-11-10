@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { rateLimit, type Options } from "express-rate-limit";
+import { recordSecurityEvent, type SecurityEventType } from "./security-events";
 
 const FIFTEEN_MINUTES = 15 * 60_000;
 const ONE_HOUR = 60 * 60_000;
@@ -10,6 +11,17 @@ function limiter(options: Partial<Options>) {
     legacyHeaders: false,
     ...options,
   });
+}
+
+/** Answers like the default handler, and records a security event the first time a key is blocked. */
+function reportWhenBlocked(type: SecurityEventType, describe: (req: Request) => { subject: string; userId?: number; details: Record<string, string | number | null> }): Partial<Options> {
+  return {
+    handler: (req, res, _next, options) => {
+      const { subject, userId, details } = describe(req);
+      void recordSecurityEvent({ type, severity: "warning", userId, ipAddress: req.ip ?? null, details, subject, dedupe: true });
+      res.status(options.statusCode).json(options.message);
+    },
+  };
 }
 
 function emailKey(req: Request): string {
@@ -26,6 +38,7 @@ export const loginIpLimiter = limiter({
   windowMs: FIFTEEN_MINUTES,
   limit: 30,
   message: tooManyLogins,
+  ...reportWhenBlocked("SIGN_IN_FLOOD", (req) => ({ subject: req.ip ?? "", details: { ip: req.ip ?? null } })),
 });
 
 /** Locks one account after repeated failed passwords, whatever address they come from. */
@@ -35,6 +48,10 @@ export const loginAccountLimiter = limiter({
   skipSuccessfulRequests: true,
   keyGenerator: emailKey,
   message: tooManyLogins,
+  ...reportWhenBlocked("ACCOUNT_LOCKED", (req) => {
+    const key = emailKey(req);
+    return { subject: key, details: { email: key.startsWith("email:") ? key.slice(6) : null } };
+  }),
 });
 
 export const registrationLimiter = limiter({
@@ -69,4 +86,9 @@ export const emergencyLookupLimiter = limiter({
   limit: 10,
   keyGenerator: (req) => `doctor:${req.currentUser?.id ?? req.ip}`,
   message: { error: "You have made 10 emergency lookups in the last hour. Ask the patient for their CM ID, or try again later." },
+  ...reportWhenBlocked("EMERGENCY_LOOKUP_LIMIT", (req) => ({
+    subject: String(req.currentUser?.id ?? req.ip),
+    userId: req.currentUser?.id,
+    details: { doctorName: req.currentUser?.name ?? null, hospital: req.currentUser?.hospitalName ?? null },
+  })),
 });
