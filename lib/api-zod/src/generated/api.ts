@@ -59,6 +59,8 @@ export const RegisterResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -79,15 +81,19 @@ export const RegisterResponse = zod.object({
 
 export const loginBodyPasswordMax = 128;
 
+export const loginBodyCodeMax = 20;
+
 
 
 export const LoginBody = zod.object({
   "email": zod.string().email(),
-  "password": zod.string().min(1).max(loginBodyPasswordMax)
+  "password": zod.string().min(1).max(loginBodyPasswordMax),
+  "code": zod.string().max(loginBodyCodeMax).optional().describe('Six-digit code from the authenticator app, or a recovery code, when two-step sign-in is on.')
 })
 
 export const LoginResponse = zod.object({
-  "token": zod.string(),
+  "mfaRequired": zod.boolean(),
+  "token": zod.string().optional(),
   "user": zod.object({
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
@@ -95,6 +101,8 @@ export const LoginResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -109,7 +117,7 @@ export const LoginResponse = zod.object({
   "contactInfo": zod.string().nullish(),
   "isActive": zod.boolean(),
   "createdAt": zod.coerce.date()
-})
+}).optional()
 })
 
 
@@ -133,6 +141,8 @@ export const GetMeResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -161,6 +171,8 @@ export const UpdateLanguageResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -200,6 +212,71 @@ export const SignOutOtherDevicesResponse = zod.object({
 })
 
 
+export const GetMfaStatusResponse = zod.object({
+  "enabled": zod.boolean(),
+  "required": zod.boolean(),
+  "recoveryCodesRemaining": zod.number().int()
+})
+
+
+export const startMfaSetupBodyPasswordMax = 128;
+
+
+
+export const StartMfaSetupBody = zod.object({
+  "password": zod.string().min(1).max(startMfaSetupBodyPasswordMax)
+})
+
+export const StartMfaSetupResponse = zod.object({
+  "secret": zod.string(),
+  "otpauthUrl": zod.string()
+})
+
+
+export const enableMfaBodyCodeMax = 20;
+
+
+
+export const EnableMfaBody = zod.object({
+  "code": zod.string().min(1).max(enableMfaBodyCodeMax)
+})
+
+export const EnableMfaResponse = zod.object({
+  "recoveryCodes": zod.array(zod.string()),
+  "token": zod.string()
+})
+
+
+export const disableMfaBodyPasswordMax = 128;
+
+export const disableMfaBodyCodeMax = 20;
+
+
+
+export const DisableMfaBody = zod.object({
+  "password": zod.string().min(1).max(disableMfaBodyPasswordMax),
+  "code": zod.string().min(1).max(disableMfaBodyCodeMax)
+})
+
+export const DisableMfaResponse = zod.void()
+
+
+export const regenerateMfaRecoveryCodesBodyPasswordMax = 128;
+
+export const regenerateMfaRecoveryCodesBodyCodeMax = 20;
+
+
+
+export const RegenerateMfaRecoveryCodesBody = zod.object({
+  "password": zod.string().min(1).max(regenerateMfaRecoveryCodesBodyPasswordMax),
+  "code": zod.string().min(1).max(regenerateMfaRecoveryCodesBodyCodeMax)
+})
+
+export const RegenerateMfaRecoveryCodesResponse = zod.object({
+  "recoveryCodes": zod.array(zod.string())
+})
+
+
 export const getPatientProfileResponsePatientDisplayIdMin = 8;
 export const getPatientProfileResponsePatientDisplayIdMax = 8;
 
@@ -221,6 +298,8 @@ export const GetPatientProfileResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -268,6 +347,8 @@ export const UpdatePatientLocationResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -303,6 +384,8 @@ export const UpdatePatientIdentityResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -545,6 +628,8 @@ export const GetDoctorProfileResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -582,6 +667,8 @@ export const UpdateDoctorProfileResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -1004,6 +1091,8 @@ export const GetPendingDoctorsResponseItem = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -1033,6 +1122,8 @@ export const ApproveDoctorResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -1061,6 +1152,8 @@ export const RevokeDoctorResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -1089,6 +1182,8 @@ export const VerifyDoctorResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -1121,6 +1216,38 @@ export const UpdateAdminUserStatusResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+export const ResetAdminUserMfaParams = zod.object({
+  "userId": zod.coerce.number().int()
+})
+
+export const ResetAdminUserMfaResponse = zod.object({
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -1172,6 +1299,8 @@ export const AcceptLegalTermsResponse = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),
@@ -1297,6 +1426,8 @@ export const SearchUsersResponseItem = zod.object({
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
   "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
   "id": zod.number().int(),
   "email": zod.string().email(),
   "name": zod.string(),

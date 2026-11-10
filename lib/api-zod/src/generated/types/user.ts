@@ -27,6 +27,10 @@ export interface User {
   /** True when only the birth year is known; dateOfBirth is then 1 January of that year. */
   dateOfBirthEstimated: boolean;
   preferredLanguage: Language;
+  /** Two-step sign-in with an authenticator app is on. */
+  mfaEnabled: boolean;
+  /** This role must use two-step sign-in (doctors and administrators). */
+  mfaRequired: boolean;
   id: number;
   email: string;
   name: string;

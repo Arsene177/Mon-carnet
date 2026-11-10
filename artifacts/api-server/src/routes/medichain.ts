@@ -131,6 +131,7 @@ import {
   userResponse,
   verifyPassword,
 } from "../lib/medichain-auth";
+import { verifySecondFactor } from "./mfa";
 
 const router: IRouter = Router();
 const patientDisplayIdAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -585,9 +586,22 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
+  if (user.mfaEnabledAt) {
+    const code = parsed.data.code?.trim();
+    if (!code) {
+      // The password was right; ask for the code from the authenticator app.
+      res.json(LoginResponse.parse({ mfaRequired: true }));
+      return;
+    }
+    if (!(await verifySecondFactor(user, code))) {
+      res.status(401).json({ error: "The code is incorrect or expired.", mfaRequired: true });
+      return;
+    }
+  }
   const current = publicUser(user);
   res.json(
     LoginResponse.parse({
+      mfaRequired: false,
       token: createAccessToken(current, user.sessionVersion),
       user: userResponse(user),
     }),

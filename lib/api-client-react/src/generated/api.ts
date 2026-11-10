@@ -61,10 +61,18 @@ import type {
   LanguageInput,
   LocationProfileInput,
   LoginInput,
+  LoginResult,
   MedicalRecord,
   MedicalRecordInput,
+  MfaCodeInput,
+  MfaEnabled,
+  MfaRecoveryCodes,
+  MfaSetup,
+  MfaStatus,
   Notification,
   NotificationInbox,
+  PasswordAndCode,
+  PasswordConfirmation,
   PasswordResetRequestAccepted,
   PasswordResetRequestInput,
   PatientAccessCodeInput,
@@ -278,7 +286,7 @@ export const getLoginUrl = () => {
   return `/api/auth/login`
 }
 
-export const login = async (loginInput: LoginInput, options?: Parameters<typeof customFetch>[1]): Promise<AuthSession> => {
+export const login = async (loginInput: LoginInput, options?: Parameters<typeof customFetch>[1]): Promise<LoginResult> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -294,7 +302,7 @@ export const login = async (loginInput: LoginInput, options?: Parameters<typeof 
     }
     return headers;
   };
-return customFetch<AuthSession>(getLoginUrl(),
+return customFetch<LoginResult>(getLoginUrl(),
   {
     ...options,
     method: 'POST',
@@ -735,6 +743,405 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getSignOutOtherDevicesMutationOptions(options));
+    }
+
+export const getGetMfaStatusUrl = () => {
+
+
+
+
+  return `/api/auth/mfa`
+}
+
+export const getMfaStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<MfaStatus> => {
+
+  return customFetch<MfaStatus>(getGetMfaStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMfaStatusQueryKey = () => {
+    return [
+    `/api/auth/mfa`
+    ] as const;
+    }
+
+
+export const getGetMfaStatusQueryOptions = <TData = Awaited<ReturnType<typeof getMfaStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMfaStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMfaStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMfaStatus>>> = ({ signal }) => getMfaStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMfaStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMfaStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getMfaStatus>>>
+export type GetMfaStatusQueryError = ErrorType<unknown>
+
+
+
+export function useGetMfaStatus<TData = Awaited<ReturnType<typeof getMfaStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMfaStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMfaStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getStartMfaSetupUrl = () => {
+
+
+
+
+  return `/api/auth/mfa/setup`
+}
+
+export const startMfaSetup = async (passwordConfirmation: PasswordConfirmation, options?: Parameters<typeof customFetch>[1]): Promise<MfaSetup> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MfaSetup>(getStartMfaSetupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(passwordConfirmation)
+  }
+);}
+
+
+
+
+
+export const getStartMfaSetupMutationKey = () => ['startMfaSetup'] as const;
+
+export const getStartMfaSetupMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMfaSetup>>, TError,StartMfaSetupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startMfaSetup>>, TError,StartMfaSetupMutationVariables, TContext> => {
+
+const mutationKey = getStartMfaSetupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMfaSetup>>, StartMfaSetupMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  startMfaSetup(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartMfaSetupMutationResult = NonNullable<Awaited<ReturnType<typeof startMfaSetup>>>
+    export type StartMfaSetupMutationBody = BodyType<PasswordConfirmation>
+    export type StartMfaSetupMutationError = ErrorType<unknown>
+    export type StartMfaSetupMutationVariables = {data: BodyType<PasswordConfirmation>}
+
+    export const useStartMfaSetup = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMfaSetup>>, TError,StartMfaSetupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startMfaSetup>>,
+        TError,
+        StartMfaSetupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStartMfaSetupMutationOptions(options));
+    }
+
+export const getEnableMfaUrl = () => {
+
+
+
+
+  return `/api/auth/mfa/enable`
+}
+
+export const enableMfa = async (mfaCodeInput: MfaCodeInput, options?: Parameters<typeof customFetch>[1]): Promise<MfaEnabled> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MfaEnabled>(getEnableMfaUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(mfaCodeInput)
+  }
+);}
+
+
+
+
+
+export const getEnableMfaMutationKey = () => ['enableMfa'] as const;
+
+export const getEnableMfaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enableMfa>>, TError,EnableMfaMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof enableMfa>>, TError,EnableMfaMutationVariables, TContext> => {
+
+const mutationKey = getEnableMfaMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof enableMfa>>, EnableMfaMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  enableMfa(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EnableMfaMutationResult = NonNullable<Awaited<ReturnType<typeof enableMfa>>>
+    export type EnableMfaMutationBody = BodyType<MfaCodeInput>
+    export type EnableMfaMutationError = ErrorType<unknown>
+    export type EnableMfaMutationVariables = {data: BodyType<MfaCodeInput>}
+
+    export const useEnableMfa = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enableMfa>>, TError,EnableMfaMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof enableMfa>>,
+        TError,
+        EnableMfaMutationVariables,
+        TContext
+      > => {
+      return useMutation(getEnableMfaMutationOptions(options));
+    }
+
+export const getDisableMfaUrl = () => {
+
+
+
+
+  return `/api/auth/mfa/disable`
+}
+
+export const disableMfa = async (passwordAndCode: PasswordAndCode, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getDisableMfaUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(passwordAndCode)
+  }
+);}
+
+
+
+
+
+export const getDisableMfaMutationKey = () => ['disableMfa'] as const;
+
+export const getDisableMfaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disableMfa>>, TError,DisableMfaMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disableMfa>>, TError,DisableMfaMutationVariables, TContext> => {
+
+const mutationKey = getDisableMfaMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disableMfa>>, DisableMfaMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  disableMfa(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisableMfaMutationResult = NonNullable<Awaited<ReturnType<typeof disableMfa>>>
+    export type DisableMfaMutationBody = BodyType<PasswordAndCode>
+    export type DisableMfaMutationError = ErrorType<unknown>
+    export type DisableMfaMutationVariables = {data: BodyType<PasswordAndCode>}
+
+    export const useDisableMfa = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disableMfa>>, TError,DisableMfaMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disableMfa>>,
+        TError,
+        DisableMfaMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDisableMfaMutationOptions(options));
+    }
+
+export const getRegenerateMfaRecoveryCodesUrl = () => {
+
+
+
+
+  return `/api/auth/mfa/recovery-codes`
+}
+
+export const regenerateMfaRecoveryCodes = async (passwordAndCode: PasswordAndCode, options?: Parameters<typeof customFetch>[1]): Promise<MfaRecoveryCodes> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MfaRecoveryCodes>(getRegenerateMfaRecoveryCodesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(passwordAndCode)
+  }
+);}
+
+
+
+
+
+export const getRegenerateMfaRecoveryCodesMutationKey = () => ['regenerateMfaRecoveryCodes'] as const;
+
+export const getRegenerateMfaRecoveryCodesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateMfaRecoveryCodes>>, TError,RegenerateMfaRecoveryCodesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof regenerateMfaRecoveryCodes>>, TError,RegenerateMfaRecoveryCodesMutationVariables, TContext> => {
+
+const mutationKey = getRegenerateMfaRecoveryCodesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof regenerateMfaRecoveryCodes>>, RegenerateMfaRecoveryCodesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  regenerateMfaRecoveryCodes(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegenerateMfaRecoveryCodesMutationResult = NonNullable<Awaited<ReturnType<typeof regenerateMfaRecoveryCodes>>>
+    export type RegenerateMfaRecoveryCodesMutationBody = BodyType<PasswordAndCode>
+    export type RegenerateMfaRecoveryCodesMutationError = ErrorType<unknown>
+    export type RegenerateMfaRecoveryCodesMutationVariables = {data: BodyType<PasswordAndCode>}
+
+    export const useRegenerateMfaRecoveryCodes = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateMfaRecoveryCodes>>, TError,RegenerateMfaRecoveryCodesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof regenerateMfaRecoveryCodes>>,
+        TError,
+        RegenerateMfaRecoveryCodesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRegenerateMfaRecoveryCodesMutationOptions(options));
     }
 
 export const getGetPatientProfileUrl = () => {
@@ -3646,6 +4053,74 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getUpdateAdminUserStatusMutationOptions(options));
+    }
+
+export const getResetAdminUserMfaUrl = (userId: number,) => {
+
+
+
+
+  return `/api/admin/users/${userId}/mfa/reset`
+}
+
+export const resetAdminUserMfa = async (userId: number, options?: Parameters<typeof customFetch>[1]): Promise<User> => {
+
+  return customFetch<User>(getResetAdminUserMfaUrl(userId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResetAdminUserMfaMutationKey = () => ['resetAdminUserMfa'] as const;
+
+export const getResetAdminUserMfaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAdminUserMfa>>, TError,ResetAdminUserMfaMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetAdminUserMfa>>, TError,ResetAdminUserMfaMutationVariables, TContext> => {
+
+const mutationKey = getResetAdminUserMfaMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetAdminUserMfa>>, ResetAdminUserMfaMutationVariables> = (props) => {
+          const {userId} = props ?? {};
+
+          return  resetAdminUserMfa(userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetAdminUserMfaMutationResult = NonNullable<Awaited<ReturnType<typeof resetAdminUserMfa>>>
+
+    export type ResetAdminUserMfaMutationError = ErrorType<unknown>
+    export type ResetAdminUserMfaMutationVariables = {userId: number}
+
+    export const useResetAdminUserMfa = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAdminUserMfa>>, TError,ResetAdminUserMfaMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetAdminUserMfa>>,
+        TError,
+        ResetAdminUserMfaMutationVariables,
+        TContext
+      > => {
+      return useMutation(getResetAdminUserMfaMutationOptions(options));
     }
 
 export const getGetAdminPasswordResetRequestsUrl = () => {

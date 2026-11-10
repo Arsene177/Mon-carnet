@@ -62,13 +62,13 @@ paths:
               $ref: "#/components/schemas/LoginInput"
       responses:
         "200":
-          description: Signed in
+          description: Signed in, or the password was right and a two-step code is needed (mfaRequired true, no token)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthSession"
+                $ref: "#/components/schemas/LoginResult"
         "401":
-          description: Invalid credentials
+          description: Invalid credentials or two-step code
   /auth/password-reset-requests:
     post:
       operationId: requestPasswordReset
@@ -145,6 +145,81 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SessionToken"
+  /auth/mfa:
+    get:
+      operationId: getMfaStatus
+      tags: [auth]
+      responses:
+        "200":
+          description: Two-step sign-in status for this account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MfaStatus"
+  /auth/mfa/setup:
+    post:
+      operationId: startMfaSetup
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordConfirmation"
+      responses:
+        "200":
+          description: A new secret to add to an authenticator app; confirmed with the first code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MfaSetup"
+  /auth/mfa/enable:
+    post:
+      operationId: enableMfa
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MfaCodeInput"
+      responses:
+        "200":
+          description: Two-step sign-in is on. Other sessions are signed out; this device continues with the returned token. The recovery codes are shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MfaEnabled"
+  /auth/mfa/disable:
+    post:
+      operationId: disableMfa
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordAndCode"
+      responses:
+        "204":
+          description: Two-step sign-in is off (patients only)
+  /auth/mfa/recovery-codes:
+    post:
+      operationId: regenerateMfaRecoveryCodes
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordAndCode"
+      responses:
+        "200":
+          description: New recovery codes; the previous ones stop working
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MfaRecoveryCodes"
   /patient/profile:
     get:
       operationId: getPatientProfile
@@ -800,6 +875,23 @@ paths:
                 $ref: "#/components/schemas/User"
         "400":
           description: Invalid account status change
+  /admin/users/{userId}/mfa/reset:
+    post:
+      operationId: resetAdminUserMfa
+      tags: [admin]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Two-step sign-in removed after the administrator verified the account holder; every session of the account is signed out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
   /admin/password-reset-requests:
     get:
       operationId: getAdminPasswordResetRequests
@@ -1076,7 +1168,7 @@ components:
       enum: [PENDING, ACTIVE, INACTIVE]
     User:
       type: object
-      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage, sex, dateOfBirthEstimated, termsVersion, termsAcceptedAt, healthDataConsentAt]
+      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage, sex, dateOfBirthEstimated, termsVersion, termsAcceptedAt, healthDataConsentAt, mfaEnabled, mfaRequired]
       properties:
         termsVersion: { type: ["string", "null"], description: "Version of the privacy policy and terms this account accepted." }
         termsAcceptedAt: { type: ["string", "null"], format: date-time }
@@ -1084,6 +1176,8 @@ components:
         sex: { oneOf: [{ $ref: "#/components/schemas/Sex" }, { type: "null" }] }
         dateOfBirthEstimated: { type: boolean, description: "True when only the birth year is known; dateOfBirth is then 1 January of that year." }
         preferredLanguage: { $ref: "#/components/schemas/Language" }
+        mfaEnabled: { type: boolean, description: "Two-step sign-in with an authenticator app is on." }
+        mfaRequired: { type: boolean, description: "This role must use two-step sign-in (doctors and administrators)." }
         id: { type: integer }
         email: { type: string, format: email }
         name: { type: string }
@@ -1197,6 +1291,54 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 1, maxLength: 128 }
+        code: { type: string, maxLength: 20, description: "Six-digit code from the authenticator app, or a recovery code, when two-step sign-in is on." }
+    LoginResult:
+      type: object
+      required: [mfaRequired]
+      properties:
+        mfaRequired: { type: boolean }
+        token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+    PasswordConfirmation:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, minLength: 1, maxLength: 128 }
+    MfaCodeInput:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, minLength: 1, maxLength: 20 }
+    PasswordAndCode:
+      type: object
+      required: [password, code]
+      properties:
+        password: { type: string, minLength: 1, maxLength: 128 }
+        code: { type: string, minLength: 1, maxLength: 20 }
+    MfaStatus:
+      type: object
+      required: [enabled, required, recoveryCodesRemaining]
+      properties:
+        enabled: { type: boolean }
+        required: { type: boolean }
+        recoveryCodesRemaining: { type: integer }
+    MfaSetup:
+      type: object
+      required: [secret, otpauthUrl]
+      properties:
+        secret: { type: string }
+        otpauthUrl: { type: string }
+    MfaRecoveryCodes:
+      type: object
+      required: [recoveryCodes]
+      properties:
+        recoveryCodes: { type: array, items: { type: string } }
+    MfaEnabled:
+      type: object
+      required: [recoveryCodes, token]
+      properties:
+        recoveryCodes: { type: array, items: { type: string } }
+        token: { type: string }
     PasswordResetRequestInput:
       type: object
       required: [email]
