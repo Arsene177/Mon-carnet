@@ -83,6 +83,10 @@ export interface User {
   createdAt: string;
 }
 
+export interface SessionToken {
+  token: string;
+}
+
 export interface AuthSession {
   token: string;
   user: User;

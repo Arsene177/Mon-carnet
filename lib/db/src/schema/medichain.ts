@@ -54,6 +54,9 @@ export const usersTable = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     // Set when the account was closed after a deletion request. Closed accounts cannot sign in or be restored.
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    // Raised to end every signed-in session at once (password change, temporary password,
+    // "sign out of all other devices"). Access tokens carry the value they were issued with.
+    sessionVersion: integer("session_version").notNull().default(0),
     // Version of the privacy policy and terms accepted, and when. Patients also record explicit
     // consent to the processing of their health data (sensitive data under Law 2024/017).
     termsVersion: text("terms_version"),

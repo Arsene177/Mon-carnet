@@ -190,7 +190,14 @@ export const ChangePasswordBody = zod.object({
   "newPassword": zod.string().min(changePasswordBodyNewPasswordMin).max(changePasswordBodyNewPasswordMax)
 })
 
-export const ChangePasswordResponse = zod.void()
+export const ChangePasswordResponse = zod.object({
+  "token": zod.string()
+})
+
+
+export const SignOutOtherDevicesResponse = zod.object({
+  "token": zod.string()
+})
 
 
 export const getPatientProfileResponsePatientDisplayIdMin = 8;

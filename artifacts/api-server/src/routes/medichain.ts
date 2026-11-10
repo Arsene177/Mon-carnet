@@ -43,6 +43,7 @@ import {
   VerifyBookletExportParams,
   VerifyBookletExportResponse,
   ChangePasswordBody,
+  ChangePasswordResponse,
   RequestPasswordResetBody,
   RequestPasswordResetResponse,
   GetAdminPasswordResetRequestsResponse,
@@ -68,6 +69,7 @@ import {
   GetPendingDoctorsResponse,
   LoginBody,
   LoginResponse,
+  SignOutOtherDevicesResponse,
   RegisterBody,
   RegisterResponse,
   RevokeDoctorParams,
@@ -119,7 +121,16 @@ import {
 } from "@workspace/db";
 import { emergencyLookupLimiter } from "../lib/rate-limits";
 import { languageOf, notificationMessages } from "../lib/notification-messages";
-import { createAccessToken, hashPassword, publicUser, requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
+import {
+  createAccessToken,
+  endAllSessions,
+  hashPassword,
+  nextSessionVersion,
+  publicUser,
+  requireAuth,
+  userResponse,
+  verifyPassword,
+} from "../lib/medichain-auth";
 
 const router: IRouter = Router();
 const patientDisplayIdAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -549,7 +560,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     const user = publicUser(created);
     res.status(201).json(
       RegisterResponse.parse({
-        token: createAccessToken(user),
+        token: createAccessToken(user, created.sessionVersion),
         user: userResponse(created),
       }),
     );
@@ -577,7 +588,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const current = publicUser(user);
   res.json(
     LoginResponse.parse({
-      token: createAccessToken(current),
+      token: createAccessToken(current, user.sessionVersion),
       user: userResponse(user),
     }),
   );
@@ -655,11 +666,36 @@ router.post("/auth/change-password", requireAuth(), async (req, res): Promise<vo
     invalidBody(res, "Choose a new password that differs from your current password.");
     return;
   }
-  await db
+  // A new password ends every session, so anyone signed in with the old one is signed out.
+  // This device stays signed in with the fresh token returned here.
+  const [updated] = await db
     .update(usersTable)
-    .set({ passwordHash: hashPassword(parsed.data.newPassword) })
-    .where(eq(usersTable.id, user.id));
-  res.status(204).end();
+    .set({ passwordHash: hashPassword(parsed.data.newPassword), sessionVersion: nextSessionVersion() })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+  await db.insert(auditEventsTable).values({
+    actorUserId: user.id,
+    action: "PASSWORD_CHANGED",
+    entityType: "account",
+    entityId: user.id,
+  });
+  res.json(ChangePasswordResponse.parse({ token: createAccessToken(publicUser(updated!), updated!.sessionVersion) }));
+});
+
+router.post("/auth/sign-out-other-devices", requireAuth(), async (req, res): Promise<void> => {
+  const userId = req.currentUser!.id;
+  const sessionVersion = await endAllSessions(userId);
+  if (sessionVersion === undefined) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  await db.insert(auditEventsTable).values({
+    actorUserId: userId,
+    action: "OTHER_SESSIONS_SIGNED_OUT",
+    entityType: "account",
+    entityId: userId,
+  });
+  res.json(SignOutOtherDevicesResponse.parse({ token: createAccessToken(req.currentUser!, sessionVersion) }));
 });
 
 router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise<void> => {
@@ -2457,8 +2493,14 @@ router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMI
 
     await tx
       .update(usersTable)
-      .set({ passwordHash: hashPassword(temporaryPassword) })
+      .set({ passwordHash: hashPassword(temporaryPassword), sessionVersion: nextSessionVersion() })
       .where(eq(usersTable.id, account.id));
+    await tx.insert(auditEventsTable).values({
+      actorUserId: req.currentUser!.id,
+      action: "TEMPORARY_PASSWORD_ISSUED",
+      entityType: "account",
+      entityId: account.id,
+    });
     return account;
   });
 

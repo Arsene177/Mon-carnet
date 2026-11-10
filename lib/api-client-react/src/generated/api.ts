@@ -80,6 +80,7 @@ import type {
   RegistrationInput,
   SearchDiseaseCodesParams,
   SearchUsersParams,
+  SessionToken,
   User
 } from './api.schemas';
 
@@ -594,7 +595,7 @@ export const getChangePasswordUrl = () => {
   return `/api/auth/change-password`
 }
 
-export const changePassword = async (changePasswordInput: ChangePasswordInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+export const changePassword = async (changePasswordInput: ChangePasswordInput, options?: Parameters<typeof customFetch>[1]): Promise<SessionToken> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -610,7 +611,7 @@ export const changePassword = async (changePasswordInput: ChangePasswordInput, o
     }
     return headers;
   };
-return customFetch<void>(getChangePasswordUrl(),
+return customFetch<SessionToken>(getChangePasswordUrl(),
   {
     ...options,
     method: 'POST',
@@ -666,6 +667,74 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getChangePasswordMutationOptions(options));
+    }
+
+export const getSignOutOtherDevicesUrl = () => {
+
+
+
+
+  return `/api/auth/sign-out-other-devices`
+}
+
+export const signOutOtherDevices = async ( options?: Parameters<typeof customFetch>[1]): Promise<SessionToken> => {
+
+  return customFetch<SessionToken>(getSignOutOtherDevicesUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSignOutOtherDevicesMutationKey = () => ['signOutOtherDevices'] as const;
+
+export const getSignOutOtherDevicesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof signOutOtherDevices>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof signOutOtherDevices>>, TError,void, TContext> => {
+
+const mutationKey = getSignOutOtherDevicesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof signOutOtherDevices>>, void> = () => {
+
+
+          return  signOutOtherDevices(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SignOutOtherDevicesMutationResult = NonNullable<Awaited<ReturnType<typeof signOutOtherDevices>>>
+
+    export type SignOutOtherDevicesMutationError = ErrorType<unknown>
+
+
+    export const useSignOutOtherDevices = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof signOutOtherDevices>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof signOutOtherDevices>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSignOutOtherDevicesMutationOptions(options));
     }
 
 export const getGetPatientProfileUrl = () => {
