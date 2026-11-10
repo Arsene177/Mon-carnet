@@ -7,7 +7,7 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomBytes, scryptSync } from "node:crypto";
+import { createHmac, randomBytes, scryptSync } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 
@@ -43,11 +43,48 @@ async function api(method, path, { token, body, ip = newIp() } = {}) {
   return { status: response.status, body: data };
 }
 
+// Authenticator-app secrets of the test accounts that turned on two-step sign-in, by email.
+const mfaSecrets = new Map();
+
+/** The 6-digit code an authenticator app would show (RFC 6238, SHA-1, 30 s). */
+function totp(secret, offsetSteps = 0) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0, value = 0;
+  const bytes = [];
+  for (const char of secret) {
+    value = (value << 5) | alphabet.indexOf(char);
+    bits += 5;
+    if (bits >= 8) { bytes.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000) + offsetSteps));
+  const digest = createHmac("sha1", Buffer.from(bytes)).update(counter).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, "0");
+}
+
+/** Lets a test sign in again within the same 30 seconds, which a real code cannot do. */
+const allowCodeReuse = (email) => sql.query("update medichain_users set mfa_last_used_step = null where email = $1", [email]);
+
 const login = async (email) => {
-  const { status, body } = await api("POST", "/auth/login", { body: { email, password: PASSWORD } });
+  let { status, body } = await api("POST", "/auth/login", { body: { email, password: PASSWORD } });
+  if (status === 200 && body.mfaRequired) {
+    await allowCodeReuse(email);
+    ({ status, body } = await api("POST", "/auth/login", { body: { email, password: PASSWORD, code: totp(mfaSecrets.get(email)) } }));
+  }
   assert.equal(status, 200, `login ${email}: ${JSON.stringify(body)}`);
   return body.token;
 };
+
+/** Turns on two-step sign-in and returns the new token and recovery codes. */
+async function enableMfa(email, token) {
+  const setup = await api("POST", "/auth/mfa/setup", { token, body: { password: PASSWORD } });
+  assert.equal(setup.status, 200, JSON.stringify(setup.body));
+  mfaSecrets.set(email, setup.body.secret);
+  const enabled = await api("POST", "/auth/mfa/enable", { token, body: { code: totp(setup.body.secret) } });
+  assert.equal(enabled.status, 200, JSON.stringify(enabled.body));
+  return enabled.body;
+}
 
 let counter = 0;
 const unique = (prefix) => `${prefix}${Date.now().toString(36)}${counter++}`;
@@ -78,7 +115,7 @@ async function currentCmId(userId) {
 }
 
 /** Doctors and admins are inserted directly, as an administrator would have approved them. */
-async function createStaff(role, { verified = true, name } = {}) {
+async function createStaff(role, { verified = true, name, mfa = true } = {}) {
   const email = `${unique(role.toLowerCase())}@test.cm`;
   const salt = randomBytes(16).toString("hex");
   const hash = `scrypt$${salt}$${scryptSync(PASSWORD, salt, 64).toString("hex")}`;
@@ -87,7 +124,10 @@ async function createStaff(role, { verified = true, name } = {}) {
      values ($1, $2, $3, $4, $5, $6, $7, '+237677000000', $8, now()) returning id`,
     [email, hash, role, name ?? `${role} ${unique("")}`, role === "ADMIN" ? null : "Hôpital Laquintinie", role === "ADMIN" ? null : "ONMC-1234", verified, TERMS_VERSION],
   );
-  return { id: rows[0].id, email, token: await login(email) };
+  const token = await login(email);
+  // Doctors and administrators must use two-step sign-in before they can do anything else.
+  if (!mfa || role === "PENDING_DOCTOR" || role === "PATIENT") return { id: rows[0].id, email, token };
+  return { id: rows[0].id, email, token: (await enableMfa(email, token)).token };
 }
 
 const consultation = {
@@ -211,6 +251,86 @@ describe("sessions", () => {
     assert.equal(claims.sv, 0);
     const forged = `${header}.${Buffer.from(JSON.stringify({ ...claims, sv: 1 })).toString("base64url")}.${patient.token.split(".")[2]}`;
     assert.equal((await api("GET", "/auth/me", { token: forged })).status, 401);
+  });
+});
+
+describe("two-step sign-in", () => {
+  test("doctors and administrators can do nothing but set it up until it is on", async () => {
+    const doctor = await createStaff("DOCTOR", { mfa: false });
+    const admin = await createStaff("ADMIN", { mfa: false });
+    const patient = await registerPatient();
+    const blocked = await openBooklet(doctor, patient);
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.body.code, "MFA_SETUP_REQUIRED");
+    assert.equal((await api("GET", "/admin/stats", { token: admin.token })).status, 403);
+    const me = await api("GET", "/auth/me", { token: doctor.token });
+    assert.equal(me.status, 200);
+    assert.equal(me.body.mfaRequired, true);
+    assert.equal(me.body.mfaEnabled, false);
+    const { token } = await enableMfa(doctor.email, doctor.token);
+    assert.equal((await openBooklet({ ...doctor, token }, patient)).status, 200);
+  });
+
+  test("turning it on signs out sessions that used only the password", async () => {
+    const patient = await registerPatient();
+    const otherDevice = await login(patient.email);
+    const { token } = await enableMfa(patient.email, patient.token);
+    assert.equal((await api("GET", "/auth/me", { token: otherDevice })).status, 401);
+    assert.equal((await api("GET", "/auth/me", { token })).status, 200);
+  });
+
+  test("sign-in needs the password and then a code, and each code works once", async () => {
+    const patient = await registerPatient();
+    await enableMfa(patient.email, patient.token);
+    const secret = mfaSecrets.get(patient.email);
+    const first = await api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD } });
+    assert.deepEqual([first.status, first.body.mfaRequired, first.body.token], [200, true, undefined]);
+    assert.equal((await api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD, code: "000000" } })).status, 401);
+    assert.equal((await api("POST", "/auth/login", { body: { email: patient.email, password: "wrong-password", code: totp(secret) } })).status, 401);
+    // The code that turned it on was from this 30-second step, so use the next one.
+    const code = totp(secret, 1);
+    const signedIn = await api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD, code } });
+    assert.equal(signedIn.status, 200, JSON.stringify(signedIn.body));
+    assert.ok(signedIn.body.token);
+    assert.equal((await api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD, code } })).status, 401);
+  });
+
+  test("a recovery code works once, and the secret is stored encrypted", async () => {
+    const patient = await registerPatient();
+    const { recoveryCodes } = await enableMfa(patient.email, patient.token);
+    assert.equal(recoveryCodes.length, 10);
+    const [row] = (await sql.query("select mfa_secret from medichain_users where id = $1", [patient.id])).rows;
+    assert.ok(!row.mfa_secret.includes(mfaSecrets.get(patient.email)));
+    const useCode = () => api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD, code: recoveryCodes[0].toUpperCase() } });
+    assert.equal((await useCode()).status, 200);
+    assert.equal((await useCode()).status, 401);
+    const status = await api("GET", "/auth/mfa", { token: await login(patient.email) });
+    assert.equal(status.body.recoveryCodesRemaining, 9);
+  });
+
+  test("patients can turn it off; doctors cannot", async () => {
+    const patient = await registerPatient();
+    const { token } = await enableMfa(patient.email, patient.token);
+    await allowCodeReuse(patient.email);
+    const off = await api("POST", "/auth/mfa/disable", { token, body: { password: PASSWORD, code: totp(mfaSecrets.get(patient.email)) } });
+    assert.equal(off.status, 204, JSON.stringify(off.body));
+    assert.equal((await api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD } })).body.mfaRequired, false);
+    const doctor = await createStaff("DOCTOR");
+    await allowCodeReuse(doctor.email);
+    assert.equal((await api("POST", "/auth/mfa/disable", { token: doctor.token, body: { password: PASSWORD, code: totp(mfaSecrets.get(doctor.email)) } })).status, 403);
+  });
+
+  test("an administrator can reset another account's two-step sign-in, which signs it out", async () => {
+    const doctor = await createStaff("DOCTOR");
+    const admin = await createStaff("ADMIN");
+    assert.equal((await api("POST", `/admin/users/${admin.id}/mfa/reset`, { token: admin.token })).status, 400);
+    assert.equal((await api("POST", `/admin/users/${doctor.id}/mfa/reset`, { token: doctor.token })).status, 403);
+    const reset = await api("POST", `/admin/users/${doctor.id}/mfa/reset`, { token: admin.token });
+    assert.equal(reset.status, 200, JSON.stringify(reset.body));
+    assert.equal(reset.body.mfaEnabled, false);
+    assert.equal((await api("GET", "/auth/me", { token: doctor.token })).status, 401);
+    const { rows } = await sql.query("select count(*)::int as n from medichain_notifications where recipient_id = $1", [doctor.id]);
+    assert.equal(rows[0].n, 1);
   });
 });
 

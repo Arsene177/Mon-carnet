@@ -22,7 +22,7 @@ import {
   useGetPatientPendingRequests, useGetPatientPermissions,
   useGetPatientProfile, useGetPatientRecords, useGetPendingDoctors, useGrantPatientPermission,
   useGrantPatientAccessById, useLogin, useRegister, useRevokePatientPermission, useEmergencyPatientLookup,
-  useSearchDiseaseCodes, useSearchUsers, useUpdateAdminEpidemicThreshold, useUpdateAdminUserStatus, useUpdateEmergencyInfo, useVerifyDoctor,
+  useSearchDiseaseCodes, useResetAdminUserMfa, useSearchUsers, useUpdateAdminEpidemicThreshold, useUpdateAdminUserStatus, useUpdateEmergencyInfo, useVerifyDoctor,
   useRequestPasswordReset, useGetAdminPasswordResetRequests, useResetAdminRequestedPassword,
 } from '@workspace/api-client-react';
 import type {
@@ -37,6 +37,9 @@ import { OnboardingGuide } from '@/components/onboarding-guide';
 import { downloadMedicalRecord } from '@/lib/download-medical-record';
 import type { WorkspaceTab } from '@/lib/navigation';
 import { LANGUAGES, getLanguage, locale, setLanguage, t, useLanguage, type Language } from '@/lib/i18n';
+import { errText } from '@/lib/error-text';
+import { SESSION_LAST_ACTIVITY_KEY, keepThisDeviceSignedIn } from '@/lib/session';
+import { MfaSetupFlow, TwoStepCard } from '@/components/two-step';
 
 const SESSION_ENDED_NOTICE_KEY = 'medichain_session_ended';
 /**
@@ -58,7 +61,6 @@ const queryClient = new QueryClient({
 });
 setAuthTokenGetter(() => typeof localStorage === 'undefined' ? null : localStorage.getItem('medichain_token'));
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-const SESSION_LAST_ACTIVITY_KEY = 'medichain_last_activity';
 const minimumAggregateGroupSize = 5;
 
 type Tab = WorkspaceTab;
@@ -67,18 +69,6 @@ const doctorTabs: Tab[] = ['Patients', 'Record entry', 'Profile', 'Inbox'];
 const adminTabs: Tab[] = ['System overview', 'Doctor approvals', 'User search', 'Password recovery', 'Directories & notices', 'Analytics', 'Profile', 'Inbox'];
 const dateLabel = (date?: string | null) => date ? new Date(date).toLocaleDateString(locale(), { month: 'short', day: 'numeric', year: 'numeric' }) : t("Not provided");
 const initials = (name?: string) => (name || 'MC').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
-/** A readable, translated message for an API or network error. */
-const errText = (error: unknown) => {
-  if (typeof error === 'object' && error !== null && 'data' in error && typeof error.data === 'object' && error.data !== null) {
-    if ('error' in error.data && typeof error.data.error === 'string') return t(error.data.error);
-    if ('message' in error.data && typeof error.data.message === 'string') return t(error.data.message);
-  }
-  if (error instanceof Error) {
-    if (/failed to fetch|network/i.test(error.message)) return t("Unable to connect. Check your internet connection and try again.");
-    return t(error.message);
-  }
-  return t("Something went wrong. Please try again.");
-};
 const loginErrorText = (error: unknown) => {
   if (typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number') {
     if (error.status === 401) return t("Email or password is incorrect. Check your details and try again.");
@@ -411,12 +401,6 @@ function DeletionRequestsPanel({ active }: { active: boolean }) {
   </section>;
 }
 
-/** Keeps this device signed in with the token the server issued after ending the other sessions. */
-function keepThisDeviceSignedIn(token: string) {
-  localStorage.setItem('medichain_token', token);
-  localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
-}
-
 function PasswordChangeCard() {
   const changePassword = useChangePassword();
   const [currentPassword, setCurrentPassword] = useState('');
@@ -616,6 +600,7 @@ function Router() {
     return <LoadingScreen />;
   }
   if (needsConsent(user)) return <ConsentScreen user={user} onSignOut={signOut}/>;
+  if (user.mfaRequired && !user.mfaEnabled) return <MfaSetupScreen onSignOut={signOut}/>;
   return <Workspace user={user} onSignOut={signOut} />;
 }
 
@@ -660,6 +645,23 @@ function ConsentScreen({ user, onSignOut }: { user: User; onSignOut: () => void 
   </div>;
 }
 
+/** Doctors and administrators must turn on two-step sign-in before using the workspace. */
+function MfaSetupScreen({ onSignOut }: { onSignOut: () => void }) {
+  const qc = useQueryClient();
+  return <div className="login-page consent-page">
+    <main className="login-main">
+      <div className="login-language"><LanguageSwitcher signedIn/></div>
+      <div className="auth-card">
+        <div className="brand-inline"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
+        <h2>{t('Protect your account')}</h2>
+        <p className="subhead">{t('Doctors and administrators can see many patients’ data, so their accounts need two-step sign-in. After your password, you will also enter a code from an app on your phone. It takes about two minutes.')}</p>
+        <MfaSetupFlow onDone={() => { void qc.invalidateQueries({ queryKey: getGetMeQueryKey() }); }}/>
+        <div className="form-actions" style={{ marginTop: 8 }}><button className="btn ghost small" type="button" onClick={onSignOut}>{t('Sign out')}</button></div>
+      </div>
+    </main>
+  </div>;
+}
+
 function LoadingScreen() {
   return <div className="login-page"><div className="login-aside"><div className="brand"><NotebookLogo/><span className="brand-name">{t("Mon")} <strong>{t("carnet")}</strong></span></div><div className="aside-copy"><p className="eyebrow">{t("A clearer kind of care")}</p><h1>{t("Your health story, in safe hands.")}</h1><p>{t("One trusted place for the information that helps care move forward.")}</p></div><div className="aside-foot">{t("Private by design · Built for patients and clinicians")}</div></div><main className="login-main"><div className="auth-card"><div className="skeleton"/></div></main></div>;
 }
@@ -676,6 +678,9 @@ function AuthPage() {
   const [registerBirth, setRegisterBirth] = useState<BirthInput>(emptyBirthInput);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [healthConsent, setHealthConsent] = useState(false);
+  // Second sign-in step, when the account uses two-step sign-in.
+  const [codeStep, setCodeStep] = useState(false);
+  const [code, setCode] = useState('');
   const [feedback, setFeedback] = useState(() => {
     try {
       return sessionStorage.getItem(SESSION_ENDED_NOTICE_KEY) ? t("You were signed out because your session was ended, for example after a password change. Sign in again.") : '';
@@ -706,7 +711,13 @@ function AuthPage() {
       );
       return;
     }
-    const onSession = (session: { token: string; user: User }) => {
+    const onSession = (session: { token?: string; user?: User; mfaRequired?: boolean }) => {
+      if (!session.token || !session.user) {
+        // Password accepted; ask for the code from the authenticator app.
+        setCodeStep(true);
+        setFeedback('');
+        return;
+      }
       localStorage.setItem('medichain_token', session.token);
       if (session.user.preferredLanguage !== getLanguage()) saveAccountLanguage(getLanguage());
       localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
@@ -715,14 +726,19 @@ function AuthPage() {
       setLocation(destination);
     };
     if (mode === 'login') {
-      login.mutate({ data: { email: form.email.trim(), password: form.password } }, { onSuccess: onSession, onError: (error) => setFeedback(loginErrorText(error)) });
+      login.mutate({ data: { email: form.email.trim(), password: form.password, ...(codeStep ? { code: code.trim() } : {}) } }, {
+        onSuccess: onSession,
+        onError: (error) => setFeedback(codeStep && (error as { status?: number }).status === 401
+          ? t("The code is incorrect or expired. Enter the newest code from your app, or a recovery code.")
+          : loginErrorText(error)),
+      });
     } else {
       const dateOfBirth = role === 'PATIENT' ? birthDateToSend(registerBirth) : null;
       if (role === 'PATIENT' && (!registerSex || !dateOfBirth)) { setFeedback(t('Choose your sex and enter your date of birth, or your age if you do not know the exact date.')); return; }
       register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, preferredLanguage: getLanguage(), acceptedTermsVersion: LEGAL_DOCUMENTS_VERSION, healthDataConsent: role === 'PATIENT' && healthConsent, ...(role === 'PATIENT' && dateOfBirth && registerSex ? { dateOfBirth, dateOfBirthEstimated: registerBirth.estimated, sex: registerSex, ...(form.nationalIdNumber.trim() ? { nationalIdNumber: form.nationalIdNumber.trim() } : {}) } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: onSession, onError: (error) => setFeedback(errText(error)) });
     }
   };
-  const flipMode = (next: 'login' | 'register') => { setMode(next); setRecoveringPassword(false); setResetSubmitted(false); setFeedback(''); setLocation(next === 'login' ? '/login' : '/register'); };
+  const flipMode = (next: 'login' | 'register') => { setCodeStep(false); setCode(''); setMode(next); setRecoveringPassword(false); setResetSubmitted(false); setFeedback(''); setLocation(next === 'login' ? '/login' : '/register'); };
   return <div className="login-page">
     <aside className="login-aside">
       <div className="brand"><NotebookLogo/><span className="brand-name">{t("Mon")} <strong>{t("carnet")}</strong></span></div>
@@ -734,7 +750,7 @@ function AuthPage() {
       <div className="auth-card">
         <div className="mobile-brand"><NotebookLogo/><span className="brand-name">{t("Mon")} <strong>{t("carnet")}</strong></span></div>
         {!recoveringPassword && <div className="auth-tabs"><button className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => flipMode('login')} data-testid="tab-login">{t("Sign in")}</button><button className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => flipMode('register')} data-testid="tab-register">{t("Create account")}</button></div>}
-        <h2>{recoveringPassword ? t("Reset your password") : mode === 'login' ? t("Welcome back") : t("Start your record")}</h2><p>{recoveringPassword ? t("Enter your account email. An administrator will review your request.") : mode === 'login' ? t("Sign in to continue to your secure care workspace.") : t("Create a trusted account for your care journey.")}</p>
+        <h2>{recoveringPassword ? t("Reset your password") : codeStep ? t("Enter your code") : mode === 'login' ? t("Welcome back") : t("Start your record")}</h2><p>{recoveringPassword ? t("Enter your account email. An administrator will review your request.") : codeStep ? t("Open the authenticator app on your phone and enter the 6-digit code for Mon carnet.") : mode === 'login' ? t("Sign in to continue to your secure care workspace.") : t("Create a trusted account for your care journey.")}</p>
         {feedback && <div className="auth-feedback" role="alert"><AlertCircle size={14}/><span>{feedback}</span></div>}
         {resetSubmitted && <div className="notice" role="status">{t("If an account exists for that email, an administrator will review your request. Please contact them through a trusted channel if you need help.")}</div>}
         <form onSubmit={submit}>
@@ -749,15 +765,17 @@ function AuthPage() {
             </>}
             <div className="field"><label htmlFor="auth-contact">{t("Contact information")}</label><input id="auth-contact" required value={form.contactInfo} onChange={onField('contactInfo')} data-testid="input-contact" placeholder={t("Phone number")}/></div>
           </>}
-          <div className="field"><label htmlFor="auth-email">{t("Email address")}</label><input id="auth-email" type="email" value={form.email} onChange={onField('email')} required autoComplete="email" data-testid="input-email" placeholder={t("you@example.com")}/></div>
-          {!recoveringPassword && <div className="field"><label htmlFor="auth-password">{t("Password")}</label><input id="auth-password" type="password" value={form.password} onChange={onField('password')} required minLength={mode === 'register' ? 8 : 1} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} data-testid="input-password" placeholder={mode === 'register' ? t("At least 8 characters") : t("Your password")}/></div>}
+          {codeStep && <div className="field"><label htmlFor="auth-code">{t("6-digit code")}</label><input id="auth-code" value={code} onChange={(event) => setCode(event.target.value)} required autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={20} data-testid="input-login-code"/><small className="field-note">{t("Lost your phone? Enter one of your recovery codes instead.")}</small></div>}
+          {!codeStep && <><div className="field"><label htmlFor="auth-email">{t("Email address")}</label><input id="auth-email" type="email" value={form.email} onChange={onField('email')} required autoComplete="email" data-testid="input-email" placeholder={t("you@example.com")}/></div>
+          {!recoveringPassword && <div className="field"><label htmlFor="auth-password">{t("Password")}</label><input id="auth-password" type="password" value={form.password} onChange={onField('password')} required minLength={mode === 'register' ? 8 : 1} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} data-testid="input-password" placeholder={mode === 'register' ? t("At least 8 characters") : t("Your password")}/></div>}</>}
           {!recoveringPassword && mode === 'register' && <div className="consent-group">
             <label className="consent-line"><input type="checkbox" required checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} data-testid="checkbox-register-terms"/><span>{t('I have read and accept the terms of use and the privacy policy.')} <LegalLinks/></span></label>
             {role === 'PATIENT' && <label className="consent-line"><input type="checkbox" required checked={healthConsent} onChange={(e) => setHealthConsent(e.target.checked)} data-testid="checkbox-register-health"/><span>{t('I agree that Mon carnet processes my health data to keep my booklet and share it with the doctors I choose. I can withdraw this consent by deleting my account.')}</span></label>}
           </div>}
           {!resetSubmitted && <button className="btn auth-submit" type="submit" disabled={busy} data-testid="button-auth-submit">{busy ? t("Please wait…") : recoveringPassword ? t("Request password reset") : mode === 'login' ? <>{t("Sign in")} <ArrowRight size={15}/></> : <>{t("Create account")} <ArrowRight size={15}/></>}</button>}
         </form>
-        {mode === 'login' && <button className="auth-link" type="button" onClick={() => { setRecoveringPassword(!recoveringPassword); setResetSubmitted(false); setFeedback(''); }}>{recoveringPassword ? t("Back to sign in") : t("Forgot password?")}</button>}
+        {codeStep && <button className="auth-link" type="button" onClick={() => { setCodeStep(false); setCode(''); setFeedback(''); }}>{t("Back")}</button>}
+        {mode === 'login' && !codeStep && <button className="auth-link" type="button" onClick={() => { setRecoveringPassword(!recoveringPassword); setResetSubmitted(false); setFeedback(''); }}>{recoveringPassword ? t("Back to sign in") : t("Forgot password?")}</button>}
         {!recoveringPassword && <div className="auth-foot"><LockKeyhole size={12}/> {t("Your health information is private and protected. Doctor accounts may require approval.")}<br/><LegalLinks/></div>}
       </div>
     </main>
@@ -1225,7 +1243,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
             </form>
           </div>
         </section>
-        <PasswordChangeCard/><SignOutOtherDevicesCard/>
+        <PasswordChangeCard/><TwoStepCard user={user}/><SignOutOtherDevicesCard/>
         <AccountRightsCard role="PATIENT"/>
       </>}
     </>}
@@ -1701,7 +1719,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     setActiveCodeRow(null);
     setCodeSearch('');
   };
-  if (user.role === 'PENDING_DOCTOR') return <><Heading eyebrow={t("Clinician access")} title={t("Welcome, Dr. {0}.", { 0: user.name })} subtitle={t("Your account is under review. After account approval, you can use clinical features. Credential verification is a separate manual review.")}/><div className="security-banner"><div><h3>{t("Account approval in progress")}</h3><p>{t("Our administrative team is reviewing your account. Your professional medical number is also checked separately before you receive a certified badge.")}</p></div><Clock3 size={33} className="security-symbol"/></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account profile")}</h2><p className="panel-caption">{t("Information submitted with your registration")}</p></div><span className="tag warning">{t("Pending review")}</span></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Professional medical number")}</span><span className="data-value">{user.professionalMedicalNumber || t("Not provided")}</span></div><div className="data-row"><span className="data-key">{t("Submitted")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/><SignOutOtherDevicesCard/><AccountRightsCard role={user.role}/></>;
+  if (user.role === 'PENDING_DOCTOR') return <><Heading eyebrow={t("Clinician access")} title={t("Welcome, Dr. {0}.", { 0: user.name })} subtitle={t("Your account is under review. After account approval, you can use clinical features. Credential verification is a separate manual review.")}/><div className="security-banner"><div><h3>{t("Account approval in progress")}</h3><p>{t("Our administrative team is reviewing your account. Your professional medical number is also checked separately before you receive a certified badge.")}</p></div><Clock3 size={33} className="security-symbol"/></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account profile")}</h2><p className="panel-caption">{t("Information submitted with your registration")}</p></div><span className="tag warning">{t("Pending review")}</span></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Professional medical number")}</span><span className="data-value">{user.professionalMedicalNumber || t("Not provided")}</span></div><div className="data-row"><span className="data-key">{t("Submitted")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/><TwoStepCard user={user}/><SignOutOtherDevicesCard/><AccountRightsCard role={user.role}/></>;
   return <>
     {tab === 'Patients' && <>
       <Heading eyebrow={t("Clinical workspace")} title={t("Emergency lookup")} subtitle={t("Find a patient's emergency information by full name when they cannot give you their CM ID.")}/>
@@ -1831,7 +1849,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         </div>}
       </div></section>
     </>}
-    {tab === 'Profile' && <><Heading eyebrow={t("Clinician account")} title={t("Your profile")} subtitle={t("Your account identity for patients and the Mon carnet care network.")}/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Professional profile")}</h2><p className="panel-caption">{t("Your hospital or clinic is shown in patient access logs.")}</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">{t("Account status")}</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">{t("Credential status")}</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> {t("Certified doctor")}</span>:<span className="tag warning">{t("Manual verification pending")}</span>}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{profile.data?.contactInfo || t("Not provided")}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">{t("Hospital or clinic")}</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder={t("Your hospital or clinic name")} data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">{t("Professional medical number")}</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder={t("License or registration number")} data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?t("Changing this number will remove your certified badge until an administrator verifies it again."):t("An administrator manually checks this number before awarding your certified badge.")}</small></div><LocationFields idPrefix="doctor-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?t("Saving…"):t("Save professional profile")}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your impact")}</h2><p className="panel-caption">{t("Stats from your clinical activity")}</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Patients treated")}</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">{t("Records added")}</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">{t("This month")}</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/><SignOutOtherDevicesCard/><AccountRightsCard role="DOCTOR"/></>}
+    {tab === 'Profile' && <><Heading eyebrow={t("Clinician account")} title={t("Your profile")} subtitle={t("Your account identity for patients and the Mon carnet care network.")}/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Professional profile")}</h2><p className="panel-caption">{t("Your hospital or clinic is shown in patient access logs.")}</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">{t("Account status")}</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">{t("Credential status")}</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> {t("Certified doctor")}</span>:<span className="tag warning">{t("Manual verification pending")}</span>}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{profile.data?.contactInfo || t("Not provided")}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">{t("Hospital or clinic")}</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder={t("Your hospital or clinic name")} data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">{t("Professional medical number")}</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder={t("License or registration number")} data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?t("Changing this number will remove your certified badge until an administrator verifies it again."):t("An administrator manually checks this number before awarding your certified badge.")}</small></div><LocationFields idPrefix="doctor-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?t("Saving…"):t("Save professional profile")}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your impact")}</h2><p className="panel-caption">{t("Stats from your clinical activity")}</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Patients treated")}</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">{t("Records added")}</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">{t("This month")}</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/><TwoStepCard user={user}/><SignOutOtherDevicesCard/><AccountRightsCard role="DOCTOR"/></>}
     {toast && <div className="toast-message" role="status">{toast}</div>}
   </>;
 }
@@ -1850,6 +1868,14 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
   const approve = useApproveDoctor();
   const verifyDoctor = useVerifyDoctor();
   const updateUserStatus = useUpdateAdminUserStatus();
+  const resetMfa = useResetAdminUserMfa();
+  const resetTwoStep = (account: User) => {
+    if (!window.confirm(t("Reset two-step sign-in for {0}? Only do this after confirming their identity through a trusted channel (in person or a known phone number). They will be signed out everywhere and must set it up again.", { 0: account.name }))) return;
+    resetMfa.mutate({ userId: account.id }, {
+      onSuccess: () => { void qc.invalidateQueries(); window.alert(t("Two-step sign-in was reset for {0}.", { 0: account.name })); },
+      onError: (error) => window.alert(errText(error)),
+    });
+  };
   const passwordResetRequests = useGetAdminPasswordResetRequests({
     query: {
       queryKey: getGetAdminPasswordResetRequestsQueryKey(),
@@ -1917,13 +1943,13 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
     </>}
     {tab==='Doctor approvals' && <><Heading eyebrow={t("Clinical access")} title={t("Doctor approvals")} subtitle={t("Approve doctor accounts to enable clinical access; medical credential verification is a separate manual review.")}/><div className="tabs"><span className="tab active">{t("Pending review")}</span></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Pending clinicians")}</h2><p className="panel-caption">{t("Approve accounts to enable patient search and care documentation")}</p></div><span className="tag warning">{pending.data?.length??0} {t("pending")}</span></div><div className="panel-body">{pending.isLoading?<div className="skeleton"/>:pending.error?<ErrorState error={pending.error} retry={()=>pending.refetch()}/>:pending.data?.length?pending.data.map(d=><div className="data-row" key={d.id}><div className="person-cell"><div className="avatar">{initials(d.name)}</div><span>{d.name}<small style={{display:'block',fontWeight:400,color:'#92a09a',marginTop:3}}>{d.email} {t("· Registered")} {dateLabel(d.createdAt)}</small><small style={{display:'block',fontWeight:400,color:'#687b8d',marginTop:3}}>{t("Medical number:")} {d.professionalMedicalNumber||t("Not submitted")}</small></span></div><span className="tag warning">{t("Pending")}</span><button className="btn small" onClick={()=>approveOne(d.id)} disabled={approve.isPending} data-testid={`button-approve-${d.id}`}><Check size={13}/> {t("Approve account")}</button></div>):<EmptyState icon={BadgeCheck} title={t("All caught up")} children={t("There are no clinician accounts waiting for review.")}/>}</div></section>
       <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2 className="panel-title">{t("Doctor credential verification")}</h2><p className="panel-caption">{t("Review the submitted medical number and award the certified badge after manual validation.")}</p></div></div><div className="panel-body"><SearchField value={doctorQuery} onChange={setDoctorQuery} placeholder={t("Doctor name or email")} testId="input-doctor-approval-search"/>{doctorQuery.trim().length>=2&&(doctorSearch.isLoading?<div className="skeleton" style={{marginTop:14}}/>:doctorSearch.error?<ErrorState error={doctorSearch.error} retry={()=>doctorSearch.refetch()}/>:doctorSearch.data?.filter(d=>d.role==='DOCTOR'||d.role==='PENDING_DOCTOR').map(d=><UserResult key={d.id} user={d} action={<div className="row-actions">{!d.doctorVerified&&<button className="btn small secondary" onClick={()=>verifyOne(d)} disabled={!d.professionalMedicalNumber||verifyDoctor.isPending} data-testid={`button-verify-doctor-${d.id}`}><BadgeCheck size={13}/> {t("Verify number")}</button>}<button className={`btn small ${d.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(d,!d.isActive)} disabled={updateUserStatus.isPending} data-testid={`button-toggle-doctor-${d.id}`}>{d.isActive?t("Suspend"):t("Restore")}</button></div>}/>))}</div></section></>}
-    {tab==='User search' && <><Heading eyebrow={t("Network directory")} title={t("User search")} subtitle={t("Search all accounts, view account and doctor credential status, and suspend or restore accounts without deleting data.")}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Search accounts")}</h2><p className="panel-caption">{t("Search by name or email address")}</p></div></div><div className="panel-body"><SearchField value={userQuery} onChange={setUserQuery} placeholder={t("Name or email")} testId="input-user-search"/>{userQuery.trim().length<2?<EmptyState icon={Users} title={t("Search the network")} children={t("Enter at least two characters to find an account.")}/>:userSearch.isLoading?<div className="skeleton" style={{marginTop:15}}/>:userSearch.error?<ErrorState error={userSearch.error} retry={()=>userSearch.refetch()}/>:userSearch.data?.length?userSearch.data.map(u=><UserResult key={u.id} user={u} action={<button className={`btn small ${u.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(u,!u.isActive)} disabled={updateUserStatus.isPending||u.id===user.id} data-testid={`button-toggle-user-${u.id}`}>{u.isActive?t("Suspend"):t("Restore")}</button>}/>):<EmptyState icon={Users} title={t("No matching accounts")} children={t("Try a different spelling or email address.")}/>}</div></section><PossibleDuplicates active={tab==='User search'}/></>}
+    {tab==='User search' && <><Heading eyebrow={t("Network directory")} title={t("User search")} subtitle={t("Search all accounts, view account and doctor credential status, and suspend or restore accounts without deleting data.")}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Search accounts")}</h2><p className="panel-caption">{t("Search by name or email address")}</p></div></div><div className="panel-body"><SearchField value={userQuery} onChange={setUserQuery} placeholder={t("Name or email")} testId="input-user-search"/>{userQuery.trim().length<2?<EmptyState icon={Users} title={t("Search the network")} children={t("Enter at least two characters to find an account.")}/>:userSearch.isLoading?<div className="skeleton" style={{marginTop:15}}/>:userSearch.error?<ErrorState error={userSearch.error} retry={()=>userSearch.refetch()}/>:userSearch.data?.length?userSearch.data.map(u=><UserResult key={u.id} user={u} action={<div className="row-actions">{u.mfaEnabled&&u.id!==user.id&&<button className="btn small secondary" onClick={()=>resetTwoStep(u)} disabled={resetMfa.isPending} data-testid={`button-reset-mfa-${u.id}`}>{t("Reset two-step sign-in")}</button>}<button className={`btn small ${u.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(u,!u.isActive)} disabled={updateUserStatus.isPending||u.id===user.id} data-testid={`button-toggle-user-${u.id}`}>{u.isActive?t("Suspend"):t("Restore")}</button></div>}/>):<EmptyState icon={Users} title={t("No matching accounts")} children={t("Try a different spelling or email address.")}/>}</div></section><PossibleDuplicates active={tab==='User search'}/></>}
     {tab==='Password recovery' && <><Heading eyebrow={t("Account support")} title={t("Account requests")} subtitle={t("Password recovery and account deletion requests. Verify each requester using a trusted contact method before acting.")}/>
       {temporaryPassword && <section className="panel" style={{marginBottom:18}}><div className="panel-head"><div><h2 className="panel-title">{t("Temporary password created")}</h2><p className="panel-caption">{t("Share this once with the verified account owner through a trusted channel.")}</p></div><button className="btn small secondary" onClick={()=>setTemporaryPassword(null)}>{t("Hide")}</button></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Account")}</span><span className="data-value">{temporaryPassword.email}</span></div><div className="data-row"><span className="data-key">{t("Temporary password")}</span><span className="data-value" data-testid="temporary-password">{temporaryPassword.password}</span></div></div></section>}
       <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Pending requests")}</h2><p className="panel-caption">{t("Requests are refreshed automatically every minute.")}</p></div><span className="tag warning">{passwordResetRequests.data?.length ?? 0} {t("pending")}</span></div><div className="panel-body">{passwordResetRequests.isLoading?<div className="skeleton"/>:passwordResetRequests.error?<ErrorState error={passwordResetRequests.error} retry={()=>passwordResetRequests.refetch()}/>:passwordResetRequests.data?.length?passwordResetRequests.data.map((request)=><div className="data-row" key={request.id}><div><strong>{request.email}</strong><small style={{display:'block',color:'#92a09a',marginTop:4}}>{t("Requested")} {dateLabel(request.requestedAt)}</small></div><button className="btn small secondary" onClick={()=>resetPassword(request.id)} disabled={resetRequestedPassword.isPending} data-testid={`button-reset-password-${request.id}`}>{resetRequestedPassword.isPending?t("Resetting…"):t("Verify & reset")}</button></div>):<EmptyState icon={KeyRound} title={t("No requests waiting")} children={t("New password recovery requests will appear here.")}/ >}</div></section>
     <DeletionRequestsPanel active={tab==='Password recovery'}/>
     </>}
-    {tab==='Profile' && <><Heading eyebrow={t("Administrator account")} title={t("Your profile")} subtitle={t("Manage your administrator account and password.")}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account information")}</h2><p className="panel-caption">{t("Current signed-in account")}</p></div><div className="avatar">{initials(user.name)}</div></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Role")}</span><span className="data-value">{user.role}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/><SignOutOtherDevicesCard/><AccountRightsCard role="ADMIN"/></>}
+    {tab==='Profile' && <><Heading eyebrow={t("Administrator account")} title={t("Your profile")} subtitle={t("Manage your administrator account and password.")}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account information")}</h2><p className="panel-caption">{t("Current signed-in account")}</p></div><div className="avatar">{initials(user.name)}</div></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Role")}</span><span className="data-value">{user.role}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/><TwoStepCard user={user}/><SignOutOtherDevicesCard/><AccountRightsCard role="ADMIN"/></>}
     {tab==='Analytics' && <><Heading eyebrow={t("Network insights")} title={t("Care network analytics")} subtitle={t("Aggregate care activity, service use by region and clinic, and potential epidemic signals. Small location cohorts are suppressed.")} action={<button className="btn secondary no-print" onClick={()=>window.print()} data-testid="button-print-analytics"><Printer size={15}/> {t("Export report")}</button>}/>{analytics.isLoading?<div className="skeleton"/>:analytics.error?<ErrorState error={analytics.error} retry={()=>analytics.refetch()}/>:<>
       <div className="analytics-report-note">{t("Operational report · Activity totals are not measures of care quality or health outcomes. Regional and clinic activity is shown only for groups with at least")} {minimumAggregateGroupSize} {t("distinct patients.")}</div>
       <EpidemicAlerts metrics={analytics.data?.epidemicMetrics ?? []}/>

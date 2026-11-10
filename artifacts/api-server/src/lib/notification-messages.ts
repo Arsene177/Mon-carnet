@@ -37,6 +37,11 @@ export const notificationMessages = {
       ? { title: "Accès au carnet refusé", body: `${patientName} a refusé votre demande d’ouverture de son carnet.` }
       : { title: "Booklet access declined", body: `${patientName} declined your request to open their booklet.` };
   },
+  mfaReset(language: NotificationLanguage): Message {
+    return language === "fr"
+      ? { title: "Validation en deux étapes réinitialisée", body: "Un administrateur a retiré la validation en deux étapes de votre compte après avoir vérifié votre identité. Vous avez été déconnecté partout. Si vous n’êtes pas à l’origine de cette demande, contactez immédiatement l’administrateur." }
+      : { title: "Two-step sign-in was reset", body: "An administrator removed two-step sign-in from your account after verifying your identity. You were signed out everywhere. If you did not ask for this, contact the administrator immediately." };
+  },
   deletionRequested(language: NotificationLanguage, accountName: string): Message {
     return language === "fr"
       ? { title: "Nouvelle demande de suppression de compte", body: `${accountName} a demandé la suppression de son compte. Traitez la demande dans Demandes de compte.` }

@@ -13,4 +13,9 @@ export interface LoginInput {
      * @maxLength 128
      */
   password: string;
+  /**
+     * Six-digit code from the authenticator app, or a recovery code, when two-step sign-in is on.
+     * @maxLength 20
+     */
+  code?: string;
 }

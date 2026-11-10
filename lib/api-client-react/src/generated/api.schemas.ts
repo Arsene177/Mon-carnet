@@ -61,6 +61,10 @@ export interface User {
   /** True when only the birth year is known; dateOfBirth is then 1 January of that year. */
   dateOfBirthEstimated: boolean;
   preferredLanguage: Language;
+  /** Two-step sign-in with an authenticator app is on. */
+  mfaEnabled: boolean;
+  /** This role must use two-step sign-in (doctors and administrators). */
+  mfaRequired: boolean;
   id: number;
   email: string;
   name: string;
@@ -236,6 +240,66 @@ export interface LoginInput {
      * @maxLength 128
      */
   password: string;
+  /**
+     * Six-digit code from the authenticator app, or a recovery code, when two-step sign-in is on.
+     * @maxLength 20
+     */
+  code?: string;
+}
+
+export interface LoginResult {
+  mfaRequired: boolean;
+  token?: string;
+  user?: User;
+}
+
+export interface PasswordConfirmation {
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  password: string;
+}
+
+export interface MfaCodeInput {
+  /**
+     * @minLength 1
+     * @maxLength 20
+     */
+  code: string;
+}
+
+export interface PasswordAndCode {
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  password: string;
+  /**
+     * @minLength 1
+     * @maxLength 20
+     */
+  code: string;
+}
+
+export interface MfaStatus {
+  enabled: boolean;
+  required: boolean;
+  recoveryCodesRemaining: number;
+}
+
+export interface MfaSetup {
+  secret: string;
+  otpauthUrl: string;
+}
+
+export interface MfaRecoveryCodes {
+  recoveryCodes: string[];
+}
+
+export interface MfaEnabled {
+  recoveryCodes: string[];
+  token: string;
 }
 
 export interface PasswordResetRequestInput {

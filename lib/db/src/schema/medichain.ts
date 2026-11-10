@@ -57,6 +57,13 @@ export const usersTable = pgTable(
     // Raised to end every signed-in session at once (password change, temporary password,
     // "sign out of all other devices"). Access tokens carry the value they were issued with.
     sessionVersion: integer("session_version").notNull().default(0),
+    // Two-step sign-in with an authenticator app (TOTP). Secrets are encrypted (see api-server lib/mfa.ts).
+    // mfaPendingSecret holds a secret during setup until the first code confirms it.
+    mfaSecret: text("mfa_secret"),
+    mfaPendingSecret: text("mfa_pending_secret"),
+    mfaEnabledAt: timestamp("mfa_enabled_at", { withTimezone: true }),
+    // Last 30-second time step accepted, so a code cannot be used twice.
+    mfaLastUsedStep: integer("mfa_last_used_step"),
     // Version of the privacy policy and terms accepted, and when. Patients also record explicit
     // consent to the processing of their health data (sensitive data under Law 2024/017).
     termsVersion: text("terms_version"),
@@ -316,3 +323,17 @@ export type User = typeof usersTable.$inferSelect;
 export type EmergencyInfo = typeof emergencyInfoTable.$inferSelect;
 export type MedicalRecord = typeof medicalRecordsTable.$inferSelect;
 export type AccessPermission = typeof accessPermissionsTable.$inferSelect;
+/** One-time recovery codes for two-step sign-in, stored as hashes. */
+export const mfaRecoveryCodesTable = pgTable(
+  "medichain_mfa_recovery_codes",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("medichain_mfa_recovery_codes_user_index").on(table.userId)],
+);
