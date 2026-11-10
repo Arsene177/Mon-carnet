@@ -88,6 +88,7 @@ import type {
   RegistrationInput,
   SearchDiseaseCodesParams,
   SearchUsersParams,
+  SecurityEvent,
   SessionToken,
   User
 } from './api.schemas';
@@ -4054,6 +4055,77 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getUpdateAdminUserStatusMutationOptions(options));
     }
+
+export const getGetAdminSecurityEventsUrl = () => {
+
+
+
+
+  return `/api/admin/security-events`
+}
+
+export const getAdminSecurityEvents = async ( options?: Parameters<typeof customFetch>[1]): Promise<SecurityEvent[]> => {
+
+  return customFetch<SecurityEvent[]>(getGetAdminSecurityEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminSecurityEventsQueryKey = () => {
+    return [
+    `/api/admin/security-events`
+    ] as const;
+    }
+
+
+export const getGetAdminSecurityEventsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminSecurityEvents>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminSecurityEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminSecurityEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminSecurityEvents>>> = ({ signal }) => getAdminSecurityEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminSecurityEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminSecurityEventsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminSecurityEvents>>>
+export type GetAdminSecurityEventsQueryError = ErrorType<unknown>
+
+
+
+export function useGetAdminSecurityEvents<TData = Awaited<ReturnType<typeof getAdminSecurityEvents>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminSecurityEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminSecurityEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getResetAdminUserMfaUrl = (userId: number,) => {
 

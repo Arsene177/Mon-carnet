@@ -133,6 +133,7 @@ import {
 } from "../lib/medichain-auth";
 import { verifySecondFactor } from "./mfa";
 import { attachmentObjectName, signedStorageUrl } from "../lib/object-storage";
+import { recordSecurityEvent, unusualAccessThreshold } from "../lib/security-events";
 
 const router: IRouter = Router();
 const patientDisplayIdAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -205,6 +206,34 @@ async function purgeExpiredMedicalAttachments() {
     } catch (error) {
       console.warn("Expired private medical attachment cleanup will be retried", attachment.id, error);
     }
+  }
+}
+
+/**
+ * Reports a doctor who opened the records of many different patients within the last hour,
+ * which can mean a stolen account or misuse. The threshold is UNUSUAL_ACCESS_PATIENTS_PER_HOUR.
+ */
+async function reportUnusualRecordAccess(doctor: { id: number; name: string; hospitalName: string | null }) {
+  try {
+    const [opened] = await db
+      .select({ patients: sql<number>`count(distinct ${auditEventsTable.patientId})::int` })
+      .from(auditEventsTable)
+      .where(and(
+        eq(auditEventsTable.actorUserId, doctor.id),
+        eq(auditEventsTable.action, "MEDICAL_RECORDS_VIEWED"),
+        gte(auditEventsTable.createdAt, new Date(Date.now() - 60 * 60_000)),
+      ));
+    if ((opened?.patients ?? 0) < unusualAccessThreshold()) return;
+    await recordSecurityEvent({
+      type: "UNUSUAL_RECORD_ACCESS",
+      severity: "warning",
+      userId: doctor.id,
+      details: { doctorName: doctor.name, hospital: doctor.hospitalName, patients: opened!.patients },
+      subject: String(doctor.id),
+      dedupe: true,
+    });
+  } catch (error) {
+    console.warn("Unusual access check failed", error);
   }
 }
 
@@ -1838,6 +1867,7 @@ router.get(
       entityType: "medical_record_collection",
       hospitalName: req.currentUser!.hospitalName,
     });
+    void reportUnusualRecordAccess(req.currentUser!);
     res.json(
       GetDoctorPatientRecordsResponse.parse(
         await recordsResponse(rows),
@@ -2422,6 +2452,16 @@ router.put("/admin/users/:userId/status", requireAuth("ADMIN"), async (req, res)
     res.status(404).json({ error: "Account not found." });
     return;
   }
+  if (target.isActive !== updated.isActive) {
+    await recordSecurityEvent({
+      type: updated.isActive ? "ACCOUNT_RESTORED" : "ACCOUNT_SUSPENDED",
+      severity: updated.isActive ? "info" : "warning",
+      userId: req.currentUser!.id,
+      details: { adminName: req.currentUser!.name, accountName: updated.name, accountEmail: updated.email },
+      subject: String(updated.id),
+      actingAdminId: req.currentUser!.id,
+    });
+  }
   res.json(UpdateAdminUserStatusResponse.parse(userResponse(updated)));
 });
 
@@ -2497,6 +2537,14 @@ router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMI
     res.status(404).json({ error: "This request is no longer pending or its account no longer exists." });
     return;
   }
+  await recordSecurityEvent({
+    type: "TEMPORARY_PASSWORD_ISSUED",
+    severity: "warning",
+    userId: req.currentUser!.id,
+    details: { adminName: req.currentUser!.name, accountEmail: result.email },
+    subject: result.email,
+    actingAdminId: req.currentUser!.id,
+  });
   res.json(ResetAdminRequestedPasswordResponse.parse({
     email: result.email,
     temporaryPassword,

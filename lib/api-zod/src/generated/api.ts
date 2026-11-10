@@ -1235,6 +1235,17 @@ export const UpdateAdminUserStatusResponse = zod.object({
 })
 
 
+export const GetAdminSecurityEventsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "type": zod.string(),
+  "severity": zod.enum(['info', 'warning', 'critical']),
+  "createdAt": zod.coerce.date(),
+  "ipAddress": zod.string().nullable(),
+  "details": zod.record(zod.string(), zod.unknown())
+})
+export const GetAdminSecurityEventsResponse = zod.array(GetAdminSecurityEventsResponseItem)
+
+
 export const ResetAdminUserMfaParams = zod.object({
   "userId": zod.coerce.number().int()
 })

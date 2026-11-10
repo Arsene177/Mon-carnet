@@ -9,7 +9,7 @@ import {
   Search, Shield, ShieldCheck, Stethoscope, Trash2, UserRound, Users, X,
 } from 'lucide-react';
 import {
-  getGetAdminAnalyticsQueryKey, getGetAdminStatsQueryKey, getGetDoctorProfileQueryKey, getGetMeQueryKey,
+  getGetAdminAnalyticsQueryKey, getGetAdminSecurityEventsQueryKey, getGetAdminStatsQueryKey, getGetDoctorProfileQueryKey, getGetMeQueryKey,
   getGetNotificationInboxQueryKey,
   getGetPatientAccessRequestsQueryKey, getGetPatientAccessSettingsQueryKey, getGetAdminPossibleDuplicatesQueryKey, getGetMyDeletionRequestQueryKey, getGetAdminDeletionRequestsQueryKey,
   getGetPatientPendingRequestsQueryKey, getGetPatientPermissionsQueryKey, getGetAdminPasswordResetRequestsQueryKey,
@@ -22,12 +22,12 @@ import {
   useGetPatientPendingRequests, useGetPatientPermissions,
   useGetPatientProfile, useGetPatientRecords, useGetPendingDoctors, useGrantPatientPermission,
   useGrantPatientAccessById, useLogin, useRegister, useRevokePatientPermission, useEmergencyPatientLookup,
-  useSearchDiseaseCodes, useResetAdminUserMfa, useSearchUsers, useUpdateAdminEpidemicThreshold, useUpdateAdminUserStatus, useUpdateEmergencyInfo, useVerifyDoctor,
+  useSearchDiseaseCodes, useGetAdminSecurityEvents, useResetAdminUserMfa, useSearchUsers, useUpdateAdminEpidemicThreshold, useUpdateAdminUserStatus, useUpdateEmergencyInfo, useVerifyDoctor,
   useRequestPasswordReset, useGetAdminPasswordResetRequests, useResetAdminRequestedPassword,
 } from '@workspace/api-client-react';
 import type {
   AccessApprovalMode, AccessRequest, AdminEpidemicMetric, BookletVerificationIssue, DiseaseCode, EmergencyInfo, EmergencyInfoInput,
-  AdminDeletionRequest, MedicalRecord, MedicalRecordInput, PatientBookletAccess, PatientSearchResult, PossibleDuplicateGroup, MedicalRecordRecordType, PatientProfile, User,
+  AdminDeletionRequest, MedicalRecord, MedicalRecordInput, PatientBookletAccess, PatientSearchResult, PossibleDuplicateGroup, SecurityEvent, MedicalRecordRecordType, PatientProfile, User,
 } from '@workspace/api-client-react';
 import { CAMEROON_ARRONDISSEMENTS, CAMEROON_REGIONS, LEGAL_DOCUMENTS_VERSION } from '@workspace/api-zod';
 import { LegalPage } from '@/pages/legal';
@@ -1966,6 +1966,7 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
         <div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("System health")}</h2><p className="panel-caption">{t("Current status of essential services")}</p></div><span className="status-pill"><i className="status-dot"/> {t("Live")}</span></div><div className="panel-body">{analytics.data?.systemStatus?.length?analytics.data.systemStatus.map((service)=><div className="data-row" key={service.name}><span className="person-cell"><span className="record-icon"><Activity size={15}/></span>{t(service.name)}</span><span className={service.status==='Operational'?'tag':'tag warning'}>{t(service.status)}</span></div>):<EmptyState icon={Activity} title={t("No status information")} children={t("System status will appear here when available.")}/ >}</div></section>
           <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Doctor approvals")}</h2><p className="panel-caption">{t("Keep clinical access appropriately reviewed")}</p></div><button className="btn small secondary" onClick={()=>onTab('Doctor approvals')} data-testid="button-open-approvals" >{t("Review")}</button></div><div className="panel-body">{pending.isLoading?<div className="skeleton"/>:pending.error?<ErrorState error={pending.error} retry={()=>pending.refetch()}/>:pending.data?.length?pending.data.slice(0,4).map(d=><div className="data-row" key={d.id}><div className="person-cell"><div className="avatar">{initials(d.name)}</div><span>{d.name}<small style={{display:'block',fontWeight:400,color:'#606e68',marginTop:3}}>{d.email}</small></span></div><button className="btn small secondary" onClick={()=>approveOne(d.id)} disabled={approve.isPending} data-testid={`button-approve-overview-${d.id}`}><Check size={13}/> {t("Approve")}</button></div>):<EmptyState icon={BadgeCheck} title={t("No approvals waiting")} children={t("New clinician registrations will appear here.")}/>}</div></section></div>
       </>}
+      <SecurityEvents active={tab==='System overview'}/>
     </>}
     {tab==='Doctor approvals' && <><Heading eyebrow={t("Clinical access")} title={t("Doctor approvals")} subtitle={t("Approve doctor accounts to enable clinical access; medical credential verification is a separate manual review.")}/><div className="tabs"><span className="tab active">{t("Pending review")}</span></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Pending clinicians")}</h2><p className="panel-caption">{t("Approve accounts to enable patient search and care documentation")}</p></div><span className="tag warning">{pending.data?.length??0} {t("pending")}</span></div><div className="panel-body">{pending.isLoading?<div className="skeleton"/>:pending.error?<ErrorState error={pending.error} retry={()=>pending.refetch()}/>:pending.data?.length?pending.data.map(d=><div className="data-row" key={d.id}><div className="person-cell"><div className="avatar">{initials(d.name)}</div><span>{d.name}<small style={{display:'block',fontWeight:400,color:'#606e68',marginTop:3}}>{d.email} {t("· Registered")} {dateLabel(d.createdAt)}</small><small style={{display:'block',fontWeight:400,color:'#5c6d7d',marginTop:3}}>{t("Medical number:")} {d.professionalMedicalNumber||t("Not submitted")}</small></span></div><span className="tag warning">{t("Pending")}</span><button className="btn small" onClick={()=>approveOne(d.id)} disabled={approve.isPending} data-testid={`button-approve-${d.id}`}><Check size={13}/> {t("Approve account")}</button></div>):<EmptyState icon={BadgeCheck} title={t("All caught up")} children={t("There are no clinician accounts waiting for review.")}/>}</div></section>
       <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2 className="panel-title">{t("Doctor credential verification")}</h2><p className="panel-caption">{t("Review the submitted medical number and award the certified badge after manual validation.")}</p></div></div><div className="panel-body"><SearchField value={doctorQuery} onChange={setDoctorQuery} placeholder={t("Doctor name or email")} testId="input-doctor-approval-search"/>{doctorQuery.trim().length>=2&&(doctorSearch.isLoading?<div className="skeleton" style={{marginTop:14}}/>:doctorSearch.error?<ErrorState error={doctorSearch.error} retry={()=>doctorSearch.refetch()}/>:doctorSearch.data?.filter(d=>d.role==='DOCTOR'||d.role==='PENDING_DOCTOR').map(d=><UserResult key={d.id} user={d} action={<div className="row-actions">{!d.doctorVerified&&<button className="btn small secondary" onClick={()=>verifyOne(d)} disabled={!d.professionalMedicalNumber||verifyDoctor.isPending} data-testid={`button-verify-doctor-${d.id}`}><BadgeCheck size={13}/> {t("Verify number")}</button>}<button className={`btn small ${d.isActive?'danger':'secondary'}`} onClick={()=>setAccountActive(d,!d.isActive)} disabled={updateUserStatus.isPending} data-testid={`button-toggle-doctor-${d.id}`}>{d.isActive?t("Suspend"):t("Restore")}</button></div>}/>))}</div></section></>}
@@ -2020,6 +2021,47 @@ type NoticeTarget = 'ALL' | 'REGION' | 'ARRONDISSEMENT' | 'USERS';
 /** Screen names; the password recovery screen also handles account deletion requests. */
 function tabLabel(tab: Tab) {
   return tab === 'Password recovery' ? t('Account requests') : t(tab);
+}
+
+/** One readable line per security event, in the viewer's language. */
+function securityEventText(event: SecurityEvent): string {
+  const d = event.details as Record<string, string | number | null | undefined>;
+  const v = (key: string) => String(d[key] ?? '—');
+  switch (event.type) {
+    case 'ACCOUNT_LOCKED': return t("Sign-in locked for {0} after repeated wrong passwords or codes.", { 0: v('email') });
+    case 'SIGN_IN_FLOOD': return t("Many sign-in attempts from network address {0}.", { 0: v('ip') });
+    case 'EMERGENCY_LOOKUP_LIMIT': return t("{0} ({1}) reached the limit of 10 emergency lookups per hour.", { 0: v('doctorName'), 1: v('hospital') });
+    case 'UNUSUAL_RECORD_ACCESS': return t("{0} ({1}) opened the records of {2} different patients within an hour.", { 0: v('doctorName'), 1: v('hospital'), 2: v('patients') });
+    case 'SERVER_ERROR': return t("Server error on {0} {1}.", { 0: v('method'), 1: v('route') });
+    case 'MFA_RESET_BY_ADMIN': return t("{0} reset two-step sign-in for {1} ({2}).", { 0: v('adminName'), 1: v('accountName'), 2: v('accountEmail') });
+    case 'TEMPORARY_PASSWORD_ISSUED': return t("{0} issued a temporary password for {1}.", { 0: v('adminName'), 1: v('accountEmail') });
+    case 'ACCOUNT_SUSPENDED': return t("{0} suspended the account of {1} ({2}).", { 0: v('adminName'), 1: v('accountName'), 2: v('accountEmail') });
+    case 'ACCOUNT_RESTORED': return t("{0} restored the account of {1} ({2}).", { 0: v('adminName'), 1: v('accountName'), 2: v('accountEmail') });
+    case 'ACCOUNT_ERASED': return t("{0} erased an account (deletion request {1}).", { 0: v('adminName'), 1: v('deletionRequestId') });
+    case 'ACCOUNT_CLOSED': return t("{0} closed the account of {1} (deletion request {2}).", { 0: v('adminName'), 1: v('accountName'), 2: v('deletionRequestId') });
+    default: return event.type;
+  }
+}
+
+/** Recent security events for administrators: what happened, when, how serious. */
+function SecurityEvents({ active }: { active: boolean }) {
+  const events = useGetAdminSecurityEvents({ query: { enabled: active, queryKey: getGetAdminSecurityEventsQueryKey(), refetchInterval: 60_000 } });
+  const [showAll, setShowAll] = useState(false);
+  const list: SecurityEvent[] = events.data ?? [];
+  const shown = showAll ? list : list.slice(0, 15);
+  const severityLabel = { info: t("Information"), warning: t("Warning"), critical: t("Critical") } as const;
+  return <section className="panel" style={{marginTop:17}} aria-labelledby="security-events-title">
+    <div className="panel-head"><div><h2 className="panel-title" id="security-events-title">{t("Security events")}</h2><p className="panel-caption">{t("Locked accounts, sign-in floods, unusual access to records, server errors and sensitive administrator actions. Warnings are also sent to administrators’ inboxes. Kept for 12 months.")}</p></div><ShieldCheck size={17} color="#69a293"/></div>
+    <div className="panel-body">
+      {events.isLoading ? <div className="skeleton"/> : events.error ? <ErrorState error={events.error} retry={() => events.refetch()}/> : list.length ? <>
+        <ul className="security-events">{shown.map((event) => <li key={event.id} className="data-row">
+          <span className="data-key"><time dateTime={new Date(event.createdAt).toISOString()}>{new Date(event.createdAt).toLocaleString(locale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</time></span>
+          <span className="data-value"><span className={`tag ${event.severity === 'info' ? '' : 'warning'}`}>{severityLabel[event.severity]}</span> {securityEventText(event)}</span>
+        </li>)}</ul>
+        {list.length > 15 && <div className="form-actions"><button className="btn small secondary" type="button" onClick={() => setShowAll(!showAll)}>{showAll ? t("Show fewer") : t("Show all {0}", { 0: list.length })}</button></div>}
+      </> : <EmptyState icon={ShieldCheck} title={t("No security events")} children={t("Nothing suspicious or sensitive has been recorded.")}/>}
+    </div>
+  </section>;
 }
 
 function PossibleDuplicates({ active }: { active: boolean }) {

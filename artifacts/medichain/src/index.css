@@ -414,3 +414,7 @@ h1 { margin:0; font:700 clamp(27px,3vw,37px)/1.15 var(--app-font-serif); letter-
 .panel,.grid > *,.dashboard-grid > *,.data-row > * { min-width:0; }
 .data-value,.panel-caption,.user-result,.data-row { overflow-wrap:anywhere; }
 @media (max-width:480px) { .data-row { flex-wrap:wrap; gap:4px 12px; } }
+.security-events { list-style:none; margin:0; padding:0; }
+.security-events .data-row { align-items:flex-start; }
+.security-events .data-key { flex:none; min-width:110px; }
+.security-events .data-value { text-align:left; flex:1; }

@@ -4,6 +4,7 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { recordSecurityEvent } from "./lib/security-events";
 import {
   apiLimiter,
   loginAccountLimiter,
@@ -80,7 +81,12 @@ app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
   const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" && error.status >= 400 && error.status < 500
     ? error.status
     : 500;
-  if (status >= 500) req.log.error({ err: error }, "Unhandled request error");
+  if (status >= 500) {
+    req.log.error({ err: error }, "Unhandled request error");
+    // Route pattern (e.g. /doctor/patient/:patientId/records), never ids or query strings.
+    const route = `${req.baseUrl}${req.route?.path ?? ""}` || "unknown";
+    void recordSecurityEvent({ type: "SERVER_ERROR", severity: "warning", userId: req.currentUser?.id, details: { method: req.method, route }, subject: route, dedupe: true });
+  }
   res.status(status).json({ error: status >= 500 ? "Something went wrong. Please try again." : "The request could not be processed." });
 });
 

@@ -87,6 +87,27 @@ export interface User {
   createdAt: string;
 }
 
+export type SecurityEventSeverity = typeof SecurityEventSeverity[keyof typeof SecurityEventSeverity];
+
+
+export const SecurityEventSeverity = {
+  info: 'info',
+  warning: 'warning',
+  critical: 'critical',
+} as const;
+
+export type SecurityEventDetails = { [key: string]: unknown };
+
+export interface SecurityEvent {
+  id: number;
+  type: string;
+  severity: SecurityEventSeverity;
+  createdAt: string;
+  /** @nullable */
+  ipAddress: string | null;
+  details: SecurityEventDetails;
+}
+
 export interface SessionToken {
   token: string;
 }

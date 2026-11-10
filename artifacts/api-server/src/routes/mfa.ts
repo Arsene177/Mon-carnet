@@ -43,6 +43,7 @@ import {
 } from "../lib/mfa";
 import { languageOf, notificationMessages } from "../lib/notification-messages";
 import { invalidBody } from "./medichain";
+import { recordSecurityEvent } from "../lib/security-events";
 
 type UserRow = typeof usersTable.$inferSelect;
 type Executor = Pick<typeof db, "insert" | "delete">;
@@ -277,6 +278,14 @@ router.post("/admin/users/:userId/mfa/reset", requireAuth("ADMIN"), async (req, 
     res.status(404).json({ error: "Account not found." });
     return;
   }
+  await recordSecurityEvent({
+    type: "MFA_RESET_BY_ADMIN",
+    severity: "warning",
+    userId: req.currentUser!.id,
+    details: { adminName: req.currentUser!.name, accountName: updated.name, accountEmail: updated.email },
+    subject: String(updated.id),
+    actingAdminId: req.currentUser!.id,
+  });
   res.json(ResetAdminUserMfaResponse.parse(userResponse(updated)));
 });
 
