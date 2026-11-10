@@ -31,6 +31,22 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The backup tests need pg_dump and pg_restore of the same major version as the database.
+      # Run them from the postgres:16 image the service already uses, whatever the runner ships.
+      - name: PostgreSQL 16 client tools for the backup tests
+        run: |
+          mkdir -p "$HOME/pg16/bin"
+          for tool in pg_dump pg_restore; do
+            cat > "$HOME/pg16/bin/$tool" <<SCRIPT
+          #!/bin/sh
+          exec docker run --rm -i --network host --user "$(id -u):$(id -g)" \\
+            -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE -e PGSSLMODE \\
+            -v /tmp:/tmp postgres:16 $tool "\$@"
+          SCRIPT
+            chmod +x "$HOME/pg16/bin/$tool"
+          done
+          echo "$HOME/pg16/bin" >> "$GITHUB_PATH"
+          "$HOME/pg16/bin/pg_dump" --version
       - name: Type check
         run: pnpm run typecheck
       - name: Every interface text has a French translation
@@ -39,5 +55,5 @@ jobs:
         run: pnpm --filter @workspace/db run push
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
-      - name: Access-rule tests
+      - name: Access-rule and backup tests
         run: pnpm --filter @workspace/api-server run test

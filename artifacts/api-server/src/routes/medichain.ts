@@ -132,6 +132,7 @@ import {
   verifyPassword,
 } from "../lib/medichain-auth";
 import { verifySecondFactor } from "./mfa";
+import { attachmentObjectName, signedStorageUrl } from "../lib/object-storage";
 
 const router: IRouter = Router();
 const patientDisplayIdAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -178,35 +179,9 @@ async function ensurePatientIdentifiers(user: typeof usersTable.$inferSelect) {
   return updated;
 }
 
-function privateObjectPathParts(objectPath: string) {
-  const privateDir = process.env.PRIVATE_OBJECT_DIR;
-  if (!privateDir || !objectPath.startsWith("/objects/uploads/")) {
-    throw new Error("Private object storage is not configured.");
-  }
-  const pathParts = privateDir.replace(/^\/+/, "").split("/");
-  const bucketName = pathParts.shift();
-  if (!bucketName) throw new Error("Private object storage is not configured.");
-  const objectName = [...pathParts, objectPath.slice("/objects/".length)].join("/");
-  return { bucketName, objectName };
-}
-
 export async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET" | "DELETE", ttlSeconds: number) {
-  const { bucketName, objectName } = privateObjectPathParts(objectPath);
-  const response = await fetch("http://127.0.0.1:1106/object-storage/signed-object-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      bucket_name: bucketName,
-      object_name: objectName,
-      method,
-      expires_at: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error("Unable to create a private file URL.");
-  const result = await response.json() as { signed_url?: string };
-  if (!result.signed_url) throw new Error("Storage did not return a signed URL.");
-  return result.signed_url;
+  const { bucketName, objectName } = attachmentObjectName(objectPath);
+  return signedStorageUrl(bucketName, objectName, method, ttlSeconds);
 }
 
 async function purgeExpiredMedicalAttachments() {
