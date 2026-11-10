@@ -57,3 +57,12 @@ jobs:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
       - name: Access-rule and backup tests
         run: pnpm --filter @workspace/api-server run test
+      - name: Build the web app for the accessibility check
+        run: pnpm --filter @workspace/medichain run build
+        env:
+          PORT: "4173"
+          BASE_PATH: /
+      - name: Browser for the accessibility check
+        run: pnpm --filter @workspace/api-server exec playwright install --with-deps chromium
+      - name: Accessibility check (WCAG 2.2 AA rules and reflow, every screen)
+        run: pnpm --filter @workspace/api-server run test:accessibility
