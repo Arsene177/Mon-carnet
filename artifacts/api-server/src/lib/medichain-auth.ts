@@ -5,7 +5,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 
 export type MedichainRole = "PATIENT" | "PENDING_DOCTOR" | "DOCTOR" | "ADMIN";
@@ -56,7 +56,11 @@ export function verifyPassword(password: string, stored: string): boolean {
   }
 }
 
-export function createAccessToken(user: CurrentUser): string {
+/**
+ * Issues a seven-day access token. `sessionVersion` is the account's current value; raising it
+ * (see `endAllSessions`) makes every token issued before that point stop working.
+ */
+export function createAccessToken(user: CurrentUser, sessionVersion: number): string {
   const now = Math.floor(Date.now() / 1000);
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const payload = Buffer.from(
@@ -64,6 +68,7 @@ export function createAccessToken(user: CurrentUser): string {
       sub: user.id,
       role: user.role,
       status: user.status,
+      sv: sessionVersion,
       iat: now,
       exp: now + 60 * 60 * 24 * 7,
     }),
@@ -73,7 +78,14 @@ export function createAccessToken(user: CurrentUser): string {
   return `${unsigned}.${signature}`;
 }
 
-function verifyAccessToken(token: string): { id: number; role: MedichainRole; status: MedichainStatus } | null {
+type AccessTokenClaims = {
+  id: number;
+  role: MedichainRole;
+  status: MedichainStatus;
+  sessionVersion: number;
+};
+
+function verifyAccessToken(token: string): AccessTokenClaims | null {
   try {
     const [headerPart, payloadPart, signaturePart] = token.split(".");
     if (!headerPart || !payloadPart || !signaturePart) return null;
@@ -89,12 +101,14 @@ function verifyAccessToken(token: string): { id: number; role: MedichainRole; st
       sub?: unknown;
       role?: unknown;
       status?: unknown;
+      sv?: unknown;
       exp?: unknown;
     };
     if (
       !Number.isInteger(payload.sub) ||
       !["PATIENT", "PENDING_DOCTOR", "DOCTOR", "ADMIN"].includes(String(payload.role)) ||
       !["PENDING", "ACTIVE", "INACTIVE"].includes(String(payload.status)) ||
+      (payload.sv !== undefined && !Number.isInteger(payload.sv)) ||
       typeof payload.exp !== "number" ||
       payload.exp <= Math.floor(Date.now() / 1000)
     ) {
@@ -104,6 +118,9 @@ function verifyAccessToken(token: string): { id: number; role: MedichainRole; st
       id: payload.sub as number,
       role: payload.role as MedichainRole,
       status: payload.status as MedichainStatus,
+      // Tokens issued before session versions existed carry none; they match the initial value 0
+      // until the account's first password change or "sign out of all other devices".
+      sessionVersion: (payload.sv as number | undefined) ?? 0,
     };
   } catch {
     return null;
@@ -166,7 +183,11 @@ export function requireAuth(...roles: MedichainRole[]) {
       return;
     }
     const currentUser = publicUser(user);
-    if (currentUser.role !== claims.role || currentUser.status !== claims.status) {
+    if (
+      currentUser.role !== claims.role ||
+      currentUser.status !== claims.status ||
+      user.sessionVersion !== claims.sessionVersion
+    ) {
       res.status(401).json({ error: "Authentication required" });
       return;
     }
@@ -177,4 +198,19 @@ export function requireAuth(...roles: MedichainRole[]) {
     req.currentUser = currentUser;
     next();
   };
+}
+/** The update that ends every session of an account; use inside `.set({ ... })`. */
+export const nextSessionVersion = () => sql`${usersTable.sessionVersion} + 1`;
+
+/**
+ * Ends every session of an account by raising its session version. Returns the new version so
+ * the caller can issue a fresh token for the device that asked, or undefined when there is no account.
+ */
+export async function endAllSessions(userId: number): Promise<number | undefined> {
+  const [updated] = await db
+    .update(usersTable)
+    .set({ sessionVersion: nextSessionVersion() })
+    .where(eq(usersTable.id, userId))
+    .returning({ sessionVersion: usersTable.sessionVersion });
+  return updated?.sessionVersion;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
 import {
   Activity, AlertCircle, ArrowRight, BadgeCheck, Bell, BookOpen, CalendarDays, Check,
@@ -16,7 +16,7 @@ import {
   getGetPatientProfileQueryKey, getGetPatientRecordsQueryKey, getGetPendingDoctorsQueryKey,
   getGetDoctorPatientRecordsQueryKey, getGetDoctorStatsQueryKey,
   getSearchDiseaseCodesQueryKey, getSearchUsersQueryKey, setAuthTokenGetter,
-  useAddDoctorPatientRecord, useApproveDoctor, useChangePassword, useCreateBookletVerification, useGetAdminAnalytics, useGetAdminStats,
+  useAddDoctorPatientRecord, useApproveDoctor, useChangePassword, useSignOutOtherDevices, useCreateBookletVerification, useGetAdminAnalytics, useGetAdminStats,
   useGetDoctorPatientRecords, useGetDoctorProfile, useGetDoctorStats, useGetMe, useGetNotificationInbox,
   useApprovePatientAccessRequest, useAcceptLegalTerms, useUpdatePatientIdentity, useGetMyDeletionRequest, useRequestAccountDeletion, useCancelAccountDeletion, useGetAdminDeletionRequests, useResolveAdminDeletionRequest, useGetAdminPossibleDuplicates, useGetPatientAccessRequests, useGetPatientAccessSettings, useRejectPatientAccessRequest, useUpdatePatientAccessSettings,
   useGetPatientPendingRequests, useGetPatientPermissions,
@@ -38,7 +38,24 @@ import { downloadMedicalRecord } from '@/lib/download-medical-record';
 import type { WorkspaceTab } from '@/lib/navigation';
 import { LANGUAGES, getLanguage, locale, setLanguage, t, useLanguage, type Language } from '@/lib/i18n';
 
-const queryClient = new QueryClient();
+const SESSION_ENDED_NOTICE_KEY = 'medichain_session_ended';
+/**
+ * The server ended this device's session (password changed elsewhere, "sign out of all other
+ * devices", or the account was suspended): forget the token and return to the sign-in page.
+ */
+function handleSessionEnded(error: unknown) {
+  if ((error as { status?: unknown } | null)?.status !== 401) return;
+  if (typeof localStorage === 'undefined' || !localStorage.getItem('medichain_token')) return;
+  localStorage.removeItem('medichain_token');
+  localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
+  try { sessionStorage.setItem(SESSION_ENDED_NOTICE_KEY, '1'); } catch { /* notice is optional */ }
+  window.location.assign('/login');
+}
+const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: handleSessionEnded }),
+  // A failed sign-in also answers 401; that is a wrong password, not an ended session.
+  mutationCache: new MutationCache({ onError: (error, _variables, _context, mutation) => { if (mutation.options.mutationKey?.[0] !== 'login') handleSessionEnded(error); } }),
+});
 setAuthTokenGetter(() => typeof localStorage === 'undefined' ? null : localStorage.getItem('medichain_token'));
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const SESSION_LAST_ACTIVITY_KEY = 'medichain_last_activity';
@@ -394,6 +411,12 @@ function DeletionRequestsPanel({ active }: { active: boolean }) {
   </section>;
 }
 
+/** Keeps this device signed in with the token the server issued after ending the other sessions. */
+function keepThisDeviceSignedIn(token: string) {
+  localStorage.setItem('medichain_token', token);
+  localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
+}
+
 function PasswordChangeCard() {
   const changePassword = useChangePassword();
   const [currentPassword, setCurrentPassword] = useState('');
@@ -415,11 +438,12 @@ function PasswordChangeCard() {
       return;
     }
     changePassword.mutate({ data: { currentPassword, newPassword } }, {
-      onSuccess: () => {
+      onSuccess: (session) => {
+        keepThisDeviceSignedIn(session.token);
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
-        setMessage(t("Password changed successfully."));
+        setMessage(t("Password changed. You have been signed out on your other devices."));
       },
       onError: (changeError) => setError(errText(changeError)),
     });
@@ -436,6 +460,31 @@ function PasswordChangeCard() {
         {message && <p className="field-note full" role="status">{message}</p>}
         <div className="form-actions full"><button className="btn" type="submit" disabled={changePassword.isPending} data-testid="button-change-password">{changePassword.isPending ? t("Updating…") : t("Change password")}</button></div>
       </form>
+    </div>
+  </section>;
+}
+
+function SignOutOtherDevicesCard() {
+  const signOutOthers = useSignOutOtherDevices();
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const run = () => {
+    setMessage('');
+    setError('');
+    signOutOthers.mutate(undefined, {
+      onSuccess: (session) => {
+        keepThisDeviceSignedIn(session.token);
+        setMessage(t("You have been signed out on every other device. This device stays signed in."));
+      },
+      onError: (signOutError) => setError(errText(signOutError)),
+    });
+  };
+  return <section className="panel" style={{marginTop:17}}>
+    <div className="panel-head"><div><h2 className="panel-title">{t("Signed-in devices")}</h2><p className="panel-caption">{t("If you lost a phone or signed in on a shared computer, sign out everywhere except here. Changing your password does this too.")}</p></div><LogOut size={17} color="#69a293"/></div>
+    <div className="panel-body">
+      {error && <p className="error-state" role="alert">{error}</p>}
+      {message && <p className="field-note" role="status">{message}</p>}
+      <div className="form-actions"><button className="btn secondary" type="button" onClick={run} disabled={signOutOthers.isPending} data-testid="button-sign-out-other-devices">{signOutOthers.isPending ? t("Signing out…") : t("Sign out of all other devices")}</button></div>
     </div>
   </section>;
 }
@@ -627,7 +676,15 @@ function AuthPage() {
   const [registerBirth, setRegisterBirth] = useState<BirthInput>(emptyBirthInput);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [healthConsent, setHealthConsent] = useState(false);
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useState(() => {
+    try {
+      return sessionStorage.getItem(SESSION_ENDED_NOTICE_KEY) ? t("You were signed out because your session was ended, for example after a password change. Sign in again.") : '';
+    } catch {
+      return '';
+    }
+  });
+  // Forget the notice once this page is left (after signing in), not on the reload that shows it.
+  useEffect(() => () => { try { sessionStorage.removeItem(SESSION_ENDED_NOTICE_KEY); } catch { /* optional */ } }, []);
   const login = useLogin();
   const register = useRegister();
   const passwordResetRequest = useRequestPasswordReset();
@@ -1168,7 +1225,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
             </form>
           </div>
         </section>
-        <PasswordChangeCard/>
+        <PasswordChangeCard/><SignOutOtherDevicesCard/>
         <AccountRightsCard role="PATIENT"/>
       </>}
     </>}
@@ -1644,7 +1701,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     setActiveCodeRow(null);
     setCodeSearch('');
   };
-  if (user.role === 'PENDING_DOCTOR') return <><Heading eyebrow={t("Clinician access")} title={t("Welcome, Dr. {0}.", { 0: user.name })} subtitle={t("Your account is under review. After account approval, you can use clinical features. Credential verification is a separate manual review.")}/><div className="security-banner"><div><h3>{t("Account approval in progress")}</h3><p>{t("Our administrative team is reviewing your account. Your professional medical number is also checked separately before you receive a certified badge.")}</p></div><Clock3 size={33} className="security-symbol"/></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account profile")}</h2><p className="panel-caption">{t("Information submitted with your registration")}</p></div><span className="tag warning">{t("Pending review")}</span></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Professional medical number")}</span><span className="data-value">{user.professionalMedicalNumber || t("Not provided")}</span></div><div className="data-row"><span className="data-key">{t("Submitted")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/><AccountRightsCard role={user.role}/></>;
+  if (user.role === 'PENDING_DOCTOR') return <><Heading eyebrow={t("Clinician access")} title={t("Welcome, Dr. {0}.", { 0: user.name })} subtitle={t("Your account is under review. After account approval, you can use clinical features. Credential verification is a separate manual review.")}/><div className="security-banner"><div><h3>{t("Account approval in progress")}</h3><p>{t("Our administrative team is reviewing your account. Your professional medical number is also checked separately before you receive a certified badge.")}</p></div><Clock3 size={33} className="security-symbol"/></div><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account profile")}</h2><p className="panel-caption">{t("Information submitted with your registration")}</p></div><span className="tag warning">{t("Pending review")}</span></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Professional medical number")}</span><span className="data-value">{user.professionalMedicalNumber || t("Not provided")}</span></div><div className="data-row"><span className="data-key">{t("Submitted")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/><SignOutOtherDevicesCard/><AccountRightsCard role={user.role}/></>;
   return <>
     {tab === 'Patients' && <>
       <Heading eyebrow={t("Clinical workspace")} title={t("Emergency lookup")} subtitle={t("Find a patient's emergency information by full name when they cannot give you their CM ID.")}/>
@@ -1774,7 +1831,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         </div>}
       </div></section>
     </>}
-    {tab === 'Profile' && <><Heading eyebrow={t("Clinician account")} title={t("Your profile")} subtitle={t("Your account identity for patients and the Mon carnet care network.")}/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Professional profile")}</h2><p className="panel-caption">{t("Your hospital or clinic is shown in patient access logs.")}</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">{t("Account status")}</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">{t("Credential status")}</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> {t("Certified doctor")}</span>:<span className="tag warning">{t("Manual verification pending")}</span>}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{profile.data?.contactInfo || t("Not provided")}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">{t("Hospital or clinic")}</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder={t("Your hospital or clinic name")} data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">{t("Professional medical number")}</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder={t("License or registration number")} data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?t("Changing this number will remove your certified badge until an administrator verifies it again."):t("An administrator manually checks this number before awarding your certified badge.")}</small></div><LocationFields idPrefix="doctor-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?t("Saving…"):t("Save professional profile")}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your impact")}</h2><p className="panel-caption">{t("Stats from your clinical activity")}</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Patients treated")}</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">{t("Records added")}</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">{t("This month")}</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/><AccountRightsCard role="DOCTOR"/></>}
+    {tab === 'Profile' && <><Heading eyebrow={t("Clinician account")} title={t("Your profile")} subtitle={t("Your account identity for patients and the Mon carnet care network.")}/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Professional profile")}</h2><p className="panel-caption">{t("Your hospital or clinic is shown in patient access logs.")}</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">{t("Account status")}</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">{t("Credential status")}</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> {t("Certified doctor")}</span>:<span className="tag warning">{t("Manual verification pending")}</span>}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{profile.data?.contactInfo || t("Not provided")}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">{t("Hospital or clinic")}</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder={t("Your hospital or clinic name")} data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">{t("Professional medical number")}</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder={t("License or registration number")} data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?t("Changing this number will remove your certified badge until an administrator verifies it again."):t("An administrator manually checks this number before awarding your certified badge.")}</small></div><LocationFields idPrefix="doctor-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?t("Saving…"):t("Save professional profile")}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your impact")}</h2><p className="panel-caption">{t("Stats from your clinical activity")}</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Patients treated")}</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">{t("Records added")}</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">{t("This month")}</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/><SignOutOtherDevicesCard/><AccountRightsCard role="DOCTOR"/></>}
     {toast && <div className="toast-message" role="status">{toast}</div>}
   </>;
 }
@@ -1866,7 +1923,7 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
       <section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Pending requests")}</h2><p className="panel-caption">{t("Requests are refreshed automatically every minute.")}</p></div><span className="tag warning">{passwordResetRequests.data?.length ?? 0} {t("pending")}</span></div><div className="panel-body">{passwordResetRequests.isLoading?<div className="skeleton"/>:passwordResetRequests.error?<ErrorState error={passwordResetRequests.error} retry={()=>passwordResetRequests.refetch()}/>:passwordResetRequests.data?.length?passwordResetRequests.data.map((request)=><div className="data-row" key={request.id}><div><strong>{request.email}</strong><small style={{display:'block',color:'#92a09a',marginTop:4}}>{t("Requested")} {dateLabel(request.requestedAt)}</small></div><button className="btn small secondary" onClick={()=>resetPassword(request.id)} disabled={resetRequestedPassword.isPending} data-testid={`button-reset-password-${request.id}`}>{resetRequestedPassword.isPending?t("Resetting…"):t("Verify & reset")}</button></div>):<EmptyState icon={KeyRound} title={t("No requests waiting")} children={t("New password recovery requests will appear here.")}/ >}</div></section>
     <DeletionRequestsPanel active={tab==='Password recovery'}/>
     </>}
-    {tab==='Profile' && <><Heading eyebrow={t("Administrator account")} title={t("Your profile")} subtitle={t("Manage your administrator account and password.")}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account information")}</h2><p className="panel-caption">{t("Current signed-in account")}</p></div><div className="avatar">{initials(user.name)}</div></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Role")}</span><span className="data-value">{user.role}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/><AccountRightsCard role="ADMIN"/></>}
+    {tab==='Profile' && <><Heading eyebrow={t("Administrator account")} title={t("Your profile")} subtitle={t("Manage your administrator account and password.")}/><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Account information")}</h2><p className="panel-caption">{t("Current signed-in account")}</p></div><div className="avatar">{initials(user.name)}</div></div><div className="panel-body"><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{user.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{user.email}</span></div><div className="data-row"><span className="data-key">{t("Role")}</span><span className="data-value">{user.role}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(user.createdAt)}</span></div></div></section><PasswordChangeCard/><SignOutOtherDevicesCard/><AccountRightsCard role="ADMIN"/></>}
     {tab==='Analytics' && <><Heading eyebrow={t("Network insights")} title={t("Care network analytics")} subtitle={t("Aggregate care activity, service use by region and clinic, and potential epidemic signals. Small location cohorts are suppressed.")} action={<button className="btn secondary no-print" onClick={()=>window.print()} data-testid="button-print-analytics"><Printer size={15}/> {t("Export report")}</button>}/>{analytics.isLoading?<div className="skeleton"/>:analytics.error?<ErrorState error={analytics.error} retry={()=>analytics.refetch()}/>:<>
       <div className="analytics-report-note">{t("Operational report · Activity totals are not measures of care quality or health outcomes. Regional and clinic activity is shown only for groups with at least")} {minimumAggregateGroupSize} {t("distinct patients.")}</div>
       <EpidemicAlerts metrics={analytics.data?.epidemicMetrics ?? []}/>

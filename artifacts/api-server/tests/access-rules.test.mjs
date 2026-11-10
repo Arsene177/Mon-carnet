@@ -165,6 +165,55 @@ describe("authentication and roles", () => {
   });
 });
 
+describe("sessions", () => {
+  test("changing the password signs out every other session, and this device keeps working", async () => {
+    const patient = await registerPatient();
+    const otherDevice = await login(patient.email);
+    const changed = await api("POST", "/auth/change-password", {
+      token: patient.token,
+      body: { currentPassword: PASSWORD, newPassword: "New-horse-battery-7" },
+    });
+    assert.equal(changed.status, 200, JSON.stringify(changed.body));
+    assert.equal((await api("GET", "/auth/me", { token: otherDevice })).status, 401);
+    assert.equal((await api("GET", "/auth/me", { token: patient.token })).status, 401);
+    assert.equal((await api("GET", "/auth/me", { token: changed.body.token })).status, 200);
+  });
+
+  test("signing out of other devices ends their sessions only", async () => {
+    const doctor = await createStaff("DOCTOR");
+    const otherDevice = await login(doctor.email);
+    const result = await api("POST", "/auth/sign-out-other-devices", { token: doctor.token });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal((await api("GET", "/auth/me", { token: otherDevice })).status, 401);
+    assert.equal((await api("GET", "/auth/me", { token: result.body.token })).status, 200);
+    // Signing in again afterwards works as usual.
+    assert.equal((await api("GET", "/auth/me", { token: await login(doctor.email) })).status, 200);
+    const { rows } = await sql.query("select count(*)::int as n from medichain_audit_events where actor_user_id = $1 and action = 'OTHER_SESSIONS_SIGNED_OUT'", [doctor.id]);
+    assert.equal(rows[0].n, 1);
+  });
+
+  test("a temporary password from an administrator signs out every existing session", async () => {
+    const patient = await registerPatient();
+    const admin = await createStaff("ADMIN");
+    assert.equal((await api("POST", "/auth/password-reset-requests", { body: { email: patient.email } })).status, 202);
+    const { rows } = await sql.query("select id from medichain_password_reset_requests where email = $1", [patient.email]);
+    const reset = await api("POST", `/admin/password-reset-requests/${rows[0].id}/reset`, { token: admin.token });
+    assert.equal(reset.status, 200, JSON.stringify(reset.body));
+    assert.equal((await api("GET", "/auth/me", { token: patient.token })).status, 401);
+    const signedIn = await api("POST", "/auth/login", { body: { email: patient.email, password: reset.body.temporaryPassword } });
+    assert.equal(signedIn.status, 200);
+  });
+
+  test("a token whose session version was changed is refused", async () => {
+    const patient = await registerPatient();
+    const [header, payload] = patient.token.split(".");
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    assert.equal(claims.sv, 0);
+    const forged = `${header}.${Buffer.from(JSON.stringify({ ...claims, sv: 1 })).toString("base64url")}.${patient.token.split(".")[2]}`;
+    assert.equal((await api("GET", "/auth/me", { token: forged })).status, 401);
+  });
+});
+
 describe("doctor access to a patient's records", () => {
   test("without a grant a doctor cannot read or add records", async () => {
     const patient = await registerPatient();

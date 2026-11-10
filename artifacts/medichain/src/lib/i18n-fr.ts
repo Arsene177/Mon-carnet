@@ -939,4 +939,11 @@ export const fr: Record<string, string> = {
   "Version {0}": "Version {0}",
   "Accept the terms of use and privacy policy to create an account. Patients must also consent to the processing of their health data.": "Acceptez les conditions d’utilisation et la politique de confidentialité pour créer un compte. Les patients doivent aussi consentir au traitement de leurs données de santé.",
   "Accept the current terms of use and privacy policy. Patients must also consent to the processing of their health data.": "Acceptez les conditions d’utilisation et la politique de confidentialité en vigueur. Les patients doivent aussi consentir au traitement de leurs données de santé.",
+  "Password changed. You have been signed out on your other devices.": "Mot de passe modifié. Vous avez été déconnecté de vos autres appareils.",
+  "Signed-in devices": "Appareils connectés",
+  "If you lost a phone or signed in on a shared computer, sign out everywhere except here. Changing your password does this too.": "Si vous avez perdu un téléphone ou utilisé un ordinateur partagé, déconnectez-vous partout sauf ici. Changer votre mot de passe a le même effet.",
+  "Sign out of all other devices": "Se déconnecter de tous les autres appareils",
+  "Signing out…": "Déconnexion…",
+  "You have been signed out on every other device. This device stays signed in.": "Vous avez été déconnecté de tous les autres appareils. Cet appareil reste connecté.",
+  "You were signed out because your session was ended, for example after a password change. Sign in again.": "Vous avez été déconnecté car votre session a été fermée, par exemple après un changement de mot de passe. Reconnectez-vous.",
 };

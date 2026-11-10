@@ -102,5 +102,6 @@ export * from './registrationInputRole';
 export * from './role';
 export * from './searchDiseaseCodesParams';
 export * from './searchUsersParams';
+export * from './sessionToken';
 export * from './sex';
 export * from './user';
