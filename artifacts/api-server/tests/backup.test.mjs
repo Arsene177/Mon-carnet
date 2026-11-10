@@ -89,6 +89,8 @@ async function targetCount(table, where = "true", params = []) {
 before(async () => {
   await startFakeStorage();
   workDir = await mkdtemp(path.join(tmpdir(), "mon-carnet-backup-test-"));
+  // Attachments left by other test files point at storage this test cannot reach.
+  await source.query("delete from medichain_medical_attachments");
   await source.query(`drop database if exists "${TARGET_DB}"`);
   await source.query(`create database "${TARGET_DB}"`);
   // A patient with one attached file, so the backup has something recognisable in it.

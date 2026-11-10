@@ -8,6 +8,7 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHmac, randomBytes, scryptSync } from "node:crypto";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 
@@ -22,6 +23,37 @@ const TERMS_VERSION = "2026-11-draft-1";
 
 const sql = new pg.Pool({ connectionString: DATABASE_URL });
 let server;
+
+// Stand-in for the storage sidecar and bucket, so uploads can be checked end to end.
+const storedObjects = new Map();
+let storage;
+function startFakeStorage() {
+  return new Promise((resolve) => {
+    storage = http.createServer(async (req, res) => {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const body = Buffer.concat(chunks);
+      if (req.url === "/object-storage/signed-object-url") {
+        const { bucket_name, object_name } = JSON.parse(body.toString());
+        res.end(JSON.stringify({ signed_url: `http://127.0.0.1:${storage.address().port}/o/${bucket_name}/${object_name}` }));
+        return;
+      }
+      const key = decodeURIComponent(req.url.slice(3));
+      if (req.method === "PUT") { storedObjects.set(key, body); res.end(); return; }
+      if (req.method === "DELETE") { storedObjects.delete(key); res.statusCode = 204; res.end(); return; }
+      const data = storedObjects.get(key);
+      if (!data) { res.statusCode = 404; res.end(); return; }
+      const range = /bytes=(\d+)-(\d+)/.exec(req.headers.range ?? "");
+      if (range) {
+        const end = Math.min(Number(range[2]), data.length - 1);
+        res.writeHead(206, { "content-range": `bytes ${range[1]}-${end}/${data.length}`, "content-length": String(end - Number(range[1]) + 1) });
+        res.end(data.subarray(Number(range[1]), end + 1));
+        return;
+      }
+      res.end(data);
+    }).listen(0, "127.0.0.1", resolve);
+  });
+}
 
 // Each caller gets its own address so per-address rate limits do not interfere between tests.
 let ipCounter = 1;
@@ -147,12 +179,16 @@ async function openBooklet(doctor, patient) {
 }
 
 before(async () => {
+  await startFakeStorage();
   const { rows } = await sql.query("select tablename from pg_tables where schemaname = 'public' and tablename like 'medichain\\_%' and tablename <> 'medichain_disease_codes'");
   if (rows.length) await sql.query(`truncate ${rows.map((row) => `"${row.tablename}"`).join(", ")} restart identity cascade`);
 
   server = spawn(process.execPath, ["dist/index.mjs"], {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env, DATABASE_URL, PORT: String(PORT), JWT_SECRET: randomBytes(24).toString("hex"), NODE_ENV: "test", TRUST_PROXY: "1", LOG_LEVEL: "warn" },
+    env: {
+      ...process.env, DATABASE_URL, PORT: String(PORT), JWT_SECRET: randomBytes(24).toString("hex"), NODE_ENV: "test", TRUST_PROXY: "1", LOG_LEVEL: "warn",
+      PRIVATE_OBJECT_DIR: "/test-bucket/private", OBJECT_STORAGE_SIDECAR_URL: `http://127.0.0.1:${storage.address().port}`,
+    },
     stdio: ["ignore", "ignore", "inherit"],
   });
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -164,6 +200,7 @@ before(async () => {
 
 after(async () => {
   server?.kill();
+  storage?.close();
   await sql.end();
 });
 
@@ -251,6 +288,79 @@ describe("sessions", () => {
     assert.equal(claims.sv, 0);
     const forged = `${header}.${Buffer.from(JSON.stringify({ ...claims, sv: 1 })).toString("base64url")}.${patient.token.split(".")[2]}`;
     assert.equal((await api("GET", "/auth/me", { token: forged })).status, 401);
+  });
+});
+
+describe("security review fixes (OWASP ASVS)", () => {
+  test("signing out ends that session on the server, and only that one", async () => {
+    const patient = await registerPatient();
+    const otherDevice = await login(patient.email);
+    assert.equal((await api("POST", "/auth/sign-out", { token: patient.token })).status, 204);
+    assert.equal((await api("GET", "/auth/me", { token: patient.token })).status, 401);
+    assert.equal((await api("GET", "/auth/me", { token: otherDevice })).status, 200);
+  });
+
+  test("sessions last 12 hours at most", async () => {
+    const patient = await registerPatient();
+    const claims = JSON.parse(Buffer.from(patient.token.split(".")[1], "base64url").toString("utf8"));
+    assert.equal(claims.exp - claims.iat, 12 * 60 * 60);
+    assert.ok(claims.jti, "each token has its own id");
+  });
+
+  test("new passwords: at least 12 characters, not common, not built from the account's details", async () => {
+    const attempt = (overrides) => api("POST", "/auth/register", {
+      body: { name: "Brigitte Essomba", email: `${unique("brigitte")}@test.cm`, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", contactInfo: "+237 691 23 45 67", acceptedTermsVersion: TERMS_VERSION, healthDataConsent: true, ...overrides },
+    });
+    for (const password of ["Short-pw-9", "password1234", "Password2024!", "azertyuiop123", "aaaaaaaaaaaaaa", "Brigitte-2026-ok", "mon-691234567-code"]) {
+      const result = await attempt({ password });
+      assert.equal(result.status, 400, `${password} should be refused`);
+    }
+    assert.equal((await attempt({ password: "Le manguier fleurit en mars" })).status, 201);
+    const patient = await registerPatient();
+    const change = await api("POST", "/auth/change-password", { token: patient.token, body: { currentPassword: PASSWORD, newPassword: "qwertyuiop12" } });
+    assert.equal(change.status, 400);
+  });
+
+  test("a temporary password must be replaced before anything else, and expires", async () => {
+    const patient = await registerPatient();
+    const admin = await createStaff("ADMIN");
+    await api("POST", "/auth/password-reset-requests", { body: { email: patient.email } });
+    const { rows: [request] } = await sql.query("select id from medichain_password_reset_requests where email = $1 and resolved_at is null", [patient.email]);
+    const { body: { temporaryPassword } } = await api("POST", `/admin/password-reset-requests/${request.id}/reset`, { token: admin.token });
+    const signedIn = await api("POST", "/auth/login", { body: { email: patient.email, password: temporaryPassword } });
+    assert.equal(signedIn.status, 200);
+    assert.equal(signedIn.body.user.mustChangePassword, true);
+    const blocked = await api("GET", "/patient/profile", { token: signedIn.body.token });
+    assert.deepEqual([blocked.status, blocked.body.code], [403, "PASSWORD_CHANGE_REQUIRED"]);
+    const changed = await api("POST", "/auth/change-password", { token: signedIn.body.token, body: { currentPassword: temporaryPassword, newPassword: "Un nouveau mot de passe 7" } });
+    assert.equal(changed.status, 200, JSON.stringify(changed.body));
+    assert.equal((await api("GET", "/patient/profile", { token: changed.body.token })).status, 200);
+
+    // An unused temporary password stops working after its expiry.
+    await api("POST", "/auth/password-reset-requests", { body: { email: patient.email } });
+    const { rows: [again] } = await sql.query("select id from medichain_password_reset_requests where email = $1 and resolved_at is null", [patient.email]);
+    const second = (await api("POST", `/admin/password-reset-requests/${again.id}/reset`, { token: admin.token })).body.temporaryPassword;
+    await sql.query("update medichain_users set password_expires_at = now() - interval '1 minute' where id = $1", [patient.id]);
+    assert.equal((await api("POST", "/auth/login", { body: { email: patient.email, password: second } })).status, 401);
+  });
+
+  test("an upload is only accepted when the stored file really is the declared type and size", async () => {
+    const patient = await registerPatient();
+    const doctor = await createStaff("DOCTOR");
+    assert.equal((await openBooklet(doctor, patient)).status, 200);
+    const upload = async (bytes, declaredSize = bytes.length) => {
+      const reserved = await api("POST", `/doctor/patient/${patient.id}/attachments/upload-url`, { token: doctor.token, body: { fileName: "result.pdf", contentType: "application/pdf", size: declaredSize } });
+      assert.equal(reserved.status, 201, JSON.stringify(reserved.body));
+      await fetch(reserved.body.uploadURL, { method: "PUT", body: bytes });
+      return api("POST", `/doctor/patient/${patient.id}/attachments/${reserved.body.attachmentId}/complete`, { token: doctor.token });
+    };
+    const fakePdf = Buffer.from("<html><script>alert(1)</script></html>");
+    const before = storedObjects.size;
+    assert.equal((await upload(fakePdf)).status, 400, "an HTML file declared as PDF is refused");
+    assert.equal(storedObjects.size, before, "the refused file is deleted from storage");
+    const realPdf = Buffer.from("%PDF-1.7\n1 0 obj << >> endobj\n%%EOF\n");
+    assert.equal((await upload(realPdf, realPdf.length + 500)).status, 400, "a size that does not match is refused");
+    assert.equal((await upload(realPdf)).status, 200);
   });
 });
 

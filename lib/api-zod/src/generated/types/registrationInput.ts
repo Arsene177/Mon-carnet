@@ -18,7 +18,8 @@ export interface RegistrationInput {
   /** @maxLength 254 */
   email: string;
   /**
-     * @minLength 8
+     * At least 12 characters, not a common password, not built from the account's name, email or phone (checked by the server).
+     * @minLength 1
      * @maxLength 128
      */
   password: string;

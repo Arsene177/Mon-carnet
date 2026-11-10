@@ -21,7 +21,6 @@ export const registerBodyNameMax = 120;
 
 export const registerBodyEmailMax = 254;
 
-export const registerBodyPasswordMin = 8;
 export const registerBodyPasswordMax = 128;
 
 export const registerBodyAcceptedTermsVersionMax = 40;
@@ -36,8 +35,8 @@ export const registerBodyProfessionalMedicalNumberMax = 120;
 
 export const RegisterBody = zod.object({
   "name": zod.string().min(registerBodyNameMin).max(registerBodyNameMax),
-  "email": zod.string().email().max(registerBodyEmailMax),
-  "password": zod.string().min(registerBodyPasswordMin).max(registerBodyPasswordMax),
+  "email": zod.email().max(registerBodyEmailMax),
+  "password": zod.string().min(1).max(registerBodyPasswordMax).describe('At least 12 characters, not a common password, not built from the account\'s name, email or phone (checked by the server).'),
   "preferredLanguage": zod.enum(['fr', 'en']).optional(),
   "acceptedTermsVersion": zod.string().max(registerBodyAcceptedTermsVersionMax).optional().describe('Must equal the current privacy policy and terms version.'),
   "healthDataConsent": zod.boolean().optional().describe('Required (true) for patients.'),
@@ -61,8 +60,9 @@ export const RegisterResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -86,7 +86,7 @@ export const loginBodyCodeMax = 20;
 
 
 export const LoginBody = zod.object({
-  "email": zod.string().email(),
+  "email": zod.email(),
   "password": zod.string().min(1).max(loginBodyPasswordMax),
   "code": zod.string().max(loginBodyCodeMax).optional().describe('Six-digit code from the authenticator app, or a recovery code, when two-step sign-in is on.')
 })
@@ -103,8 +103,9 @@ export const LoginResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -126,7 +127,7 @@ export const requestPasswordResetBodyEmailMax = 254;
 
 
 export const RequestPasswordResetBody = zod.object({
-  "email": zod.string().email().max(requestPasswordResetBodyEmailMax)
+  "email": zod.email().max(requestPasswordResetBodyEmailMax)
 })
 
 export const RequestPasswordResetResponse = zod.object({
@@ -143,8 +144,9 @@ export const GetMeResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -173,8 +175,9 @@ export const UpdateLanguageResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -192,19 +195,21 @@ export const UpdateLanguageResponse = zod.object({
 
 export const changePasswordBodyCurrentPasswordMax = 128;
 
-export const changePasswordBodyNewPasswordMin = 8;
 export const changePasswordBodyNewPasswordMax = 128;
 
 
 
 export const ChangePasswordBody = zod.object({
   "currentPassword": zod.string().min(1).max(changePasswordBodyCurrentPasswordMax),
-  "newPassword": zod.string().min(changePasswordBodyNewPasswordMin).max(changePasswordBodyNewPasswordMax)
+  "newPassword": zod.string().min(1).max(changePasswordBodyNewPasswordMax).describe('Same rules as at registration.')
 })
 
 export const ChangePasswordResponse = zod.object({
   "token": zod.string()
 })
+
+
+export const SignOutResponse = zod.void()
 
 
 export const SignOutOtherDevicesResponse = zod.object({
@@ -215,7 +220,7 @@ export const SignOutOtherDevicesResponse = zod.object({
 export const GetMfaStatusResponse = zod.object({
   "enabled": zod.boolean(),
   "required": zod.boolean(),
-  "recoveryCodesRemaining": zod.number().int()
+  "recoveryCodesRemaining": zod.int()
 })
 
 
@@ -300,8 +305,9 @@ export const GetPatientProfileResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -318,7 +324,7 @@ export const GetPatientProfileResponse = zod.object({
   "patientDisplayId": zod.string().min(getPatientProfileResponsePatientDisplayIdMin).max(getPatientProfileResponsePatientDisplayIdMax).regex(getPatientProfileResponsePatientDisplayIdRegExp),
   "patientAccessId": zod.string().min(getPatientProfileResponsePatientAccessIdMin).max(getPatientProfileResponsePatientAccessIdMax).regex(getPatientProfileResponsePatientAccessIdRegExp).describe('Compatibility field containing the same CM ID used to identify the profile and grant booklet access.'),
   "emergencyInfo": zod.union([zod.object({
-  "patientId": zod.number().int(),
+  "patientId": zod.int(),
   "patientName": zod.string(),
   "patientSex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "patientDateOfBirth": zod.coerce.date().nullable(),
@@ -330,8 +336,8 @@ export const GetPatientProfileResponse = zod.object({
   "emergencyContact": zod.string(),
   "updatedAt": zod.coerce.date()
 }),zod.null()]),
-  "recordCount": zod.number().int(),
-  "permissionsCount": zod.number().int()
+  "recordCount": zod.int(),
+  "permissionsCount": zod.int()
 })
 
 
@@ -349,8 +355,9 @@ export const UpdatePatientLocationResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -386,8 +393,9 @@ export const UpdatePatientIdentityResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -423,7 +431,7 @@ export const UpdateEmergencyInfoBody = zod.object({
 })
 
 export const UpdateEmergencyInfoResponse = zod.object({
-  "patientId": zod.number().int(),
+  "patientId": zod.int(),
   "patientName": zod.string(),
   "patientSex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "patientDateOfBirth": zod.coerce.date().nullable(),
@@ -438,20 +446,20 @@ export const UpdateEmergencyInfoResponse = zod.object({
 
 
 export const GetPatientRecordsResponseItem = zod.object({
-  "id": zod.number().int(),
-  "patientId": zod.number().int(),
-  "doctorId": zod.number().int(),
+  "id": zod.int(),
+  "patientId": zod.int(),
+  "doctorId": zod.int(),
   "doctorName": zod.string(),
   "recordType": zod.enum(['Consultation', 'Diagnosis', 'Treatment', 'Lab Results', 'Prescription', 'Surgery', 'Emergency', 'Follow-up', 'Other']),
   "diagnosis": zod.string(),
   "treatment": zod.string(),
   "medications": zod.array(zod.string()),
   "notes": zod.string(),
-  "followUpToRecordId": zod.number().int().nullable(),
+  "followUpToRecordId": zod.int().nullable(),
   "codedDiagnoses": zod.array(zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "diseaseCode": zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "code": zod.string(),
   "codingSystem": zod.string(),
   "release": zod.string(),
@@ -467,7 +475,7 @@ export const GetPatientRecordsResponseItem = zod.object({
   "diagnosisDate": zod.coerce.date(),
   "onsetDate": zod.coerce.date().nullable(),
   "notes": zod.string(),
-  "supportingRecordId": zod.number().int().nullable(),
+  "supportingRecordId": zod.int().nullable(),
   "createdAt": zod.coerce.date()
 })),
   "vitals": zod.object({
@@ -482,29 +490,29 @@ export const GetPatientRecordsResponse = zod.array(GetPatientRecordsResponseItem
 
 
 export const CreateBookletVerificationResponse = zod.object({
-  "verificationCode": zod.string().uuid(),
+  "verificationCode": zod.uuid(),
   "patientDisplayId": zod.string(),
-  "recordCount": zod.number().int(),
+  "recordCount": zod.int(),
   "issuedAt": zod.coerce.date()
 })
 
 
 export const VerifyBookletExportParams = zod.object({
-  "verificationCode": zod.coerce.string().uuid()
+  "verificationCode": zod.uuid()
 })
 
 export const VerifyBookletExportResponse = zod.object({
   "valid": zod.literal(true),
-  "recordCount": zod.number().int(),
+  "recordCount": zod.int(),
   "issuedAt": zod.coerce.date()
 })
 
 
 export const GetPatientPermissionsResponseItem = zod.object({
-  "id": zod.number().int(),
-  "doctorId": zod.number().int(),
+  "id": zod.int(),
+  "doctorId": zod.int(),
   "doctorName": zod.string(),
-  "doctorEmail": zod.string().email(),
+  "doctorEmail": zod.email(),
   "doctorVerified": zod.boolean(),
   "granted": zod.boolean(),
   "grantedAt": zod.coerce.date(),
@@ -518,15 +526,15 @@ export const grantPatientPermissionBodyDurationDaysMax = 365;
 
 
 export const GrantPatientPermissionBody = zod.object({
-  "doctorEmail": zod.string().email(),
-  "durationDays": zod.number().int().min(1).max(grantPatientPermissionBodyDurationDaysMax)
+  "doctorEmail": zod.email(),
+  "durationDays": zod.int().min(1).max(grantPatientPermissionBodyDurationDaysMax)
 })
 
 export const GrantPatientPermissionResponse = zod.object({
-  "id": zod.number().int(),
-  "doctorId": zod.number().int(),
+  "id": zod.int(),
+  "doctorId": zod.int(),
   "doctorName": zod.string(),
-  "doctorEmail": zod.string().email(),
+  "doctorEmail": zod.email(),
   "doctorVerified": zod.boolean(),
   "granted": zod.boolean(),
   "grantedAt": zod.coerce.date(),
@@ -544,9 +552,9 @@ export const RevokePatientPermissionResponse = zod.void()
 export const GetPatientPendingRequestsResponseItem = zod.object({
   "reason": zod.string().nullable(),
   "hospitalName": zod.string().nullable(),
-  "doctorId": zod.number().int(),
+  "doctorId": zod.int(),
   "doctorName": zod.string(),
-  "doctorEmail": zod.string().email(),
+  "doctorEmail": zod.email(),
   "doctorVerified": zod.boolean(),
   "searchedAt": zod.coerce.date()
 })
@@ -568,10 +576,10 @@ export const UpdatePatientAccessSettingsResponse = zod.object({
 
 
 export const GetPatientAccessRequestsResponseItem = zod.object({
-  "id": zod.number().int(),
-  "doctorId": zod.number().int(),
+  "id": zod.int(),
+  "doctorId": zod.int(),
   "doctorName": zod.string(),
-  "doctorEmail": zod.string().email(),
+  "doctorEmail": zod.email(),
   "doctorVerified": zod.boolean(),
   "hospitalName": zod.string().nullable(),
   "requestedAt": zod.coerce.date(),
@@ -589,14 +597,14 @@ export const approvePatientAccessRequestBodyDurationDaysMax = 365;
 
 
 export const ApprovePatientAccessRequestBody = zod.object({
-  "durationDays": zod.number().int().min(1).max(approvePatientAccessRequestBodyDurationDaysMax).nullable().describe('Number of days the access lasts, or null to keep access until the patient revokes it.')
+  "durationDays": zod.int().min(1).max(approvePatientAccessRequestBodyDurationDaysMax).nullable().describe('Number of days the access lasts, or null to keep access until the patient revokes it.')
 })
 
 export const ApprovePatientAccessRequestResponse = zod.object({
-  "id": zod.number().int(),
-  "doctorId": zod.number().int(),
+  "id": zod.int(),
+  "doctorId": zod.int(),
   "doctorName": zod.string(),
-  "doctorEmail": zod.string().email(),
+  "doctorEmail": zod.email(),
   "doctorVerified": zod.boolean(),
   "granted": zod.boolean(),
   "grantedAt": zod.coerce.date(),
@@ -612,7 +620,7 @@ export const RejectPatientAccessRequestResponse = zod.void()
 
 
 export const GetPatientAccessHistoryResponseItem = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "doctorName": zod.string(),
   "hospitalName": zod.string(),
   "action": zod.string(),
@@ -630,8 +638,9 @@ export const GetDoctorProfileResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -669,8 +678,9 @@ export const UpdateDoctorProfileResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -702,7 +712,7 @@ export const EmergencyPatientLookupBody = zod.object({
 
 export const EmergencyPatientLookupResponseItem = zod.object({
   "emergencyInfo": zod.object({
-  "patientId": zod.number().int(),
+  "patientId": zod.int(),
   "patientName": zod.string(),
   "patientSex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "patientDateOfBirth": zod.coerce.date().nullable(),
@@ -742,7 +752,7 @@ export const GrantPatientAccessByIdResponse = zod.object({
   "patientDateOfBirthEstimated": zod.boolean(),
   "patientNationalIdNumber": zod.string().nullable().describe('Only when access is granted; null while a request is pending.'),
   "status": zod.enum(['GRANTED', 'PENDING']).describe('PENDING means the patient must approve the request before the booklet opens.'),
-  "patientId": zod.number().int(),
+  "patientId": zod.int(),
   "patientDisplayId": zod.string().min(grantPatientAccessByIdResponsePatientDisplayIdMin).max(grantPatientAccessByIdResponsePatientDisplayIdMax).regex(grantPatientAccessByIdResponsePatientDisplayIdRegExp),
   "patientName": zod.string()
 })
@@ -761,15 +771,15 @@ export const requestPatientAttachmentUploadBodySizeMax = 10485760;
 export const RequestPatientAttachmentUploadBody = zod.object({
   "fileName": zod.string().min(1).max(requestPatientAttachmentUploadBodyFileNameMax),
   "contentType": zod.enum(['application/pdf', 'image/png', 'image/jpeg']),
-  "size": zod.number().int().min(1).max(requestPatientAttachmentUploadBodySizeMax)
+  "size": zod.int().min(1).max(requestPatientAttachmentUploadBodySizeMax)
 })
 
 export const RequestPatientAttachmentUploadResponse = zod.object({
-  "attachmentId": zod.number().int(),
-  "uploadURL": zod.string().url(),
+  "attachmentId": zod.int(),
+  "uploadURL": zod.url(),
   "fileName": zod.string(),
   "contentType": zod.string(),
-  "size": zod.number().int()
+  "size": zod.int()
 })
 
 
@@ -778,10 +788,10 @@ export const GetPendingMedicalAttachmentsParams = zod.object({
 })
 
 export const GetPendingMedicalAttachmentsResponseItem = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "fileName": zod.string(),
   "contentType": zod.string(),
-  "size": zod.number().int(),
+  "size": zod.int(),
   "status": zod.enum(['UPLOADING', 'READY']),
   "expiresAt": zod.coerce.date().nullable()
 })
@@ -794,7 +804,7 @@ export const ConfirmMedicalAttachmentUploadParams = zod.object({
 })
 
 export const ConfirmMedicalAttachmentUploadResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "status": zod.enum(['READY'])
 })
 
@@ -813,7 +823,7 @@ export const GetMedicalAttachmentDownloadUrlQueryParams = zod.object({
 })
 
 export const GetMedicalAttachmentDownloadUrlResponse = zod.object({
-  "downloadURL": zod.string().url()
+  "downloadURL": zod.url()
 })
 
 
@@ -826,7 +836,7 @@ export const SearchDiseaseCodesQueryParams = zod.object({
 })
 
 export const SearchDiseaseCodesResponseItem = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "code": zod.string(),
   "codingSystem": zod.string(),
   "release": zod.string(),
@@ -846,7 +856,7 @@ export const GetPatientEmergencyParams = zod.object({
 })
 
 export const GetPatientEmergencyResponse = zod.object({
-  "patientId": zod.number().int(),
+  "patientId": zod.int(),
   "patientName": zod.string(),
   "patientSex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
   "patientDateOfBirth": zod.coerce.date().nullable(),
@@ -865,20 +875,20 @@ export const GetDoctorPatientRecordsParams = zod.object({
 })
 
 export const GetDoctorPatientRecordsResponseItem = zod.object({
-  "id": zod.number().int(),
-  "patientId": zod.number().int(),
-  "doctorId": zod.number().int(),
+  "id": zod.int(),
+  "patientId": zod.int(),
+  "doctorId": zod.int(),
   "doctorName": zod.string(),
   "recordType": zod.enum(['Consultation', 'Diagnosis', 'Treatment', 'Lab Results', 'Prescription', 'Surgery', 'Emergency', 'Follow-up', 'Other']),
   "diagnosis": zod.string(),
   "treatment": zod.string(),
   "medications": zod.array(zod.string()),
   "notes": zod.string(),
-  "followUpToRecordId": zod.number().int().nullable(),
+  "followUpToRecordId": zod.int().nullable(),
   "codedDiagnoses": zod.array(zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "diseaseCode": zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "code": zod.string(),
   "codingSystem": zod.string(),
   "release": zod.string(),
@@ -894,7 +904,7 @@ export const GetDoctorPatientRecordsResponseItem = zod.object({
   "diagnosisDate": zod.coerce.date(),
   "onsetDate": zod.coerce.date().nullable(),
   "notes": zod.string(),
-  "supportingRecordId": zod.number().int().nullable(),
+  "supportingRecordId": zod.int().nullable(),
   "createdAt": zod.coerce.date()
 })),
   "vitals": zod.object({
@@ -945,15 +955,15 @@ export const AddDoctorPatientRecordBody = zod.object({
   "treatment": zod.string().max(addDoctorPatientRecordBodyTreatmentMax),
   "medications": zod.array(zod.string().max(addDoctorPatientRecordBodyMedicationsItemMax)),
   "notes": zod.string().max(addDoctorPatientRecordBodyNotesMax),
-  "followUpToRecordId": zod.number().int().nullable(),
-  "attachmentIds": zod.array(zod.number().int().min(1)).max(addDoctorPatientRecordBodyAttachmentIdsMax).optional(),
+  "followUpToRecordId": zod.int().nullable(),
+  "attachmentIds": zod.array(zod.int().min(1)).max(addDoctorPatientRecordBodyAttachmentIdsMax).optional(),
   "codedDiagnoses": zod.array(zod.object({
-  "diseaseCodeId": zod.number().int(),
+  "diseaseCodeId": zod.int(),
   "status": zod.enum(['suspected', 'probable', 'confirmed', 'ruled_out']),
   "diagnosisDate": zod.coerce.date(),
   "onsetDate": zod.coerce.date().nullable(),
   "notes": zod.string().max(addDoctorPatientRecordBodyCodedDiagnosesItemNotesMax),
-  "supportingRecordId": zod.number().int().nullable()
+  "supportingRecordId": zod.int().nullable()
 })).max(addDoctorPatientRecordBodyCodedDiagnosesMax).optional(),
   "vitals": zod.object({
   "bloodPressure": zod.string().max(addDoctorPatientRecordBodyVitalsBloodPressureMax).nullish(),
@@ -964,20 +974,20 @@ export const AddDoctorPatientRecordBody = zod.object({
 })
 
 export const AddDoctorPatientRecordResponse = zod.object({
-  "id": zod.number().int(),
-  "patientId": zod.number().int(),
-  "doctorId": zod.number().int(),
+  "id": zod.int(),
+  "patientId": zod.int(),
+  "doctorId": zod.int(),
   "doctorName": zod.string(),
   "recordType": zod.enum(['Consultation', 'Diagnosis', 'Treatment', 'Lab Results', 'Prescription', 'Surgery', 'Emergency', 'Follow-up', 'Other']),
   "diagnosis": zod.string(),
   "treatment": zod.string(),
   "medications": zod.array(zod.string()),
   "notes": zod.string(),
-  "followUpToRecordId": zod.number().int().nullable(),
+  "followUpToRecordId": zod.int().nullable(),
   "codedDiagnoses": zod.array(zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "diseaseCode": zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "code": zod.string(),
   "codingSystem": zod.string(),
   "release": zod.string(),
@@ -993,7 +1003,7 @@ export const AddDoctorPatientRecordResponse = zod.object({
   "diagnosisDate": zod.coerce.date(),
   "onsetDate": zod.coerce.date().nullable(),
   "notes": zod.string(),
-  "supportingRecordId": zod.number().int().nullable(),
+  "supportingRecordId": zod.int().nullable(),
   "createdAt": zod.coerce.date()
 })),
   "vitals": zod.object({
@@ -1007,60 +1017,60 @@ export const AddDoctorPatientRecordResponse = zod.object({
 
 
 export const GetDoctorStatsResponse = zod.object({
-  "patientsTreated": zod.number().int(),
-  "recordsAdded": zod.number().int(),
-  "recordsThisMonth": zod.number().int()
+  "patientsTreated": zod.int(),
+  "recordsAdded": zod.int(),
+  "recordsThisMonth": zod.int()
 })
 
 
 export const GetAdminStatsResponse = zod.object({
-  "totalPatients": zod.number().int(),
-  "activeDoctors": zod.number().int(),
-  "pendingDoctors": zod.number().int(),
-  "totalConsultations": zod.number().int(),
-  "activePermissions": zod.number().int()
+  "totalPatients": zod.int(),
+  "activeDoctors": zod.int(),
+  "pendingDoctors": zod.int(),
+  "totalConsultations": zod.int(),
+  "activePermissions": zod.int()
 })
 
 
 export const GetAdminAnalyticsResponse = zod.object({
   "stats": zod.object({
-  "totalPatients": zod.number().int(),
-  "activeDoctors": zod.number().int(),
-  "pendingDoctors": zod.number().int(),
-  "totalConsultations": zod.number().int(),
-  "activePermissions": zod.number().int()
+  "totalPatients": zod.int(),
+  "activeDoctors": zod.int(),
+  "pendingDoctors": zod.int(),
+  "totalConsultations": zod.int(),
+  "activePermissions": zod.int()
 }),
   "monthlyRecords": zod.array(zod.object({
   "month": zod.string(),
-  "count": zod.number().int()
+  "count": zod.int()
 })),
   "recordsByType": zod.array(zod.object({
   "recordType": zod.string(),
-  "count": zod.number().int()
+  "count": zod.int()
 })),
   "regionalActivity": zod.array(zod.object({
   "region": zod.string(),
-  "patientCount": zod.number().int(),
-  "recordCount": zod.number().int()
+  "patientCount": zod.int(),
+  "recordCount": zod.int()
 })),
   "clinicActivity": zod.array(zod.object({
   "hospitalName": zod.string(),
   "region": zod.string().nullable(),
-  "patientCount": zod.number().int(),
-  "recordCount": zod.number().int()
+  "patientCount": zod.int(),
+  "recordCount": zod.int()
 })),
   "systemStatus": zod.array(zod.object({
   "name": zod.string(),
   "status": zod.enum(['Operational', 'Attention'])
 })),
   "epidemicMetrics": zod.array(zod.object({
-  "diseaseCodeId": zod.number().int(),
+  "diseaseCodeId": zod.int(),
   "diseaseName": zod.string(),
   "code": zod.string(),
   "codingSystem": zod.string(),
-  "last7Cases": zod.number().int(),
-  "previous7Cases": zod.number().int(),
-  "threshold": zod.number().int(),
+  "last7Cases": zod.int(),
+  "previous7Cases": zod.int(),
+  "threshold": zod.int(),
   "alertLevel": zod.enum(['NORMAL', 'WATCH', 'ALERT'])
 }))
 })
@@ -1075,12 +1085,12 @@ export const updateAdminEpidemicThresholdBodyThresholdMax = 10000;
 
 
 export const UpdateAdminEpidemicThresholdBody = zod.object({
-  "threshold": zod.number().int().min(1).max(updateAdminEpidemicThresholdBodyThresholdMax)
+  "threshold": zod.int().min(1).max(updateAdminEpidemicThresholdBodyThresholdMax)
 })
 
 export const UpdateAdminEpidemicThresholdResponse = zod.object({
-  "diseaseCodeId": zod.number().int(),
-  "threshold": zod.number().int()
+  "diseaseCodeId": zod.int(),
+  "threshold": zod.int()
 })
 
 
@@ -1093,8 +1103,9 @@ export const GetPendingDoctorsResponseItem = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -1124,8 +1135,9 @@ export const ApproveDoctorResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -1154,8 +1166,9 @@ export const RevokeDoctorResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -1184,8 +1197,9 @@ export const VerifyDoctorResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -1218,8 +1232,9 @@ export const UpdateAdminUserStatusResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -1236,7 +1251,7 @@ export const UpdateAdminUserStatusResponse = zod.object({
 
 
 export const GetAdminSecurityEventsResponseItem = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "type": zod.string(),
   "severity": zod.enum(['info', 'warning', 'critical']),
   "createdAt": zod.coerce.date(),
@@ -1259,8 +1274,9 @@ export const ResetAdminUserMfaResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -1277,8 +1293,8 @@ export const ResetAdminUserMfaResponse = zod.object({
 
 
 export const GetAdminPasswordResetRequestsResponseItem = zod.object({
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "id": zod.int(),
+  "email": zod.email(),
   "requestedAt": zod.coerce.date()
 })
 export const GetAdminPasswordResetRequestsResponse = zod.array(GetAdminPasswordResetRequestsResponseItem)
@@ -1289,7 +1305,7 @@ export const ResetAdminRequestedPasswordParams = zod.object({
 })
 
 export const ResetAdminRequestedPasswordResponse = zod.object({
-  "email": zod.string().email(),
+  "email": zod.email(),
   "temporaryPassword": zod.string()
 })
 
@@ -1312,8 +1328,9 @@ export const AcceptLegalTermsResponse = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -1333,7 +1350,7 @@ export const ExportMyDataResponse = zod.record(zod.string(), zod.unknown())
 
 
 export const GetMyDeletionRequestResponse = zod.union([zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "status": zod.enum(['PENDING', 'CANCELLED', 'REJECTED', 'COMPLETED']),
   "outcome": zod.union([zod.literal('ERASED'),zod.literal('CLOSED'),zod.literal(null)]).nullable(),
   "reason": zod.string().nullable(),
@@ -1355,7 +1372,7 @@ export const RequestAccountDeletionBody = zod.object({
 })
 
 export const RequestAccountDeletionResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "status": zod.enum(['PENDING', 'CANCELLED', 'REJECTED', 'COMPLETED']),
   "outcome": zod.union([zod.literal('ERASED'),zod.literal('CLOSED'),zod.literal(null)]).nullable(),
   "reason": zod.string().nullable(),
@@ -1369,15 +1386,15 @@ export const CancelAccountDeletionResponse = zod.void()
 
 
 export const GetAdminDeletionRequestsResponseItem = zod.object({
-  "id": zod.number().int(),
-  "userId": zod.number().int(),
+  "id": zod.int(),
+  "userId": zod.int(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
   "reason": zod.string().nullable(),
   "requestedAt": zod.coerce.date(),
-  "recordCount": zod.number().int().describe('Medical records in the patient\'s file, or written by the doctor.'),
-  "attachmentCount": zod.number().int()
+  "recordCount": zod.int().describe('Medical records in the patient\'s file, or written by the doctor.'),
+  "attachmentCount": zod.int()
 })
 export const GetAdminDeletionRequestsResponse = zod.array(GetAdminDeletionRequestsResponseItem)
 
@@ -1396,7 +1413,7 @@ export const ResolveAdminDeletionRequestBody = zod.object({
 })
 
 export const ResolveAdminDeletionRequestResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "status": zod.enum(['PENDING', 'CANCELLED', 'REJECTED', 'COMPLETED']),
   "outcome": zod.union([zod.literal('ERASED'),zod.literal('CLOSED'),zod.literal(null)]).nullable(),
   "reason": zod.string().nullable(),
@@ -1409,7 +1426,7 @@ export const ResolveAdminDeletionRequestResponse = zod.object({
 export const GetAdminPossibleDuplicatesResponseItem = zod.object({
   "reason": zod.enum(['SAME_NAME_AND_BIRTH_YEAR']).describe('Same name in any word order and the same birth year. National ID numbers are unique, so they never repeat.'),
   "patients": zod.array(zod.object({
-  "userId": zod.number().int(),
+  "userId": zod.int(),
   "name": zod.string(),
   "patientDisplayId": zod.string().nullable(),
   "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
@@ -1439,8 +1456,9 @@ export const SearchUsersResponseItem = zod.object({
   "preferredLanguage": zod.enum(['fr', 'en']),
   "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
   "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
-  "id": zod.number().int(),
-  "email": zod.string().email(),
+  "mustChangePassword": zod.boolean().describe('Signed in with a temporary password; a new one must be chosen before anything else.'),
+  "id": zod.int(),
+  "email": zod.email(),
   "name": zod.string(),
   "hospitalName": zod.string().nullable(),
   "locationRegion": zod.string().nullable(),
@@ -1465,7 +1483,7 @@ export const GetAdminDirectoryQueryParams = zod.object({
 })
 
 export const GetAdminDirectoryResponseItem = zod.object({
-  "userId": zod.number().int().nullable(),
+  "userId": zod.int().nullable(),
   "name": zod.string(),
   "kind": zod.enum(['PATIENTS', 'DOCTORS', 'HOSPITALS']),
   "region": zod.string().nullable(),
@@ -1501,23 +1519,23 @@ export const SendAdminNotificationBody = zod.object({
   "targetType": zod.enum(['ALL', 'REGION', 'ARRONDISSEMENT', 'USERS']),
   "region": zod.string().nullish(),
   "arrondissement": zod.string().nullish(),
-  "userIds": zod.array(zod.number().int().min(1)).max(sendAdminNotificationBodyUserIdsMax).optional()
+  "userIds": zod.array(zod.int().min(1)).max(sendAdminNotificationBodyUserIdsMax).optional()
 })
 
 export const SendAdminNotificationResponse = zod.object({
-  "recipientCount": zod.number().int()
+  "recipientCount": zod.int()
 })
 
 
 export const GetNotificationInboxResponse = zod.object({
   "items": zod.array(zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "title": zod.string(),
   "body": zod.string(),
   "createdAt": zod.coerce.date(),
   "readAt": zod.coerce.date().nullable()
 })),
-  "unreadCount": zod.number().int()
+  "unreadCount": zod.int()
 })
 
 
@@ -1529,7 +1547,7 @@ export const MarkNotificationReadParams = zod.object({
 })
 
 export const MarkNotificationReadResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "title": zod.string(),
   "body": zod.string(),
   "createdAt": zod.coerce.date(),

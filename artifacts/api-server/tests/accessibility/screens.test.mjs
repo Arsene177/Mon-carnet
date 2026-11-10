@@ -111,7 +111,8 @@ function startWebServer() {
 }
 
 async function openPage({ token = null, width, language }) {
-  const context = await browser.newContext({ viewport: { width, height: 900 }, locale: language === "fr" ? "fr-FR" : "en-US" });
+  // bypassCSP: the page's Content Security Policy rightly blocks the injected axe-core script.
+  const context = await browser.newContext({ viewport: { width, height: 900 }, locale: language === "fr" ? "fr-FR" : "en-US", bypassCSP: true });
   await context.addInitScript(([storedToken, lang]) => {
     // Skip the first-visit guided tour, which would cover the screen.
     for (let id = 0; id < 5000; id++) localStorage.setItem(`medichain:onboarding:v1:${id}`, "complete");
@@ -180,6 +181,30 @@ after(async () => {
   webServer?.close();
   apiServer?.kill();
   await sql.end();
+});
+
+describe("Content Security Policy", () => {
+  test("the production page carries the policy and the app works under it", async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await context.addInitScript((token) => {
+      for (let id = 0; id < 5000; id++) localStorage.setItem(`medichain:onboarding:v1:${id}`, "complete");
+      document.addEventListener("securitypolicyviolation", (event) => { window.__cspViolations = [...(window.__cspViolations ?? []), `${event.violatedDirective} ${event.blockedURI}`]; });
+      if (location.pathname !== "/login") { localStorage.setItem("medichain_token", token); localStorage.setItem("medichain_last_activity", String(Date.now())); }
+    }, tokens.patient);
+    const page = await context.newPage();
+    await page.goto(`${BASE}/login`);
+    assert.match(await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute("content"), /script-src 'self'/);
+    await page.getByTestId("input-email").waitFor();
+    const blockedInline = await page.evaluate(() => { try { new Function("return 1")(); return false; } catch { return true; } });
+    assert.equal(blockedInline, true, "eval-like code is blocked");
+    await page.goto(`${BASE}/patient`);
+    await page.getByTestId("nav-records").waitFor();
+    await page.getByTestId("nav-records").click();
+    await page.waitForTimeout(500);
+    const violations = await page.evaluate(() => window.__cspViolations ?? []);
+    assert.deepEqual(violations.filter((v) => !v.startsWith("script-src-elem eval") && !v.includes("eval")), []);
+    await context.close();
+  });
 });
 
 describe("accessibility (WCAG 2.2 AA rules checked by axe-core, and reflow)", () => {

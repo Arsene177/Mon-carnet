@@ -31,6 +31,8 @@ export interface User {
   mfaEnabled: boolean;
   /** This role must use two-step sign-in (doctors and administrators). */
   mfaRequired: boolean;
+  /** Signed in with a temporary password; a new one must be chosen before anything else. */
+  mustChangePassword: boolean;
   id: number;
   email: string;
   name: string;

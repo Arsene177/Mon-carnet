@@ -2,6 +2,7 @@ import app from "./app";
 import { ensureDiseaseCodeCatalog } from "./lib/disease-code-catalog";
 import { logger } from "./lib/logger";
 import { purgeOldSecurityEvents } from "./lib/security-events";
+import { purgeExpiredRevocations } from "./lib/medichain-auth";
 
 const rawPort = process.env["PORT"];
 
@@ -20,7 +21,8 @@ if (Number.isNaN(port) || port <= 0) {
 async function start(): Promise<void> {
   await ensureDiseaseCodeCatalog();
   // Security events are kept for 12 months.
-  const purge = () => purgeOldSecurityEvents().catch((err: unknown) => logger.error({ err }, "Old security events could not be deleted"));
+  // Revocations are only needed until the revoked tokens would have expired.
+  const purge = () => Promise.all([purgeOldSecurityEvents(), purgeExpiredRevocations()]).catch((err: unknown) => logger.error({ err }, "Old security records could not be deleted"));
   void purge();
   setInterval(purge, 24 * 60 * 60_000).unref();
   app.listen(port, (err) => {

@@ -5,8 +5,8 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { eq, sql } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { eq, lt, sql } from "drizzle-orm";
+import { db, revokedTokensTable, usersTable } from "@workspace/db";
 import { MFA_REQUIRED_ROLES } from "./mfa";
 
 export type MedichainRole = "PATIENT" | "PENDING_DOCTOR" | "DOCTOR" | "ADMIN";
@@ -27,6 +27,8 @@ declare global {
   namespace Express {
     interface Request {
       currentUser?: CurrentUser;
+      /** The id and expiry (seconds) of the token used for this request, for signing out. */
+      accessToken?: { id: string | null; expiresAt: number };
     }
   }
 }
@@ -45,6 +47,15 @@ export function hashPassword(password: string): string {
   return `scrypt$${salt}$${hash}`;
 }
 
+/** A real scrypt hash of a random password, so that sign-in takes as long for an unknown email as for a known one. */
+const DUMMY_HASH = hashPassword(randomBytes(16).toString("hex"));
+
+/** Spends the same time as checking a real password, for accounts that do not exist. */
+export function verifyDummyPassword(password: string): false {
+  verifyPassword(password, DUMMY_HASH);
+  return false;
+}
+
 export function verifyPassword(password: string, stored: string): boolean {
   const [algorithm, salt, hash] = stored.split("$");
   if (algorithm !== "scrypt" || !salt || !hash) return false;
@@ -57,8 +68,11 @@ export function verifyPassword(password: string, stored: string): boolean {
   }
 }
 
+/** Sessions end 12 hours after sign-in at the latest (ASVS 3.3.2); the web app also signs out after 30 idle minutes. */
+export const SESSION_LIFETIME_SECONDS = 12 * 60 * 60;
+
 /**
- * Issues a seven-day access token. `sessionVersion` is the account's current value; raising it
+ * Issues an access token valid for 12 hours, with its own id so that signing out can revoke it. `sessionVersion` is the account's current value; raising it
  * (see `endAllSessions`) makes every token issued before that point stop working.
  */
 export function createAccessToken(user: CurrentUser, sessionVersion: number): string {
@@ -70,8 +84,9 @@ export function createAccessToken(user: CurrentUser, sessionVersion: number): st
       role: user.role,
       status: user.status,
       sv: sessionVersion,
+      jti: randomBytes(16).toString("base64url"),
       iat: now,
-      exp: now + 60 * 60 * 24 * 7,
+      exp: now + SESSION_LIFETIME_SECONDS,
     }),
   ).toString("base64url");
   const unsigned = `${header}.${payload}`;
@@ -84,6 +99,8 @@ type AccessTokenClaims = {
   role: MedichainRole;
   status: MedichainStatus;
   sessionVersion: number;
+  tokenId: string | null;
+  expiresAt: number;
 };
 
 function verifyAccessToken(token: string): AccessTokenClaims | null {
@@ -103,6 +120,7 @@ function verifyAccessToken(token: string): AccessTokenClaims | null {
       role?: unknown;
       status?: unknown;
       sv?: unknown;
+      jti?: unknown;
       exp?: unknown;
     };
     if (
@@ -122,6 +140,8 @@ function verifyAccessToken(token: string): AccessTokenClaims | null {
       // Tokens issued before session versions existed carry none; they match the initial value 0
       // until the account's first password change or "sign out of all other devices".
       sessionVersion: (payload.sv as number | undefined) ?? 0,
+      tokenId: typeof payload.jti === "string" ? payload.jti : null,
+      expiresAt: payload.exp as number,
     };
   } catch {
     return null;
@@ -165,13 +185,14 @@ export function userResponse(user: typeof usersTable.$inferSelect) {
     termsAcceptedAt: user.termsAcceptedAt?.toISOString() ?? null,
     healthDataConsentAt: user.healthDataConsentAt?.toISOString() ?? null,
     mfaEnabled: Boolean(user.mfaEnabledAt),
+    mustChangePassword: user.mustChangePassword,
     mfaRequired: MFA_REQUIRED_ROLES.has(user.role),
     createdAt: user.createdAt.toISOString(),
   };
 }
 
 /** Account routes a doctor or administrator can use before turning on two-step sign-in. */
-function allowedBeforeMfaSetup(req: Request): boolean {
+function allowedBeforeAccountSetup(req: Request): boolean {
   const path = req.originalUrl.split("?")[0] ?? "";
   return path.startsWith("/api/auth/") || path === "/api/account/consent";
 }
@@ -202,7 +223,20 @@ export function requireAuth(...roles: MedichainRole[]) {
     }
     // Doctors and administrators must turn on two-step sign-in before anything beyond their own
     // account settings works.
-    if (MFA_REQUIRED_ROLES.has(currentUser.role) && !user.mfaEnabledAt && !allowedBeforeMfaSetup(req)) {
+    if (claims.tokenId) {
+      const [revoked] = await db.select({ id: revokedTokensTable.tokenId }).from(revokedTokensTable).where(eq(revokedTokensTable.tokenId, claims.tokenId)).limit(1);
+      if (revoked) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+    }
+    req.accessToken = { id: claims.tokenId, expiresAt: claims.expiresAt };
+    // A temporary password from an administrator must be replaced before anything else.
+    if (user.mustChangePassword && !allowedBeforeAccountSetup(req)) {
+      res.status(403).json({ error: "Choose a new password to continue.", code: "PASSWORD_CHANGE_REQUIRED" });
+      return;
+    }
+    if (MFA_REQUIRED_ROLES.has(currentUser.role) && !user.mfaEnabledAt && !allowedBeforeAccountSetup(req)) {
       res.status(403).json({ error: "Turn on two-step sign-in to continue.", code: "MFA_SETUP_REQUIRED" });
       return;
     }
@@ -228,4 +262,17 @@ export async function endAllSessions(userId: number): Promise<number | undefined
     .where(eq(usersTable.id, userId))
     .returning({ sessionVersion: usersTable.sessionVersion });
   return updated?.sessionVersion;
+}
+
+/** Ends the session of one token (signing out). */
+export async function revokeToken(token: { id: string | null; expiresAt: number }): Promise<void> {
+  if (!token.id) return;
+  await db.insert(revokedTokensTable)
+    .values({ tokenId: token.id, expiresAt: new Date(token.expiresAt * 1000) })
+    .onConflictDoNothing();
+}
+
+/** Deletes revocations of tokens that have expired anyway. */
+export async function purgeExpiredRevocations(): Promise<void> {
+  await db.delete(revokedTokensTable).where(lt(revokedTokensTable.expiresAt, new Date()));
 }

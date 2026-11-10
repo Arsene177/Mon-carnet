@@ -13,7 +13,8 @@ export interface ChangePasswordInput {
      */
   currentPassword: string;
   /**
-     * @minLength 8
+     * Same rules as at registration.
+     * @minLength 1
      * @maxLength 128
      */
   newPassword: string;

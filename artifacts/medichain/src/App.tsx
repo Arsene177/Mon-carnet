@@ -401,7 +401,16 @@ function DeletionRequestsPanel({ active }: { active: boolean }) {
   </section>;
 }
 
-function PasswordChangeCard() {
+/** Ends this session on the server as well, so the token stops working even if it was copied. */
+function endServerSession() {
+  const token = localStorage.getItem('medichain_token');
+  if (!token) return;
+  void fetch('/api/auth/sign-out', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, keepalive: true }).catch(() => undefined);
+}
+
+const MIN_PASSWORD_LENGTH = 12;
+
+function PasswordChangeCard({ onChanged }: { onChanged?: () => void } = {}) {
   const changePassword = useChangePassword();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -413,8 +422,8 @@ function PasswordChangeCard() {
     event.preventDefault();
     setMessage('');
     setError('');
-    if (newPassword.length < 8) {
-      setError(t("Your new password must be at least 8 characters."));
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(t("Your new password must be at least {0} characters. A short sentence is easy to remember and hard to guess.", { 0: MIN_PASSWORD_LENGTH }));
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -424,6 +433,7 @@ function PasswordChangeCard() {
     changePassword.mutate({ data: { currentPassword, newPassword } }, {
       onSuccess: (session) => {
         keepThisDeviceSignedIn(session.token);
+        onChanged?.();
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
@@ -438,8 +448,8 @@ function PasswordChangeCard() {
     <div className="panel-body">
       <form onSubmit={submit} className="form-grid">
         <div className="field full"><label htmlFor="current-password">{t("Current password")}</label><input id="current-password" type="password" autoComplete="current-password" minLength={1} maxLength={128} required value={currentPassword} onChange={(event)=>setCurrentPassword(event.target.value)} data-testid="input-current-password"/></div>
-        <div className="field"><label htmlFor="new-password">{t("New password")}</label><input id="new-password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={newPassword} onChange={(event)=>setNewPassword(event.target.value)} data-testid="input-new-password"/></div>
-        <div className="field"><label htmlFor="confirm-password">{t("Confirm new password")}</label><input id="confirm-password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={confirmPassword} onChange={(event)=>setConfirmPassword(event.target.value)} data-testid="input-confirm-password"/></div>
+        <div className="field"><label htmlFor="new-password">{t("New password")}</label><input id="new-password" type="password" autoComplete="new-password" minLength={MIN_PASSWORD_LENGTH} maxLength={128} required value={newPassword} onChange={(event)=>setNewPassword(event.target.value)} data-testid="input-new-password"/></div>
+        <div className="field"><label htmlFor="confirm-password">{t("Confirm new password")}</label><input id="confirm-password" type="password" autoComplete="new-password" minLength={MIN_PASSWORD_LENGTH} maxLength={128} required value={confirmPassword} onChange={(event)=>setConfirmPassword(event.target.value)} data-testid="input-confirm-password"/></div>
         {error && <p className="error-state full" role="alert">{error}</p>}
         {message && <p className="field-note full" role="status">{message}</p>}
         <div className="form-actions full"><button className="btn" type="submit" disabled={changePassword.isPending} data-testid="button-change-password">{changePassword.isPending ? t("Updating…") : t("Change password")}</button></div>
@@ -533,6 +543,7 @@ function Router() {
   const token = typeof localStorage === 'undefined' ? null : localStorage.getItem('medichain_token');
   const me = useGetMe({ query: { enabled: Boolean(token), queryKey: getGetMeQueryKey(), retry: false } });
   const signOut = () => {
+    endServerSession();
     localStorage.removeItem('medichain_token');
     localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
     queryClient.clear();
@@ -544,6 +555,7 @@ function Router() {
     let lastPersistedActivity = Number(localStorage.getItem(SESSION_LAST_ACTIVITY_KEY)) || Date.now();
     localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(lastPersistedActivity));
     const expireSession = () => {
+      endServerSession();
       localStorage.removeItem('medichain_token');
       localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
       queryClient.clear();
@@ -600,6 +612,7 @@ function Router() {
     return <LoadingScreen />;
   }
   if (needsConsent(user)) return <ConsentScreen user={user} onSignOut={signOut}/>;
+  if (user.mustChangePassword) return <PasswordChangeScreen onSignOut={signOut}/>;
   if (user.mfaRequired && !user.mfaEnabled) return <MfaSetupScreen onSignOut={signOut}/>;
   return <Workspace user={user} onSignOut={signOut} />;
 }
@@ -641,6 +654,23 @@ function ConsentScreen({ user, onSignOut }: { user: User; onSignOut: () => void 
         {error && <div className="error-state" role="alert">{error}</div>}
         <div className="form-actions"><button className="btn ghost" type="button" onClick={onSignOut}>{t('Sign out')}</button><button className="btn" type="submit" disabled={accept.isPending} data-testid="button-accept-terms">{accept.isPending ? t('Saving…') : t('Accept and continue')}</button></div>
       </form>
+    </main>
+  </div>;
+}
+
+/** After a temporary password from an administrator, a new password must be chosen first. */
+function PasswordChangeScreen({ onSignOut }: { onSignOut: () => void }) {
+  const qc = useQueryClient();
+  return <div className="login-page consent-page">
+    <main className="login-main">
+      <div className="login-language"><LanguageSwitcher signedIn/></div>
+      <div className="auth-card">
+        <div className="brand-inline"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
+        <h1 className="auth-title">{t('Choose a new password')}</h1>
+        <p className="subhead">{t('You signed in with a temporary password from an administrator. Choose your own password to continue. Enter the temporary password as the current password.')}</p>
+        <PasswordChangeCard onChanged={() => { void qc.invalidateQueries({ queryKey: getGetMeQueryKey() }); }}/>
+        <div className="form-actions" style={{ marginTop: 8 }}><button className="btn ghost small" type="button" onClick={onSignOut}>{t('Sign out')}</button></div>
+      </div>
     </main>
   </div>;
 }
@@ -768,7 +798,7 @@ function AuthPage() {
           </>}
           {codeStep && <div className="field"><label htmlFor="auth-code">{t("6-digit code")}</label><input id="auth-code" value={code} onChange={(event) => setCode(event.target.value)} required autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={20} data-testid="input-login-code"/><small className="field-note">{t("Lost your phone? Enter one of your recovery codes instead.")}</small></div>}
           {!codeStep && <><div className="field"><label htmlFor="auth-email">{t("Email address")}</label><input id="auth-email" type="email" value={form.email} onChange={onField('email')} required autoComplete="email" data-testid="input-email" placeholder={t("you@example.com")}/></div>
-          {!recoveringPassword && <div className="field"><label htmlFor="auth-password">{t("Password")}</label><input id="auth-password" type="password" value={form.password} onChange={onField('password')} required minLength={mode === 'register' ? 8 : 1} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} data-testid="input-password" placeholder={mode === 'register' ? t("At least 8 characters") : t("Your password")}/></div>}</>}
+          {!recoveringPassword && <div className="field"><label htmlFor="auth-password">{t("Password")}</label><input id="auth-password" type="password" value={form.password} onChange={onField('password')} required minLength={mode === 'register' ? MIN_PASSWORD_LENGTH : 1} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} data-testid="input-password" placeholder={mode === 'register' ? t("At least {0} characters", { 0: MIN_PASSWORD_LENGTH }) : t("Your password")}/></div>}</>}
           {!recoveringPassword && mode === 'register' && <div className="consent-group">
             <label className="consent-line"><input type="checkbox" required checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} data-testid="checkbox-register-terms"/><span>{t('I have read and accept the terms of use and the privacy policy.')} <LegalLinks/></span></label>
             {role === 'PATIENT' && <label className="consent-line"><input type="checkbox" required checked={healthConsent} onChange={(e) => setHealthConsent(e.target.checked)} data-testid="checkbox-register-health"/><span>{t('I agree that Mon carnet processes my health data to keep my booklet and share it with the doctors I choose. I can withdraw this consent by deleting my account.')}</span></label>}

@@ -134,6 +134,13 @@ paths:
                 $ref: "#/components/schemas/SessionToken"
         "400":
           description: Current password is incorrect or new password is invalid
+  /auth/sign-out:
+    post:
+      operationId: signOut
+      tags: [auth]
+      responses:
+        "204":
+          description: This session is ended on the server; its token no longer works
   /auth/sign-out-other-devices:
     post:
       operationId: signOutOtherDevices
@@ -1181,7 +1188,7 @@ components:
       enum: [PENDING, ACTIVE, INACTIVE]
     User:
       type: object
-      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage, sex, dateOfBirthEstimated, termsVersion, termsAcceptedAt, healthDataConsentAt, mfaEnabled, mfaRequired]
+      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage, sex, dateOfBirthEstimated, termsVersion, termsAcceptedAt, healthDataConsentAt, mfaEnabled, mfaRequired, mustChangePassword]
       properties:
         termsVersion: { type: ["string", "null"], description: "Version of the privacy policy and terms this account accepted." }
         termsAcceptedAt: { type: ["string", "null"], format: date-time }
@@ -1191,6 +1198,7 @@ components:
         preferredLanguage: { $ref: "#/components/schemas/Language" }
         mfaEnabled: { type: boolean, description: "Two-step sign-in with an authenticator app is on." }
         mfaRequired: { type: boolean, description: "This role must use two-step sign-in (doctors and administrators)." }
+        mustChangePassword: { type: boolean, description: "Signed in with a temporary password; a new one must be chosen before anything else." }
         id: { type: integer }
         email: { type: string, format: email }
         name: { type: string }
@@ -1234,7 +1242,7 @@ components:
       properties:
         name: { type: string, minLength: 2, maxLength: 120 }
         email: { type: string, format: email, maxLength: 254 }
-        password: { type: string, minLength: 8, maxLength: 128 }
+        password: { type: string, minLength: 1, maxLength: 128, description: "At least 12 characters, not a common password, not built from the account's name, email or phone (checked by the server)." }
         preferredLanguage: { $ref: "#/components/schemas/Language" }
         acceptedTermsVersion: { type: string, maxLength: 40, description: "Must equal the current privacy policy and terms version." }
         healthDataConsent: { type: boolean, description: "Required (true) for patients." }
@@ -1392,7 +1400,7 @@ components:
       required: [currentPassword, newPassword]
       properties:
         currentPassword: { type: string, minLength: 1, maxLength: 128 }
-        newPassword: { type: string, minLength: 8, maxLength: 128 }
+        newPassword: { type: string, minLength: 1, maxLength: 128, description: "Same rules as at registration." }
     EmergencyInfo:
       type: object
       required: [patientId, patientName, patientSex, patientDateOfBirth, patientDateOfBirthEstimated, bloodGroup, weightKg, heightCm, allergies, emergencyContact, updatedAt]

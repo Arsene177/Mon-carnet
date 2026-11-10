@@ -124,6 +124,8 @@ import { languageOf, notificationMessages } from "../lib/notification-messages";
 import {
   createAccessToken,
   endAllSessions,
+  revokeToken,
+  verifyDummyPassword,
   hashPassword,
   nextSessionVersion,
   publicUser,
@@ -134,6 +136,7 @@ import {
 import { verifySecondFactor } from "./mfa";
 import { attachmentObjectName, signedStorageUrl } from "../lib/object-storage";
 import { recordSecurityEvent, unusualAccessThreshold } from "../lib/security-events";
+import { newPasswordProblem } from "../lib/password-policy";
 
 const router: IRouter = Router();
 const patientDisplayIdAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -183,6 +186,45 @@ async function ensurePatientIdentifiers(user: typeof usersTable.$inferSelect) {
 export async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET" | "DELETE", ttlSeconds: number) {
   const { bucketName, objectName } = attachmentObjectName(objectPath);
   return signedStorageUrl(bucketName, objectName, method, ttlSeconds);
+}
+
+const FILE_SIGNATURES: Record<string, number[][]> = {
+  "application/pdf": [[0x25, 0x50, 0x44, 0x46, 0x2d]], // %PDF-
+  "image/png": [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
+  "image/jpeg": [[0xff, 0xd8, 0xff]],
+};
+
+/** True when the file starts with the signature of its declared type. */
+export function hasFileSignature(head: Buffer, contentType: string): boolean {
+  return (FILE_SIGNATURES[contentType] ?? []).some((signature) => signature.every((byte, index) => head[index] === byte));
+}
+
+/** Reads at most `count` bytes of a response body, then stops the download. */
+async function readFirstBytes(response: globalThis.Response, count: number): Promise<Buffer> {
+  const reader = response.body?.getReader();
+  if (!reader) return Buffer.alloc(0);
+  const chunks: Buffer[] = [];
+  let length = 0;
+  while (length < count) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(Buffer.from(value));
+    length += value.length;
+  }
+  await reader.cancel().catch(() => undefined);
+  return Buffer.concat(chunks).subarray(0, count);
+}
+
+/** Removes a rejected upload from storage and forgets it. */
+async function discardUpload(attachmentId: number, objectPath: string) {
+  try {
+    const deleteURL = await createSignedObjectUrl(objectPath, "DELETE", 60);
+    await fetch(deleteURL, { method: "DELETE", signal: AbortSignal.timeout(30_000) });
+  } catch (error) {
+    console.warn("Rejected upload could not be deleted from storage; it expires with its reservation", attachmentId, error);
+    return;
+  }
+  await db.delete(medicalAttachmentsTable).where(eq(medicalAttachmentsTable.id, attachmentId));
 }
 
 async function purgeExpiredMedicalAttachments() {
@@ -321,7 +363,8 @@ async function adminDirectoryEntries(filters: AdminDirectoryFilters, limit: numb
 
 function csvCell(value: string | number | boolean | null) {
   let text = value === null ? "" : String(value);
-  if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
+  // Spreadsheet formula injection (OWASP): neutralise cells starting with = + - @ tab or carriage return.
+  if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
 
@@ -508,6 +551,11 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     invalidBody(res, "Name is required.");
     return;
   }
+  const passwordProblem = newPasswordProblem(input.password, { email: input.email, name: input.name, contactInfo: input.contactInfo });
+  if (passwordProblem) {
+    invalidBody(res, passwordProblem);
+    return;
+  }
   const professionalMedicalNumber = input.professionalMedicalNumber?.trim() || null;
   if (!input.contactInfo?.trim() || (input.role === "PATIENT" && !input.dateOfBirth)) {
     invalidBody(
@@ -586,8 +634,17 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
   const email = parsed.data.email.trim().toLowerCase();
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-  if (!user || !user.isActive || !verifyPassword(parsed.data.password, user.passwordHash)) {
+  if (!user) {
+    verifyDummyPassword(parsed.data.password);
     res.status(401).json({ error: "Invalid credentials" });
+    return;
+  }
+  if (!verifyPassword(parsed.data.password, user.passwordHash) || !user.isActive) {
+    res.status(401).json({ error: "Invalid credentials" });
+    return;
+  }
+  if (user.mustChangePassword && user.passwordExpiresAt && user.passwordExpiresAt < new Date()) {
+    res.status(401).json({ error: "This temporary password has expired. Ask for password recovery again." });
     return;
   }
   if (user.mfaEnabledAt) {
@@ -672,7 +729,7 @@ router.get("/auth/me", requireAuth(), async (req, res): Promise<void> => {
 router.post("/auth/change-password", requireAuth(), async (req, res): Promise<void> => {
   const parsed = ChangePasswordBody.safeParse(req.body);
   if (!parsed.success) {
-    invalidBody(res, "Enter your current password and a new password of at least 8 characters.");
+    invalidBody(res, "Enter your current password and a new password.");
     return;
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.currentUser!.id)).limit(1);
@@ -684,11 +741,16 @@ router.post("/auth/change-password", requireAuth(), async (req, res): Promise<vo
     invalidBody(res, "Choose a new password that differs from your current password.");
     return;
   }
+  const passwordProblem = newPasswordProblem(parsed.data.newPassword, user);
+  if (passwordProblem) {
+    invalidBody(res, passwordProblem);
+    return;
+  }
   // A new password ends every session, so anyone signed in with the old one is signed out.
   // This device stays signed in with the fresh token returned here.
   const [updated] = await db
     .update(usersTable)
-    .set({ passwordHash: hashPassword(parsed.data.newPassword), sessionVersion: nextSessionVersion() })
+    .set({ passwordHash: hashPassword(parsed.data.newPassword), sessionVersion: nextSessionVersion(), mustChangePassword: false, passwordExpiresAt: null })
     .where(eq(usersTable.id, user.id))
     .returning();
   await db.insert(auditEventsTable).values({
@@ -698,6 +760,12 @@ router.post("/auth/change-password", requireAuth(), async (req, res): Promise<vo
     entityId: user.id,
   });
   res.json(ChangePasswordResponse.parse({ token: createAccessToken(publicUser(updated!), updated!.sessionVersion) }));
+});
+
+/** Signing out ends this session on the server too, so a copied token stops working (ASVS 3.3.1). */
+router.post("/auth/sign-out", requireAuth(), async (req, res): Promise<void> => {
+  await revokeToken(req.accessToken!);
+  res.status(204).end();
 });
 
 router.post("/auth/sign-out-other-devices", requireAuth(), async (req, res): Promise<void> => {
@@ -1675,12 +1743,21 @@ router.post(
     try {
       const probeURL = await createSignedObjectUrl(attachment.objectPath, "GET", 60);
       const probe = await fetch(probeURL, {
-        headers: { Range: "bytes=0-0" },
+        headers: { Range: "bytes=0-15" },
         signal: AbortSignal.timeout(30_000),
       });
-      await probe.body?.cancel();
       if (!probe.ok) {
+        await probe.body?.cancel();
         res.status(409).json({ error: "The file is not available in private storage yet. Retry the upload." });
+        return;
+      }
+      // Check what was really stored, not what the browser declared (ASVS 12.1.1, 12.2.1):
+      // the size must match and the first bytes must be those of a PDF, PNG or JPEG.
+      const head = await readFirstBytes(probe, 16);
+      const storedSize = Number(probe.headers.get("content-range")?.split("/")[1] ?? probe.headers.get("content-length"));
+      if (!Number.isFinite(storedSize) || storedSize !== attachment.size || storedSize > 10 * 1024 * 1024 || !hasFileSignature(head, attachment.contentType)) {
+        await discardUpload(attachment.id, attachment.objectPath);
+        invalidBody(res, "This file is not a valid PDF, PNG or JPEG, or its size does not match. Upload it again.");
         return;
       }
       const [updated] = await db.update(medicalAttachmentsTable).set({
@@ -2485,7 +2562,7 @@ router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMI
     return;
   }
 
-  const temporaryPassword = randomBytes(9).toString("base64url");
+  const temporaryPassword = randomBytes(12).toString("base64url");
   const result = await db.transaction(async (tx) => {
     const [request] = await tx
       .select()
@@ -2522,7 +2599,13 @@ router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMI
 
     await tx
       .update(usersTable)
-      .set({ passwordHash: hashPassword(temporaryPassword), sessionVersion: nextSessionVersion() })
+      // The holder must replace it at first sign-in, and it stops working after 72 hours (ASVS 2.3.1).
+      .set({
+        passwordHash: hashPassword(temporaryPassword),
+        sessionVersion: nextSessionVersion(),
+        mustChangePassword: true,
+        passwordExpiresAt: new Date(Date.now() + 72 * 60 * 60_000),
+      })
       .where(eq(usersTable.id, account.id));
     await tx.insert(auditEventsTable).values({
       actorUserId: req.currentUser!.id,

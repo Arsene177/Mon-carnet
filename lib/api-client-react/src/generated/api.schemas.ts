@@ -65,6 +65,8 @@ export interface User {
   mfaEnabled: boolean;
   /** This role must use two-step sign-in (doctors and administrators). */
   mfaRequired: boolean;
+  /** Signed in with a temporary password; a new one must be chosen before anything else. */
+  mustChangePassword: boolean;
   id: number;
   email: string;
   name: string;
@@ -134,7 +136,8 @@ export interface RegistrationInput {
   /** @maxLength 254 */
   email: string;
   /**
-     * @minLength 8
+     * At least 12 characters, not a common password, not built from the account's name, email or phone (checked by the server).
+     * @minLength 1
      * @maxLength 128
      */
   password: string;
@@ -350,7 +353,8 @@ export interface ChangePasswordInput {
      */
   currentPassword: string;
   /**
-     * @minLength 8
+     * Same rules as at registration.
+     * @minLength 1
      * @maxLength 128
      */
   newPassword: string;

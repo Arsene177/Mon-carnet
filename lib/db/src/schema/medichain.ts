@@ -57,6 +57,10 @@ export const usersTable = pgTable(
     // Raised to end every signed-in session at once (password change, temporary password,
     // "sign out of all other devices"). Access tokens carry the value they were issued with.
     sessionVersion: integer("session_version").notNull().default(0),
+    // Set when an administrator issues a temporary password: the holder must choose a new one before
+    // doing anything else, and the temporary password stops working at passwordExpiresAt.
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
+    passwordExpiresAt: timestamp("password_expires_at", { withTimezone: true }),
     // Two-step sign-in with an authenticator app (TOTP). Secrets are encrypted (see api-server lib/mfa.ts).
     // mfaPendingSecret holds a secret during setup until the first code confirms it.
     mfaSecret: text("mfa_secret"),
@@ -337,3 +341,9 @@ export const mfaRecoveryCodesTable = pgTable(
   },
   (table) => [index("medichain_mfa_recovery_codes_user_index").on(table.userId)],
 );
+
+/** Access tokens ended by signing out, kept until they would have expired anyway. */
+export const revokedTokensTable = pgTable("medichain_revoked_tokens", {
+  tokenId: text("token_id").primaryKey(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
