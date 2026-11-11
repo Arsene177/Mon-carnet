@@ -51,7 +51,9 @@ export const RegisterBody = zod.object({
 })
 
 export const RegisterResponse = zod.object({
-  "token": zod.string(),
+  "token": zod.string().describe('Access token (about one hour). Renew it with /auth/refresh before expiresAt.'),
+  "refreshToken": zod.string(),
+  "expiresAt": zod.coerce.date(),
   "user": zod.object({
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
@@ -94,6 +96,9 @@ export const LoginBody = zod.object({
 export const LoginResponse = zod.object({
   "mfaRequired": zod.boolean(),
   "token": zod.string().optional(),
+  "refreshToken": zod.string().optional(),
+  "expiresAt": zod.coerce.date().optional(),
+  "authenticatorRemoved": zod.boolean().optional().describe('True after signing in with a recovery code: the lost authenticator was removed and must be set up again.'),
   "user": zod.object({
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
@@ -119,6 +124,24 @@ export const LoginResponse = zod.object({
   "createdAt": zod.coerce.date()
 }).optional()
 })
+
+
+export const refreshSessionBodyRefreshTokenMax = 512;
+
+
+
+export const RefreshSessionBody = zod.object({
+  "refreshToken": zod.string().min(1).max(refreshSessionBodyRefreshTokenMax)
+})
+
+export const RefreshSessionResponse = zod.object({
+  "token": zod.string(),
+  "refreshToken": zod.string(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+export const SignOutResponse = zod.void()
 
 
 export const requestPasswordResetBodyEmailMax = 254;
@@ -243,7 +266,9 @@ export const EnableMfaBody = zod.object({
 
 export const EnableMfaResponse = zod.object({
   "recoveryCodes": zod.array(zod.string()),
-  "token": zod.string()
+  "token": zod.string(),
+  "refreshToken": zod.string(),
+  "expiresAt": zod.coerce.date()
 })
 
 

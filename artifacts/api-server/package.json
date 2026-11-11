@@ -15,7 +15,8 @@
     "backup:download": "pnpm run build && node --enable-source-maps ./dist/backup.mjs download",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm run build && node --test --test-concurrency=1 tests/*.test.mjs",
-    "test:accessibility": "pnpm run build && node --test tests/accessibility/*.test.mjs"
+    "test:accessibility": "pnpm run build && node --test tests/accessibility/*.test.mjs",
+    "migrate-to-supabase": "pnpm run build && node --enable-source-maps ./dist/migrate-to-supabase.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

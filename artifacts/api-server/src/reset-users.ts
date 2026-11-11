@@ -10,54 +10,12 @@ import {
   patientSearchesTable,
   usersTable,
 } from "@workspace/db";
-import { hashPassword } from "./lib/medichain-auth";
+import { deleteStoredFiles } from "./lib/object-storage";
+import { createAuthUser, deleteAuthUser } from "./lib/supabase";
 import { logger } from "./lib/logger";
 
 const adminEmail = "arsenedjonkoun5@gmail.com";
 const adminName = "Arsene Djonkoun";
-
-function privateObjectPathParts(objectPath: string) {
-  const privateDir = process.env.PRIVATE_OBJECT_DIR;
-  if (!privateDir || !objectPath.startsWith("/objects/uploads/")) {
-    throw new Error("Private object storage is not configured for attachment cleanup.");
-  }
-  const pathParts = privateDir.replace(/^\/+/, "").split("/");
-  const bucketName = pathParts.shift();
-  if (!bucketName) throw new Error("Private object storage is not configured for attachment cleanup.");
-  return {
-    bucketName,
-    objectName: [...pathParts, objectPath.slice("/objects/".length)].join("/"),
-  };
-}
-
-async function deleteStoredAttachment(objectPath: string) {
-  const { bucketName, objectName } = privateObjectPathParts(objectPath);
-  const signedUrlResponse = await fetch("http://127.0.0.1:1106/object-storage/signed-object-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      bucket_name: bucketName,
-      object_name: objectName,
-      method: "DELETE",
-      expires_at: new Date(Date.now() + 60_000).toISOString(),
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!signedUrlResponse.ok) {
-    throw new Error(`Could not prepare attachment cleanup for ${objectPath}.`);
-  }
-  const signedUrlResult = await signedUrlResponse.json() as { signed_url?: string };
-  if (!signedUrlResult.signed_url) {
-    throw new Error("Object storage did not provide an attachment cleanup URL.");
-  }
-  const deleteResponse = await fetch(signedUrlResult.signed_url, {
-    method: "DELETE",
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!deleteResponse.ok && deleteResponse.status !== 404) {
-    throw new Error(`Could not delete stored attachment ${objectPath}.`);
-  }
-}
 
 async function resetUsers() {
   if (process.env.RESET_ALL_USERS !== "DELETE_ALL_USERS") {
@@ -71,9 +29,10 @@ async function resetUsers() {
   const attachments = await db
     .select({ objectPath: medicalAttachmentsTable.objectPath })
     .from(medicalAttachmentsTable);
-  for (const attachment of attachments) {
-    await deleteStoredAttachment(attachment.objectPath);
-  }
+  await deleteStoredFiles(attachments.map((attachment) => attachment.objectPath));
+  // Sign-ins of every account go too, so the emails can be registered again.
+  const signIns = await db.select({ authUserId: usersTable.authUserId }).from(usersTable);
+  for (const { authUserId } of signIns) if (authUserId) await deleteAuthUser(authUserId);
 
   const admin = await db.transaction(async (tx) => {
     await tx.delete(auditEventsTable);
@@ -84,9 +43,10 @@ async function resetUsers() {
     await tx.delete(emergencyInfoTable);
     await tx.delete(medicalRecordsTable);
     await tx.delete(usersTable);
+    const authUserId = await createAuthUser(adminEmail, adminPassword);
     const result = await tx.execute(sql`
-      INSERT INTO medichain_users (email, password_hash, role, name, is_active)
-      VALUES (${adminEmail}, ${hashPassword(adminPassword)}, 'ADMIN', ${adminName}, true)
+      INSERT INTO medichain_users (email, auth_user_id, role, name, is_active)
+      VALUES (${adminEmail}, ${authUserId}::uuid, 'ADMIN', ${adminName}, true)
       RETURNING id
     `);
     return result.rows[0];

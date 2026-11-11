@@ -7,7 +7,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { logger } from "./lib/logger";
-import { hashPassword } from "./lib/medichain-auth";
+import { createAuthUser } from "./lib/supabase";
 
 async function ensureUser(input: {
   email: string;
@@ -24,13 +24,14 @@ async function ensureUser(input: {
     .where(eq(usersTable.email, email))
     .limit(1);
   if (existing) return existing;
+  const authUserId = await createAuthUser(email, input.password);
   const [created] = await db
     .insert(usersTable)
     .values({
       email,
+      authUserId,
       name: input.name,
       role: input.role,
-      passwordHash: hashPassword(input.password),
       dateOfBirth: input.dateOfBirth ?? null,
       contactInfo: input.contactInfo ?? null,
       isActive: true,

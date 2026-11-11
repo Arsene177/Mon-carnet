@@ -1,49 +1,34 @@
-// Private file storage (Replit Object Storage). The local storage sidecar issues short-lived
-// signed URLs; OBJECT_STORAGE_SIDECAR_URL overrides its address (used by the backup tests).
-export type SignedUrlMethod = "PUT" | "GET" | "DELETE";
+// Private lab files in Supabase Storage. Records keep the path "/objects/uploads/<id>"; the file is
+// stored in the private bucket as "uploads/<id>".
+import {
+  deleteObjects,
+  downloadObject,
+  objectExists,
+  signedDownloadUrl,
+  signedUploadUrl,
+  uploadObject,
+} from "./supabase";
 
-function sidecarUrl(): string {
-  return process.env.OBJECT_STORAGE_SIDECAR_URL ?? "http://127.0.0.1:1106";
+const ATTACHMENT_PATH = /^\/objects\/(uploads\/[0-9a-f-]{36})$/;
+
+/** The object name in the bucket for an attachment path such as "/objects/uploads/<id>". */
+export function attachmentObjectName(objectPath: string): string {
+  const match = ATTACHMENT_PATH.exec(objectPath);
+  if (!match) throw new Error("Not a lab file path.");
+  return match[1]!;
 }
 
-/** Splits PRIVATE_OBJECT_DIR ("/bucket/some/dir") into the bucket and the directory inside it. */
-export function privateStorageRoot(): { bucketName: string; directory: string } | null {
-  const privateDir = process.env.PRIVATE_OBJECT_DIR;
-  if (!privateDir) return null;
-  const parts = privateDir.replace(/^\/+/, "").split("/").filter(Boolean);
-  const bucketName = parts.shift();
-  return bucketName ? { bucketName, directory: parts.join("/") } : null;
-}
+/** A URL the browser can PUT the file to. */
+export const fileUploadUrl = (objectPath: string) => signedUploadUrl(attachmentObjectName(objectPath));
 
-export async function signedStorageUrl(
-  bucketName: string,
-  objectName: string,
-  method: SignedUrlMethod,
-  ttlSeconds: number,
-): Promise<string> {
-  const response = await fetch(`${sidecarUrl()}/object-storage/signed-object-url`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      bucket_name: bucketName,
-      object_name: objectName,
-      method,
-      expires_at: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error("Unable to create a private file URL.");
-  const result = await response.json() as { signed_url?: string };
-  if (!result.signed_url) throw new Error("Storage did not return a signed URL.");
-  return result.signed_url;
-}
+/** A URL the browser can download the file from for `ttlSeconds`. */
+export const fileDownloadUrl = (objectPath: string, ttlSeconds: number) => signedDownloadUrl(attachmentObjectName(objectPath), ttlSeconds);
 
-/** Bucket and object name for an attachment path such as "/objects/uploads/<id>". */
-export function attachmentObjectName(objectPath: string): { bucketName: string; objectName: string } {
-  const root = privateStorageRoot();
-  if (!root || !objectPath.startsWith("/objects/uploads/")) {
-    throw new Error("Private object storage is not configured.");
-  }
-  const objectName = [root.directory, objectPath.slice("/objects/".length)].filter(Boolean).join("/");
-  return { bucketName: root.bucketName, objectName };
-}
+export const storedFileExists = (objectPath: string) => objectExists(attachmentObjectName(objectPath));
+
+/** Deletes files; files that are already gone are ignored. */
+export const deleteStoredFiles = (objectPaths: string[]) => deleteObjects(objectPaths.map(attachmentObjectName));
+
+export const readStoredFile = (objectPath: string) => downloadObject(attachmentObjectName(objectPath));
+
+export const writeStoredFile = (objectPath: string, data: Buffer, contentType: string) => uploadObject(attachmentObjectName(objectPath), data, contentType);

@@ -38,8 +38,8 @@ import { splitRecordAttachments } from '@/lib/record-attachments';
 import type { WorkspaceTab } from '@/lib/navigation';
 import { LANGUAGES, getLanguage, locale, setLanguage, t, useLanguage, type Language } from '@/lib/i18n';
 import { errText } from '@/lib/error-text';
-import { SESSION_LAST_ACTIVITY_KEY, keepThisDeviceSignedIn } from '@/lib/session';
-import { MfaSetupFlow, TwoStepCard } from '@/components/two-step';
+import { ACCESS_TOKEN_KEY, SESSION_LAST_ACTIVITY_KEY, accessToken, authorizedFetch, clearSession, endSession, hasSession, keepThisDeviceSignedIn, saveSession } from '@/lib/session';
+import { AUTHENTICATOR_REMOVED_KEY, AuthenticatorRemovedNotice, MfaSetupFlow, TwoStepCard } from '@/components/two-step';
 
 const SESSION_ENDED_NOTICE_KEY = 'medichain_session_ended';
 /**
@@ -48,9 +48,8 @@ const SESSION_ENDED_NOTICE_KEY = 'medichain_session_ended';
  */
 function handleSessionEnded(error: unknown) {
   if ((error as { status?: unknown } | null)?.status !== 401) return;
-  if (typeof localStorage === 'undefined' || !localStorage.getItem('medichain_token')) return;
-  localStorage.removeItem('medichain_token');
-  localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
+  if (!hasSession()) return;
+  clearSession();
   try { sessionStorage.setItem(SESSION_ENDED_NOTICE_KEY, '1'); } catch { /* notice is optional */ }
   window.location.assign('/login');
 }
@@ -59,7 +58,7 @@ const queryClient = new QueryClient({
   // A failed sign-in also answers 401; that is a wrong password, not an ended session.
   mutationCache: new MutationCache({ onError: (error, _variables, _context, mutation) => { if (mutation.options.mutationKey?.[0] !== 'login') handleSessionEnded(error); } }),
 });
-setAuthTokenGetter(() => typeof localStorage === 'undefined' ? null : localStorage.getItem('medichain_token'));
+setAuthTokenGetter(accessToken);
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const minimumAggregateGroupSize = 5;
 
@@ -303,7 +302,7 @@ function AccountRightsCard({ role }: { role: User['role'] }) {
   const downloadData = async () => {
     setError(''); setMessage(''); setDownloading(true);
     try {
-      const response = await fetch('/api/account/data-export', { headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` } });
+      const response = await authorizedFetch('/api/account/data-export');
       if (!response.ok) throw new Error(t('Could not prepare your data. Please try again.'));
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement('a');
@@ -423,7 +422,7 @@ function PasswordChangeCard() {
     }
     changePassword.mutate({ data: { currentPassword, newPassword } }, {
       onSuccess: (session) => {
-        keepThisDeviceSignedIn(session.token);
+        keepThisDeviceSignedIn({ token: session.token });
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
@@ -457,7 +456,7 @@ function SignOutOtherDevicesCard() {
     setError('');
     signOutOthers.mutate(undefined, {
       onSuccess: (session) => {
-        keepThisDeviceSignedIn(session.token);
+        keepThisDeviceSignedIn({ token: session.token });
         setMessage(t("You have been signed out on every other device. This device stays signed in."));
       },
       onError: (signOutError) => setError(errText(signOutError)),
@@ -506,11 +505,10 @@ function recordNoteTemplate(recordType: MedicalRecordRecordType): string {
 
 /** Saves the language on the account so notifications reach this person in it. */
 function saveAccountLanguage(language: Language) {
-  const token = localStorage.getItem('medichain_token');
-  if (!token) return;
-  void fetch('/api/auth/language', {
+  if (!hasSession()) return;
+  void authorizedFetch('/api/auth/language', {
     method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ language }),
   }).catch(() => undefined);
 }
@@ -530,11 +528,10 @@ function App() {
 
 function Router() {
   const [location, setLocation] = useLocation();
-  const token = typeof localStorage === 'undefined' ? null : localStorage.getItem('medichain_token');
+  const token = hasSession();
   const me = useGetMe({ query: { enabled: Boolean(token), queryKey: getGetMeQueryKey(), retry: false } });
   const signOut = () => {
-    localStorage.removeItem('medichain_token');
-    localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
+    endSession();
     queryClient.clear();
     setLocation('/');
   };
@@ -544,8 +541,7 @@ function Router() {
     let lastPersistedActivity = Number(localStorage.getItem(SESSION_LAST_ACTIVITY_KEY)) || Date.now();
     localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(lastPersistedActivity));
     const expireSession = () => {
-      localStorage.removeItem('medichain_token');
-      localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
+      endSession();
       queryClient.clear();
       setLocation('/login');
     };
@@ -563,7 +559,7 @@ function Router() {
     const activityEvents: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
     activityEvents.forEach((event) => window.addEventListener(event, recordActivity, { passive: true }));
     const syncSession = (event: StorageEvent) => {
-      if (event.key === 'medichain_token' && !event.newValue) {
+      if (event.key === ACCESS_TOKEN_KEY && !event.newValue) {
         queryClient.clear();
         setLocation('/login');
         return;
@@ -657,6 +653,7 @@ function MfaSetupScreen({ onSignOut }: { onSignOut: () => void }) {
         <div className="brand-inline"><NotebookLogo/><span className="brand-name">Mon <strong>carnet</strong></span></div>
         <h2>{t('Protect your account')}</h2>
         <p className="subhead">{t('Doctors and administrators can see many patients’ data, so their accounts need two-step sign-in. After your password, you will also enter a code from an app on your phone. It takes about two minutes.')}</p>
+        <AuthenticatorRemovedNotice/>
         <MfaSetupFlow onDone={() => { void qc.invalidateQueries({ queryKey: getGetMeQueryKey() }); }}/>
         <div className="form-actions" style={{ marginTop: 8 }}><button className="btn ghost small" type="button" onClick={onSignOut}>{t('Sign out')}</button></div>
       </div>
@@ -714,14 +711,18 @@ function AuthPage() {
       );
       return;
     }
-    const onSession = (session: { token?: string; user?: User; mfaRequired?: boolean }) => {
+    const onSession = (session: { token?: string; refreshToken?: string; expiresAt?: string; user?: User; mfaRequired?: boolean; authenticatorRemoved?: boolean }) => {
       if (!session.token || !session.user) {
         // Password accepted; ask for the code from the authenticator app.
         setCodeStep(true);
         setFeedback('');
         return;
       }
-      localStorage.setItem('medichain_token', session.token);
+      saveSession({ token: session.token, refreshToken: session.refreshToken, expiresAt: session.expiresAt });
+      try {
+        if (session.authenticatorRemoved) sessionStorage.setItem(AUTHENTICATOR_REMOVED_KEY, '1');
+        else sessionStorage.removeItem(AUTHENTICATOR_REMOVED_KEY);
+      } catch { /* the notice is optional */ }
       if (session.user.preferredLanguage !== getLanguage()) saveAccountLanguage(getLanguage());
       localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
       qc.setQueryData(getGetMeQueryKey(), session.user);
@@ -1068,9 +1069,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     let active = true;
     setAccessHistoryLoading(true);
     setAccessHistoryError('');
-    fetch('/api/patient/access-history', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
-    }).then(async (response) => {
+    authorizedFetch('/api/patient/access-history').then(async (response) => {
       if (!response.ok) throw new Error(t("Could not load record access history."));
       return response.json() as Promise<AccessHistoryEntry[]>;
     }).then((entries) => {
@@ -1107,9 +1106,9 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const savePatientLocation = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
-      const response = await fetch('/api/patient/profile', {
+      const response = await authorizedFetch('/api/patient/profile', {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ locationRegion, locationArrondissement }),
       });
       const body = await response.json() as User & { error?: string };
@@ -1402,9 +1401,7 @@ function AttachmentDownloadLink({ patientId, objectPath, fileName }: { patientId
     popup.opener = null;
     try {
       const query = new URLSearchParams({ patientId: String(patientId), objectPath });
-      const response = await fetch(`/api/attachments/download-url?${query}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
-      });
+      const response = await authorizedFetch(`/api/attachments/download-url?${query}`);
       const result = await response.json() as { downloadURL?: string; error?: string };
       if (!response.ok || !result.downloadURL) throw new Error(result.error || t("Could not open this document."));
       popup.location.href = result.downloadURL;
@@ -1495,10 +1492,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     setPendingAttachments([]);
     if (patientId === null || !canAccessSelectedPatient) return;
     let current = true;
-    const authorization = `Bearer ${localStorage.getItem('medichain_token') ?? ''}`;
-    void fetch(`/api/doctor/patient/${patientId}/attachments/pending`, {
-      headers: { Authorization: authorization },
-    }).then(async (response) => {
+    void authorizedFetch(`/api/doctor/patient/${patientId}/attachments/pending`).then(async (response) => {
       const body = await response.json() as PendingMedicalAttachment[] | { error?: string };
       if (!response.ok) throw new Error('error' in body ? body.error || t("Could not load pending lab reports.") : t("Could not load pending lab reports."));
       if (current && Array.isArray(body)) setPendingAttachments(body);
@@ -1526,10 +1520,9 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     setUploadingDocument(true);
     let reserved: PendingMedicalAttachment | null = null;
     try {
-      const authorization = `Bearer ${localStorage.getItem('medichain_token') ?? ''}`;
-      const response = await fetch(`/api/doctor/patient/${patientId}/attachments/upload-url`, {
+      const response = await authorizedFetch(`/api/doctor/patient/${patientId}/attachments/upload-url`, {
         method: 'POST',
-        headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileName: file.name, contentType: file.type, size: file.size }),
       });
       const upload = await response.json() as { attachmentId?: number; uploadURL?: string; error?: string };
@@ -1545,10 +1538,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       setPendingAttachments((current) => [...current.filter((item) => item.id !== reserved!.id), reserved!]);
       const stored = await fetch(upload.uploadURL, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
       if (!stored.ok) throw new Error(t("The document upload did not complete."));
-      const completed = await fetch(`/api/doctor/patient/${patientId}/attachments/${upload.attachmentId}/complete`, {
-        method: 'POST',
-        headers: { Authorization: authorization },
-      });
+      const completed = await authorizedFetch(`/api/doctor/patient/${patientId}/attachments/${upload.attachmentId}/complete`, { method: 'POST' });
       const completion = await completed.json() as { error?: string };
       if (!completed.ok) throw new Error(completion.error || t("The upload is saved; retry confirmation before saving the record."));
       setPendingAttachments((current) => current.map((item) =>
@@ -1567,9 +1557,8 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const confirmPendingAttachment = async (attachmentId: number) => {
     if (patientId === null) return;
     try {
-      const response = await fetch(`/api/doctor/patient/${patientId}/attachments/${attachmentId}/complete`, {
+      const response = await authorizedFetch(`/api/doctor/patient/${patientId}/attachments/${attachmentId}/complete`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
       });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || t("The file is not ready yet."));
@@ -1584,9 +1573,8 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
   const removePendingAttachment = async (attachmentId: number) => {
     if (patientId === null) return;
     try {
-      const response = await fetch(`/api/doctor/patient/${patientId}/attachments/${attachmentId}`, {
+      const response = await authorizedFetch(`/api/doctor/patient/${patientId}/attachments/${attachmentId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
       });
       if (!response.ok) {
         const result = await response.json() as { error?: string };
@@ -1601,9 +1589,9 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
     event.preventDefault();
     setSavingHospital(true);
     try {
-      const response = await fetch('/api/doctor/profile', {
+      const response = await authorizedFetch('/api/doctor/profile', {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hospitalName: hospitalName.trim(), professionalMedicalNumber: professionalMedicalNumber.trim(), locationRegion, locationArrondissement }),
       });
       const body = await response.json() as User & { error?: string };
@@ -2088,9 +2076,7 @@ function InboxView() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/notifications', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
-      });
+      const response = await authorizedFetch('/api/notifications');
       const body = await response.json() as NotificationInboxData & { error?: string };
       if (!response.ok) throw new Error(body.error || t("Could not load your inbox."));
       setInbox(body);
@@ -2105,9 +2091,8 @@ function InboxView() {
     setMarkingId(notificationId);
     setError('');
     try {
-      const response = await fetch(`/api/notifications/${notificationId}/read`, {
+      const response = await authorizedFetch(`/api/notifications/${notificationId}/read`, {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
       });
       const body = await response.json() as NotificationEntry & { error?: string };
       if (!response.ok) throw new Error(body.error || t("Could not mark this notice as read."));
@@ -2171,9 +2156,7 @@ function AdminDirectoryNotices() {
     setDirectoryLoading(true);
     setDirectoryError('');
     setSelectedUsers(new Set());
-    void fetch(`/api/admin/directory?${queryString(true)}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
-    }).then(async (response) => {
+    void authorizedFetch(`/api/admin/directory?${queryString(true)}`).then(async (response) => {
       const body = await response.json() as DirectoryEntry[] & { error?: string };
       if (!response.ok) throw new Error(body.error || t("Could not load this directory."));
       return body;
@@ -2191,9 +2174,7 @@ function AdminDirectoryNotices() {
     setStatus('');
     setStatusError(false);
     try {
-      const response = await fetch(`/api/admin/directory/export?${queryString(true)}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}` },
-      });
+      const response = await authorizedFetch(`/api/admin/directory/export?${queryString(true)}`);
       if (!response.ok) {
         const body = await response.json() as { error?: string };
         throw new Error(body.error || t("Could not export this directory."));
@@ -2239,9 +2220,9 @@ function AdminDirectoryNotices() {
         if (selectedUsers.size === 0) throw new Error(t("Select one or more users from the directory first."));
         payload.userIds = [...selectedUsers];
       }
-      const response = await fetch('/api/admin/notifications', {
+      const response = await authorizedFetch('/api/admin/notifications', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('medichain_token') ?? ''}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const body = await response.json() as { recipientCount?: number; error?: string };

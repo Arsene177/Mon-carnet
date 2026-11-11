@@ -6,9 +6,10 @@ Mon carnet holds medical records that cannot be recreated. This runbook says how
 
 One encrypted file (`mon-carnet-backup-<date>.mcbk`) with:
 
-- the whole database (accounts, emergency information, medical records, coded diagnoses, access grants, audit log, notifications), taken from a single consistent snapshot by `pg_dump`;
-- every attached file (scans, lab results) in private object storage that a record points to;
-- a manifest with the row count of every table and a SHA-256 checksum of every attached file, so a restore can prove it is complete.
+- the app's tables in the Supabase database (accounts, emergency information, medical records, coded diagnoses, access grants, audit log, notifications), taken from a single consistent snapshot by `pg_dump`;
+- the sign-ins Supabase Auth keeps for those accounts (users with their password hashes, identities and authenticator factors), from the same snapshot. Sessions are not kept: after a restore everyone signs in again;
+- every attached file (scans, lab results) in Supabase Storage that a record points to;
+- a manifest with the row count of every table, the number of sign-ins and a SHA-256 checksum of every attached file, so a restore can prove it is complete.
 
 The file is encrypted with AES-256-GCM using a key derived from `BACKUP_ENCRYPTION_KEY`. Without that key a backup cannot be read by anyone, including you. A damaged or altered file is detected and refused.
 
@@ -18,7 +19,7 @@ The file is encrypted with AES-256-GCM using a key derived from `BACKUP_ENCRYPTI
 |---|---|---|
 | Recovery point (data you can lose) | at most 24 hours | one backup per day |
 | Recovery time (time to be back up) | under 4 hours | restore takes minutes; most time is deciding and checking |
-| Copies | 3 copies, 2 kinds of storage, 1 away from Replit | the "3-2-1" rule |
+| Copies | 3 copies, 2 kinds of storage, 1 away from Supabase | the "3-2-1" rule |
 | Restore drill | every 3 months | a backup that was never restored is not known to work |
 
 ## One-time setup
@@ -37,17 +38,17 @@ The file is encrypted with AES-256-GCM using a key derived from `BACKUP_ENCRYPTI
    pnpm --filter @workspace/api-server run backup -- --upload --out /tmp/backups
    ```
 
-   It needs the same secrets as the app: `DATABASE_URL` (the production database), `PRIVATE_OBJECT_DIR`, and `BACKUP_ENCRYPTION_KEY`. `--upload` stores the file in the project's object storage under `backups/`. The command exits with an error if anything fails, so the scheduled run shows as failed. Check the run history weekly.
+   It needs the same secrets as the app: `DATABASE_URL` (the Supabase database), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `BACKUP_ENCRYPTION_KEY`. `--upload` stores the file in the private Supabase Storage bucket `backups` (created on the first upload; `SUPABASE_BACKUP_BUCKET` changes the name). A file larger than the project's upload limit (Storage > Settings; 50 MB on the Free plan) is refused with a message: raise the limit, or keep that backup elsewhere. The command exits with an error if anything fails, so the scheduled run shows as failed. Check the run history weekly.
 
-3. **Keep a copy away from Replit (weekly).** Object storage is a second place, but it belongs to the same provider. Once a week, download the newest backup to a computer and copy it to a second location that does not depend on Replit, for example an external drive kept off-site or another cloud storage account. The file is encrypted, so it is safe to store there. To download it from a Replit shell:
+3. **Keep a copy away from Supabase (weekly).** The `backups` bucket is a second place, but it belongs to the same provider as the database. Once a week, download the newest backup to a computer and copy it to a second location that depends neither on Supabase nor on Replit, for example an external drive kept off-site or another cloud storage account. The file is encrypted, so it is safe to store there. To download it from a Replit shell:
 
    ```bash
    pnpm --filter @workspace/api-server run backup:download -- --name mon-carnet-backup-<date>.mcbk --out backups
    ```
 
-   Keep daily backups for 30 days and one per month for as long as the medical-record retention period requires (still to be set by the legal review). Delete older files from object storage by hand; nothing deletes them automatically.
+   Keep daily backups for 30 days and one per month for as long as the medical-record retention period requires (still to be set by the legal review). Delete older files from the `backups` bucket by hand (Supabase dashboard > Storage); nothing deletes them automatically.
 
-4. **Also use the hosting provider's protection.** If your Replit plan offers point-in-time restore or history for the production database, keep it switched on. It is quicker for small mistakes but does not replace these backups: it does not cover attached files, and it lives with the same provider.
+4. **Also use Supabase's own backups.** Paid Supabase plans keep daily database backups, and point-in-time recovery can be added. Keep them on. They are quicker for small mistakes but do not replace these backups: they do not cover Storage files, and they live with the same provider.
 
 ## Check that a backup is good
 
@@ -63,24 +64,24 @@ Restoring replaces data, so go slowly and write down what you do.
 
 1. **Decide what you are restoring and why.** Note the time of the incident and pick the newest backup made before it. Data entered after that backup will be lost; collect what you can (for example from doctors) to enter again.
 2. **Stop writes.** Pause the production deployment, or put up a maintenance notice, so nobody adds data while you restore.
-3. **Restore into a new, empty database first.** Create a fresh Postgres database, then:
+3. **Restore into a new, empty Supabase project first.** Create a new Supabase project (same region, same dashboard settings as in `docs/supabase.md`), then from a shell whose `SUPABASE_URL` and `SUPABASE_SECRET_KEY` point at the **new** project:
 
    ```bash
-   pnpm --filter @workspace/api-server run backup:restore -- --file backups/mon-carnet-backup-<date>.mcbk --target-database-url "postgres://…/new_database"
+   pnpm --filter @workspace/api-server run backup:restore -- --file backups/mon-carnet-backup-<date>.mcbk --target-database-url "postgresql://…new project's session pooler…" --restore-attachments
    ```
 
-   The tool refuses a database that already holds Mon carnet data unless you add `--replace-existing-data`, and it checks that every table has exactly the row count recorded in the backup.
-4. **Check the restored data.** Point a test copy of the app at the new database and sign in with a test account. Open one patient's records.
-5. **Switch production to it.** Either change the production `DATABASE_URL` to the restored database, or restore again into the production database with `--replace-existing-data`.
-6. **Put attached files back if they were lost.** Run the restore with `--restore-attachments` where `PRIVATE_OBJECT_DIR` points at the production bucket. Files are uploaded to the same paths, so records find them again.
+   The target must be a Supabase database. The tool refuses one that already holds Mon carnet data or sign-ins unless you add `--replace-existing-data` (the disease code catalogue the API server fills in does not count), restores the tables and the sign-ins, closes the tables to the public API again, and checks every row count and the number of sign-ins against the backup. With `--restore-attachments` it uploads the files to the new project's private bucket.
+4. **Check the restored data.** Point a test copy of the app at the new project and sign in with a test account (passwords are restored; sessions are not). Open one patient's records and a lab file.
+5. **Switch production to it.** Either change the production `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (and `SUPABASE_JWT_SECRET` if used) to the restored project and publish again, or restore again into the production project with `--replace-existing-data`. A restore with `--replace-existing-data` replaces every sign-in of the target project.
+6. **Files only.** If only attached files were lost, restore with `--restore-attachments` into a copy of the database, with `SUPABASE_URL` pointing at the production project: files are uploaded to the same paths, so records find them again.
 7. **Resume service and record the incident** (see `docs/incident-response.md` when it exists): what happened, which backup was used, what data was lost, who was told.
 
 ## Restore drill (every 3 months)
 
 1. Download the newest backup.
 2. Run `backup:verify` on it.
-3. Restore it into a new empty database (step 3 above) and check the data (step 4).
-4. Delete the test database.
+3. Restore it into a new, empty Supabase project (step 3 above) and check the data (step 4).
+4. Delete the test project.
 5. Add a line below.
 
 | Date | Backup used | Result | Time taken | Done by |
@@ -89,7 +90,7 @@ Restoring replaces data, so go slowly and write down what you do.
 
 ## Requirements and limits
 
-- The backup tool needs the PostgreSQL 16 client tools (`pg_dump`, `pg_restore`, version at least that of the database server) and `tar`. They are part of this Replit project (`postgresql-16` module).
+- The backup tool needs `pg_dump` and `pg_restore` of at least the database server's major version (new Supabase projects run PostgreSQL 17; Project Settings > Infrastructure shows it) and `tar`. This Replit project provides PostgreSQL 16 tools (`postgresql-16` in `.replit`): for a PostgreSQL 17 project, change that module to `postgresql-17`, or the backup stops with "server version mismatch".
 - A backup holds the whole database in one file. That is fine for years at the current size; revisit if the file grows past a few gigabytes.
-- Passwords are stored hashed and two-step sign-in secrets encrypted with `MFA_ENCRYPTION_KEY`. Restoring into a deployment with a different `MFA_ENCRYPTION_KEY` (or `JWT_SECRET` when that key is not set) means every two-step sign-in must be reset.
-- The automated tests (`pnpm --filter @workspace/api-server run test`) make a backup, check that it is encrypted, refuse a wrong key and a damaged file, and restore it into an empty database with its attached files.
+- Passwords are kept as the hashes Supabase Auth stores. Authenticator factors are restored with them; if a restored project cannot read them (Supabase encrypts factor secrets with a project key on some setups), reset two-step sign-in for the affected accounts from User search.
+- The automated tests (`pnpm --filter @workspace/api-server run test`) make a backup, check that it is encrypted, refuse a wrong key and a damaged file, and restore it with its sign-ins and attached files into an emptied local Supabase project.

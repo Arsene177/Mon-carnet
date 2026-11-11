@@ -1,13 +1,9 @@
-import {
-  createHmac,
-  randomBytes,
-  scryptSync,
-  timingSafeEqual,
-} from "node:crypto";
+import { scryptSync, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { MFA_REQUIRED_ROLES } from "./mfa";
+import { verifyAccessToken, type SupabaseSession } from "./supabase";
 
 export type MedichainRole = "PATIENT" | "PENDING_DOCTOR" | "DOCTOR" | "ADMIN";
 export type MedichainStatus = "PENDING" | "ACTIVE" | "INACTIVE";
@@ -23,30 +19,28 @@ export type CurrentUser = {
   status: MedichainStatus;
 };
 
+/** The Supabase session behind the current request. */
+export type CurrentSession = {
+  authUserId: string;
+  sessionId: string;
+  aal: "aal1" | "aal2";
+  accessToken: string;
+};
+
 declare global {
   namespace Express {
     interface Request {
       currentUser?: CurrentUser;
+      currentSession?: CurrentSession;
     }
   }
 }
 
-function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET ?? process.env.SESSION_SECRET;
-  if (!secret || secret.length < 24) {
-    throw new Error("A JWT_SECRET or SESSION_SECRET of at least 24 characters is required.");
-  }
-  return secret;
-}
+type UserRow = typeof usersTable.$inferSelect;
 
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64).toString("hex");
-  return `scrypt$${salt}$${hash}`;
-}
-
-export function verifyPassword(password: string, stored: string): boolean {
-  const [algorithm, salt, hash] = stored.split("$");
+/** Checks a password against the scrypt hash kept for accounts copied from the previous database. */
+export function verifyLegacyPassword(password: string, stored: string | null): boolean {
+  const [algorithm, salt, hash] = (stored ?? "").split("$");
   if (algorithm !== "scrypt" || !salt || !hash) return false;
   try {
     const candidate = scryptSync(password, salt, 64);
@@ -58,77 +52,43 @@ export function verifyPassword(password: string, stored: string): boolean {
 }
 
 /**
- * Issues a seven-day access token. `sessionVersion` is the account's current value; raising it
- * (see `endAllSessions`) makes every token issued before that point stop working.
+ * Checks the account's current password: the one held by Supabase Auth (bcrypt, compared in the
+ * database so no session is created), or the old scrypt hash of an account not yet moved.
  */
-export function createAccessToken(user: CurrentUser, sessionVersion: number): string {
-  const now = Math.floor(Date.now() / 1000);
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(
-    JSON.stringify({
-      sub: user.id,
-      role: user.role,
-      status: user.status,
-      sv: sessionVersion,
-      iat: now,
-      exp: now + 60 * 60 * 24 * 7,
-    }),
-  ).toString("base64url");
-  const unsigned = `${header}.${payload}`;
-  const signature = createHmac("sha256", getJwtSecret()).update(unsigned).digest("base64url");
-  return `${unsigned}.${signature}`;
+export async function verifyAccountPassword(user: UserRow, password: string): Promise<boolean> {
+  if (user.passwordHash) return verifyLegacyPassword(password, user.passwordHash);
+  if (!user.authUserId) return false;
+  const result = await db.execute<{ matches: boolean }>(sql`
+    select encrypted_password = extensions.crypt(${password}, encrypted_password) as matches
+    from auth.users where id = ${user.authUserId}::uuid and encrypted_password is not null and encrypted_password <> ''`);
+  return Boolean(result.rows[0]?.matches);
 }
 
-type AccessTokenClaims = {
-  id: number;
-  role: MedichainRole;
-  status: MedichainStatus;
-  sessionVersion: number;
-};
+let dummyHash: string | null = null;
 
-function verifyAccessToken(token: string): AccessTokenClaims | null {
-  try {
-    const [headerPart, payloadPart, signaturePart] = token.split(".");
-    if (!headerPart || !payloadPart || !signaturePart) return null;
-    const header = JSON.parse(Buffer.from(headerPart, "base64url").toString("utf8")) as {
-      alg?: string;
-    };
-    if (header.alg !== "HS256") return null;
-    const unsigned = `${headerPart}.${payloadPart}`;
-    const expected = createHmac("sha256", getJwtSecret()).update(unsigned).digest();
-    const actual = Buffer.from(signaturePart, "base64url");
-    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
-    const payload = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8")) as {
-      sub?: unknown;
-      role?: unknown;
-      status?: unknown;
-      sv?: unknown;
-      exp?: unknown;
-    };
-    if (
-      !Number.isInteger(payload.sub) ||
-      !["PATIENT", "PENDING_DOCTOR", "DOCTOR", "ADMIN"].includes(String(payload.role)) ||
-      !["PENDING", "ACTIVE", "INACTIVE"].includes(String(payload.status)) ||
-      (payload.sv !== undefined && !Number.isInteger(payload.sv)) ||
-      typeof payload.exp !== "number" ||
-      payload.exp <= Math.floor(Date.now() / 1000)
-    ) {
-      return null;
-    }
-    return {
-      id: payload.sub as number,
-      role: payload.role as MedichainRole,
-      status: payload.status as MedichainStatus,
-      // Tokens issued before session versions existed carry none; they match the initial value 0
-      // until the account's first password change or "sign out of all other devices".
-      sessionVersion: (payload.sv as number | undefined) ?? 0,
-    };
-  } catch {
-    return null;
+/** Spends about as long as a real password check, so unknown emails are not answered faster. */
+export async function spendPasswordCheckTime(password: string): Promise<void> {
+  if (!dummyHash) {
+    const created = await db.execute<{ hash: string }>(sql`select extensions.crypt(${"not-a-password"}, extensions.gen_salt('bf', 10)) as hash`);
+    dummyHash = created.rows[0]!.hash;
   }
+  await db.execute(sql`select extensions.crypt(${password}, ${dummyHash}) = ${dummyHash} as matches`);
 }
 
-export function publicUser(user: typeof usersTable.$inferSelect): CurrentUser {
+/** Ends every Supabase session of an account, or every one except `keepSessionId`. Takes effect on the next request. */
+export async function endSessions(authUserId: string | null, keepSessionId?: string): Promise<void> {
+  if (!authUserId) return;
+  await db.execute(keepSessionId
+    ? sql`delete from auth.sessions where user_id = ${authUserId}::uuid and id <> ${keepSessionId}::uuid`
+    : sql`delete from auth.sessions where user_id = ${authUserId}::uuid`);
+}
+
+/** The token fields returned to the web app after a sign-in, refresh or second step. */
+export function sessionTokens(session: SupabaseSession) {
+  return { token: session.accessToken, refreshToken: session.refreshToken, expiresAt: session.expiresAt };
+}
+
+export function publicUser(user: UserRow): CurrentUser {
   const status: MedichainStatus = !user.isActive
     ? "INACTIVE"
     : user.role === "PENDING_DOCTOR"
@@ -146,7 +106,7 @@ export function publicUser(user: typeof usersTable.$inferSelect): CurrentUser {
   };
 }
 
-export function userResponse(user: typeof usersTable.$inferSelect) {
+export function userResponse(user: UserRow) {
   const current = publicUser(user);
   return {
     ...current,
@@ -176,30 +136,35 @@ function allowedBeforeMfaSetup(req: Request): boolean {
   return path.startsWith("/api/auth/") || path === "/api/account/consent";
 }
 
+/**
+ * Accepts a Supabase access token whose session still exists (signing out, a password change or a
+ * suspension deletes sessions, which stops their tokens at once) and whose account is active.
+ */
 export function requireAuth(...roles: MedichainRole[]) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const authorization = req.header("authorization") ?? "";
     const match = /^Bearer\s+(.+)$/i.exec(authorization);
-    const claims = match ? verifyAccessToken(match[1]) : null;
+    const claims = match ? await verifyAccessToken(match[1]!) : null;
     if (!claims) {
       res.status(401).json({ error: "Authentication required" });
       return;
     }
 
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, claims.id)).limit(1);
+    const [user] = await db.select().from(usersTable).where(and(
+      eq(usersTable.authUserId, claims.authUserId),
+      sql`exists (select 1 from auth.sessions s where s.id = ${claims.sessionId}::uuid and s.user_id = ${claims.authUserId}::uuid and (s.not_after is null or s.not_after > now()))`,
+    )).limit(1);
     if (!user || !user.isActive) {
       res.status(401).json({ error: "Authentication required" });
       return;
     }
-    const currentUser = publicUser(user);
-    if (
-      currentUser.role !== claims.role ||
-      currentUser.status !== claims.status ||
-      user.sessionVersion !== claims.sessionVersion
-    ) {
+    // An account with two-step sign-in on needs a session that passed it. (Without this check,
+    // someone with only the password could sign in at Supabase Auth directly and use that token.)
+    if (user.mfaEnabledAt && claims.aal !== "aal2") {
       res.status(401).json({ error: "Authentication required" });
       return;
     }
+    const currentUser = publicUser(user);
     // Doctors and administrators must turn on two-step sign-in before anything beyond their own
     // account settings works.
     if (MFA_REQUIRED_ROLES.has(currentUser.role) && !user.mfaEnabledAt && !allowedBeforeMfaSetup(req)) {
@@ -211,21 +176,7 @@ export function requireAuth(...roles: MedichainRole[]) {
       return;
     }
     req.currentUser = currentUser;
+    req.currentSession = { authUserId: claims.authUserId, sessionId: claims.sessionId, aal: claims.aal, accessToken: match![1]! };
     next();
   };
-}
-/** The update that ends every session of an account; use inside `.set({ ... })`. */
-export const nextSessionVersion = () => sql`${usersTable.sessionVersion} + 1`;
-
-/**
- * Ends every session of an account by raising its session version. Returns the new version so
- * the caller can issue a fresh token for the device that asked, or undefined when there is no account.
- */
-export async function endAllSessions(userId: number): Promise<number | undefined> {
-  const [updated] = await db
-    .update(usersTable)
-    .set({ sessionVersion: nextSessionVersion() })
-    .where(eq(usersTable.id, userId))
-    .returning({ sessionVersion: usersTable.sessionVersion });
-  return updated?.sessionVersion;
 }

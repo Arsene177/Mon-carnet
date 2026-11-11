@@ -1,8 +1,9 @@
 // Two-step sign-in with an authenticator app: setup, sign-in check, recovery codes and the
 // administrator reset for an account holder who lost both their phone and their recovery codes.
+// Supabase Auth holds the authenticator factor and checks codes; recovery codes are the app's own.
 import { Router, type IRouter } from "express";
 import { randomUUID } from "node:crypto";
-import { and, count, eq, isNull, lt, or } from "drizzle-orm";
+import { and, count, eq, isNull, ne, or, sql } from "drizzle-orm";
 import {
   auditEventsTable,
   db,
@@ -23,24 +24,22 @@ import {
   StartMfaSetupResponse,
 } from "@workspace/api-zod";
 import {
-  createAccessToken,
-  nextSessionVersion,
-  publicUser,
+  endSessions,
   requireAuth,
+  sessionTokens,
   userResponse,
-  verifyPassword,
+  verifyAccountPassword,
 } from "../lib/medichain-auth";
 import {
   MFA_REQUIRED_ROLES,
-  decryptSecret,
-  encryptSecret,
+  USED_CODE_MINUTES,
+  hashAuthenticatorCode,
   hashRecoveryCode,
+  looksLikeAuthenticatorCode,
   looksLikeRecoveryCode,
   newRecoveryCodes,
-  newTotpSecret,
-  otpauthUrl,
-  verifyTotp,
 } from "../lib/mfa";
+import { deleteFactor, enrollTotp, listFactors, verifyTotp, type SupabaseSession } from "../lib/supabase";
 import { languageOf, notificationMessages } from "../lib/notification-messages";
 import { invalidBody } from "./medichain";
 import { recordSecurityEvent } from "../lib/security-events";
@@ -58,45 +57,84 @@ async function storeRecoveryCodes(executor: Executor, userId: number): Promise<s
   return codes;
 }
 
-/**
- * Checks the second step for an account with two-step sign-in on: a code from the authenticator
- * app, or an unused recovery code (which is then spent). Each authenticator code works once.
- */
-export async function verifySecondFactor(user: UserRow, code: string): Promise<boolean> {
-  if (!user.mfaEnabledAt || !user.mfaSecret) return false;
-  if (looksLikeRecoveryCode(code)) {
-    const [spent] = await db
-      .update(mfaRecoveryCodesTable)
-      .set({ usedAt: new Date() })
-      .where(and(
-        eq(mfaRecoveryCodesTable.userId, user.id),
-        eq(mfaRecoveryCodesTable.codeHash, hashRecoveryCode(code)),
-        isNull(mfaRecoveryCodesTable.usedAt),
-      ))
-      .returning({ id: mfaRecoveryCodesTable.id });
-    if (!spent) return false;
-    await db.insert(auditEventsTable).values({
-      actorUserId: user.id,
-      action: "MFA_RECOVERY_CODE_USED",
-      entityType: "account",
-      entityId: user.id,
-    });
-    return true;
+/** Removes the account's authenticator factors in Supabase Auth and its recovery codes. */
+export async function removeAuthenticator(user: UserRow): Promise<void> {
+  if (user.authUserId) {
+    for (const factor of await listFactors(user.authUserId)) await deleteFactor(user.authUserId, factor.id);
   }
-  const secret = decryptSecret(user.mfaSecret);
-  if (!secret) return false;
-  const step = verifyTotp(secret, code, user.mfaLastUsedStep);
-  if (step === null) return false;
-  // Only one request can move the last used step forward, so a code cannot be used twice.
+  await db.transaction(async (tx) => {
+    await tx.update(usersTable).set({ mfaEnabledAt: null, mfaLastCodeHash: null, mfaLastCodeAt: null }).where(eq(usersTable.id, user.id));
+    await tx.delete(mfaRecoveryCodesTable).where(eq(mfaRecoveryCodesTable.userId, user.id));
+  });
+}
+
+/** Records an accepted authenticator code. False when the same code was already accepted in the last few minutes. */
+async function claimAuthenticatorCode(userId: number, code: string): Promise<boolean> {
+  const codeHash = hashAuthenticatorCode(userId, code);
   const [claimed] = await db
     .update(usersTable)
-    .set({ mfaLastUsedStep: step })
+    .set({ mfaLastCodeHash: codeHash, mfaLastCodeAt: new Date() })
     .where(and(
-      eq(usersTable.id, user.id),
-      or(isNull(usersTable.mfaLastUsedStep), lt(usersTable.mfaLastUsedStep, step)),
+      eq(usersTable.id, userId),
+      or(
+        isNull(usersTable.mfaLastCodeHash),
+        ne(usersTable.mfaLastCodeHash, codeHash),
+        isNull(usersTable.mfaLastCodeAt),
+        sql`${usersTable.mfaLastCodeAt} < now() - make_interval(mins => ${USED_CODE_MINUTES})`,
+      ),
     ))
     .returning({ id: usersTable.id });
   return Boolean(claimed);
+}
+
+async function spendRecoveryCode(user: UserRow, code: string): Promise<boolean> {
+  const [spent] = await db
+    .update(mfaRecoveryCodesTable)
+    .set({ usedAt: new Date() })
+    .where(and(
+      eq(mfaRecoveryCodesTable.userId, user.id),
+      eq(mfaRecoveryCodesTable.codeHash, hashRecoveryCode(code)),
+      isNull(mfaRecoveryCodesTable.usedAt),
+    ))
+    .returning({ id: mfaRecoveryCodesTable.id });
+  if (!spent) return false;
+  await db.insert(auditEventsTable).values({
+    actorUserId: user.id,
+    action: "MFA_RECOVERY_CODE_USED",
+    entityType: "account",
+    entityId: user.id,
+  });
+  return true;
+}
+
+async function verifiedFactorId(user: UserRow): Promise<string | null> {
+  if (!user.authUserId) return null;
+  const factor = (await listFactors(user.authUserId)).find((item) => item.factor_type === "totp" && item.status === "verified");
+  return factor?.id ?? null;
+}
+
+export type SecondFactorResult =
+  | { ok: false }
+  | { ok: true; kind: "authenticator"; session: SupabaseSession }
+  | { ok: true; kind: "recovery" };
+
+/**
+ * Checks the second step for an account with two-step sign-in on, using the given session: a code
+ * from the authenticator app (which raises the session to the second level and returns its new
+ * tokens; each code works once), or an unused recovery code (which is then spent).
+ */
+export async function verifySecondFactor(user: UserRow, code: string, accessToken: string): Promise<SecondFactorResult> {
+  if (!user.mfaEnabledAt) return { ok: false };
+  if (looksLikeRecoveryCode(code)) {
+    return (await spendRecoveryCode(user, code)) ? { ok: true, kind: "recovery" } : { ok: false };
+  }
+  if (!looksLikeAuthenticatorCode(code)) return { ok: false };
+  const cleaned = code.replace(/\s/g, "");
+  const factorId = await verifiedFactorId(user);
+  if (!factorId) return { ok: false };
+  const session = await verifyTotp(accessToken, factorId, cleaned);
+  if (!session || !(await claimAuthenticatorCode(user.id, cleaned))) return { ok: false };
+  return { ok: true, kind: "authenticator", session };
 }
 
 async function loadUser(userId: number): Promise<UserRow | undefined> {
@@ -128,7 +166,7 @@ router.post("/auth/mfa/setup", requireAuth(), accountSecretLimiter, async (req, 
     return;
   }
   const user = await loadUser(req.currentUser!.id);
-  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
+  if (!user || !(await verifyAccountPassword(user, parsed.data.password))) {
     res.status(400).json({ error: "Current password is incorrect." });
     return;
   }
@@ -136,9 +174,12 @@ router.post("/auth/mfa/setup", requireAuth(), accountSecretLimiter, async (req, 
     res.status(409).json({ error: "Two-step sign-in is already on." });
     return;
   }
-  const secret = newTotpSecret();
-  await db.update(usersTable).set({ mfaPendingSecret: encryptSecret(secret) }).where(eq(usersTable.id, user.id));
-  res.json(StartMfaSetupResponse.parse({ secret, otpauthUrl: otpauthUrl(secret, user.email) }));
+  // A setup that was started and never confirmed is replaced.
+  for (const factor of await listFactors(user.authUserId!)) {
+    if (factor.status !== "verified") await deleteFactor(user.authUserId!, factor.id);
+  }
+  const factor = await enrollTotp(req.currentSession!.accessToken);
+  res.json(StartMfaSetupResponse.parse({ secret: factor.secret, otpauthUrl: factor.uri }));
 });
 
 router.post("/auth/mfa/enable", requireAuth(), accountSecretLimiter, async (req, res): Promise<void> => {
@@ -156,42 +197,29 @@ router.post("/auth/mfa/enable", requireAuth(), accountSecretLimiter, async (req,
     res.status(409).json({ error: "Two-step sign-in is already on." });
     return;
   }
-  const secret = user.mfaPendingSecret ? decryptSecret(user.mfaPendingSecret) : null;
-  if (!secret) {
+  const pending = (await listFactors(user.authUserId!)).find((factor) => factor.factor_type === "totp" && factor.status === "unverified");
+  if (!pending) {
     res.status(409).json({ error: "Start the setup again." });
     return;
   }
-  const step = verifyTotp(secret, parsed.data.code, null);
-  if (step === null) {
+  const code = parsed.data.code.replace(/\s/g, "");
+  const session = looksLikeAuthenticatorCode(code) ? await verifyTotp(req.currentSession!.accessToken, pending.id, code) : null;
+  if (!session) {
     res.status(400).json({ error: "The code is incorrect or expired. Check that your phone's time is set automatically, then try the newest code." });
     return;
   }
-  const result = await db.transaction(async (tx) => {
-    const [updated] = await tx
+  const recoveryCodes = await db.transaction(async (tx) => {
+    await tx
       .update(usersTable)
-      .set({
-        mfaSecret: user.mfaPendingSecret,
-        mfaPendingSecret: null,
-        mfaEnabledAt: new Date(),
-        mfaLastUsedStep: step,
-        // Anyone already signed in with only the password is signed out.
-        sessionVersion: nextSessionVersion(),
-      })
-      .where(and(eq(usersTable.id, user.id), isNull(usersTable.mfaEnabledAt)))
-      .returning();
-    if (!updated) return null;
-    const recoveryCodes = await storeRecoveryCodes(tx, user.id);
+      .set({ mfaEnabledAt: new Date(), mfaLastCodeHash: hashAuthenticatorCode(user.id, code), mfaLastCodeAt: new Date() })
+      .where(eq(usersTable.id, user.id));
+    const codes = await storeRecoveryCodes(tx, user.id);
     await tx.insert(auditEventsTable).values({ actorUserId: user.id, action: "MFA_ENABLED", entityType: "account", entityId: user.id });
-    return { updated, recoveryCodes };
+    return codes;
   });
-  if (!result) {
-    res.status(409).json({ error: "Two-step sign-in is already on." });
-    return;
-  }
-  res.json(EnableMfaResponse.parse({
-    recoveryCodes: result.recoveryCodes,
-    token: createAccessToken(publicUser(result.updated), result.updated.sessionVersion),
-  }));
+  // Anyone already signed in with only the password is signed out.
+  await endSessions(user.authUserId, session.sessionId);
+  res.json(EnableMfaResponse.parse({ recoveryCodes, ...sessionTokens(session) }));
 });
 
 router.post("/auth/mfa/disable", requireAuth(), accountSecretLimiter, async (req, res): Promise<void> => {
@@ -209,18 +237,12 @@ router.post("/auth/mfa/disable", requireAuth(), accountSecretLimiter, async (req
     res.status(403).json({ error: "Doctors and administrators must keep two-step sign-in on." });
     return;
   }
-  if (!verifyPassword(parsed.data.password, user.passwordHash) || !(await verifySecondFactor(user, parsed.data.code))) {
+  if (!(await verifyAccountPassword(user, parsed.data.password)) || !(await verifySecondFactor(user, parsed.data.code, req.currentSession!.accessToken)).ok) {
     res.status(400).json({ error: "The password or code is incorrect." });
     return;
   }
-  await db.transaction(async (tx) => {
-    await tx
-      .update(usersTable)
-      .set({ mfaSecret: null, mfaPendingSecret: null, mfaEnabledAt: null, mfaLastUsedStep: null })
-      .where(eq(usersTable.id, user.id));
-    await tx.delete(mfaRecoveryCodesTable).where(eq(mfaRecoveryCodesTable.userId, user.id));
-    await tx.insert(auditEventsTable).values({ actorUserId: user.id, action: "MFA_DISABLED", entityType: "account", entityId: user.id });
-  });
+  await removeAuthenticator(user);
+  await db.insert(auditEventsTable).values({ actorUserId: user.id, action: "MFA_DISABLED", entityType: "account", entityId: user.id });
   res.status(204).end();
 });
 
@@ -235,7 +257,8 @@ router.post("/auth/mfa/recovery-codes", requireAuth(), accountSecretLimiter, asy
     res.status(409).json({ error: "Turn on two-step sign-in first." });
     return;
   }
-  if (!verifyPassword(parsed.data.password, user.passwordHash) || !(await verifySecondFactor(user, parsed.data.code))) {
+  // Only an authenticator code here: a recovery code would remove the authenticator.
+  if (!(await verifyAccountPassword(user, parsed.data.password)) || looksLikeRecoveryCode(parsed.data.code) || !(await verifySecondFactor(user, parsed.data.code, req.currentSession!.accessToken)).ok) {
     res.status(400).json({ error: "The password or code is incorrect." });
     return;
   }
@@ -258,27 +281,23 @@ router.post("/admin/users/:userId/mfa/reset", requireAuth("ADMIN"), async (req, 
     res.status(400).json({ error: "Another administrator must reset your two-step sign-in." });
     return;
   }
-  const updated = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .update(usersTable)
-      .set({ mfaSecret: null, mfaPendingSecret: null, mfaEnabledAt: null, mfaLastUsedStep: null, sessionVersion: nextSessionVersion() })
-      .where(and(eq(usersTable.id, targetId), isNull(usersTable.closedAt)))
-      .returning();
-    if (!row) return null;
-    await tx.delete(mfaRecoveryCodesTable).where(eq(mfaRecoveryCodesTable.userId, targetId));
+  const [target] = await db.select().from(usersTable).where(and(eq(usersTable.id, targetId), isNull(usersTable.closedAt))).limit(1);
+  if (!target) {
+    res.status(404).json({ error: "Account not found." });
+    return;
+  }
+  await removeAuthenticator(target);
+  await endSessions(target.authUserId);
+  await db.transaction(async (tx) => {
     await tx.insert(auditEventsTable).values({ actorUserId: req.currentUser!.id, action: "MFA_RESET_BY_ADMIN", entityType: "account", entityId: targetId });
     await tx.insert(notificationsTable).values({
       batchId: randomUUID(),
       senderId: req.currentUser!.id,
       recipientId: targetId,
-      ...notificationMessages.mfaReset(languageOf(row.preferredLanguage)),
+      ...notificationMessages.mfaReset(languageOf(target.preferredLanguage)),
     });
-    return row;
   });
-  if (!updated) {
-    res.status(404).json({ error: "Account not found." });
-    return;
-  }
+  const updated = (await loadUser(targetId))!;
   await recordSecurityEvent({
     type: "MFA_RESET_BY_ADMIN",
     severity: "warning",

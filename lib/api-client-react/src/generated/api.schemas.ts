@@ -113,8 +113,25 @@ export interface SessionToken {
 }
 
 export interface AuthSession {
+  /** Access token (about one hour). Renew it with /auth/refresh before expiresAt. */
   token: string;
+  refreshToken: string;
+  expiresAt: string;
   user: User;
+}
+
+export interface SessionTokens {
+  token: string;
+  refreshToken: string;
+  expiresAt: string;
+}
+
+export interface RefreshInput {
+  /**
+     * @minLength 1
+     * @maxLength 512
+     */
+  refreshToken: string;
 }
 
 export type RegistrationInputRole = typeof RegistrationInputRole[keyof typeof RegistrationInputRole];
@@ -271,6 +288,10 @@ export interface LoginInput {
 export interface LoginResult {
   mfaRequired: boolean;
   token?: string;
+  refreshToken?: string;
+  expiresAt?: string;
+  /** True after signing in with a recovery code: the lost authenticator was removed and must be set up again. */
+  authenticatorRemoved?: boolean;
   user?: User;
 }
 
@@ -321,6 +342,8 @@ export interface MfaRecoveryCodes {
 export interface MfaEnabled {
   recoveryCodes: string[];
   token: string;
+  refreshToken: string;
+  expiresAt: string;
 }
 
 export interface PasswordResetRequestInput {

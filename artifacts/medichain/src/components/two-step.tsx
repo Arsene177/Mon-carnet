@@ -68,8 +68,8 @@ export function MfaSetupFlow({ onDone, onCancel }: { onDone: () => void; onCance
     setError('');
     enable.mutate({ data: { code: code.trim() } }, {
       onSuccess: (result) => {
-        // Turning it on ends the other sessions, this one included: keep this device signed in.
-        keepThisDeviceSignedIn(result.token);
+        // Turning it on ends the other sessions; this device continues with its new tokens.
+        keepThisDeviceSignedIn(result);
         setRecoveryCodes(result.recoveryCodes);
       },
       onError: (e) => setError(errText(e)),
@@ -97,18 +97,27 @@ export function MfaSetupFlow({ onDone, onCancel }: { onDone: () => void; onCance
 }
 
 /** Password plus a code from the app (or a recovery code), for turning off or new recovery codes. */
-function PasswordAndCodeForm({ submitLabel, busy, error, onSubmit, onCancel, danger = false }: {
-  submitLabel: string; busy: boolean; error: string; danger?: boolean;
+function PasswordAndCodeForm({ submitLabel, busy, error, onSubmit, onCancel, danger = false, appCodeOnly = false }: {
+  submitLabel: string; busy: boolean; error: string; danger?: boolean; appCodeOnly?: boolean;
   onSubmit: (password: string, code: string) => void; onCancel: () => void;
 }) {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   return <form className="form-grid" onSubmit={(event) => { event.preventDefault(); onSubmit(password, code.trim()); }}>
     <div className="field"><label htmlFor="mfa-confirm-password">{t('Current password')}</label><input id="mfa-confirm-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)}/></div>
-    <div className="field"><label htmlFor="mfa-confirm-code">{t('Code from your app or a recovery code')}</label><input id="mfa-confirm-code" autoComplete="one-time-code" required maxLength={20} value={code} onChange={(event) => setCode(event.target.value)}/></div>
+    <div className="field"><label htmlFor="mfa-confirm-code">{appCodeOnly ? t('6-digit code shown in the app') : t('Code from your app or a recovery code')}</label><input id="mfa-confirm-code" autoComplete="one-time-code" required maxLength={20} value={code} onChange={(event) => setCode(event.target.value)}/></div>
     {error && <p className="error-state full" role="alert">{error}</p>}
     <div className="form-actions full"><button className="btn ghost" type="button" onClick={onCancel}>{t('Cancel')}</button><button className={`btn ${danger ? 'danger' : ''}`} type="submit" disabled={busy}>{busy ? t('Please wait…') : submitLabel}</button></div>
   </form>;
+}
+
+export const AUTHENTICATOR_REMOVED_KEY = 'medichain_authenticator_removed';
+
+/** Shown after signing in with a recovery code, which removes the authenticator of the lost phone. */
+export function AuthenticatorRemovedNotice() {
+  const [shown] = useState(() => { try { return sessionStorage.getItem(AUTHENTICATOR_REMOVED_KEY) === '1'; } catch { return false; } });
+  if (!shown) return null;
+  return <p className="notice" role="status" style={{ marginBottom: 12 }}>{t('You signed in with a recovery code, so the authenticator on your lost phone was removed. Set up two-step sign-in again with the app on your new phone.')}</p>;
 }
 
 /** Profile card: status, turn on, new recovery codes, and (patients only) turn off. */
@@ -131,13 +140,14 @@ export function TwoStepCard({ user }: { user: User }) {
   return <section className="panel" style={{ marginTop: 17 }}>
     <div className="panel-head"><div><h2 className="panel-title">{t('Two-step sign-in')}</h2><p className="panel-caption">{user.mfaRequired ? t('Required for doctors and administrators. After your password, you also enter a code from an app on your phone.') : t('Recommended. After your password, you also enter a code from an app on your phone, so a stolen password is not enough.')}</p></div><ShieldCheck size={17} color="#69a293"/></div>
     <div className="panel-body">
+      {!enabled && <AuthenticatorRemovedNotice/>}
       <div className="data-row"><span className="data-key">{t('Status')}</span><span className="data-value">{enabled ? <span className="tag certified">{t('On')}</span> : <span className="tag warning">{t('Off')}</span>}</span></div>
       {enabled && <div className="data-row"><span className="data-key">{t('Recovery codes left')}</span><span className="data-value">{status.data?.recoveryCodesRemaining ?? '…'}</span></div>}
       {enabled && status.data && status.data.recoveryCodesRemaining <= 3 && mode === 'idle' && !newCodes && <p className="field-note" role="status">{t('You are running out of recovery codes. Get new ones.')}</p>}
       {message && <p className="field-note" role="status">{message}</p>}
       {newCodes ? <RecoveryCodes codes={newCodes} doneLabel={t('Done')} onDone={() => { setNewCodes(null); refresh(); }}/>
         : mode === 'setup' ? <MfaSetupFlow onCancel={close} onDone={() => { close(); setMessage(t('Two-step sign-in is on. You have been signed out on your other devices.')); refresh(); }}/>
-        : mode === 'regenerate' ? <PasswordAndCodeForm submitLabel={t('Get new recovery codes')} busy={regenerate.isPending} error={error} onCancel={close}
+        : mode === 'regenerate' ? <PasswordAndCodeForm appCodeOnly submitLabel={t('Get new recovery codes')} busy={regenerate.isPending} error={error} onCancel={close}
             onSubmit={(password, code) => { setError(''); regenerate.mutate({ data: { password, code } }, { onSuccess: (result) => { close(); setNewCodes(result.recoveryCodes); }, onError: (e) => setError(errText(e)) }); }}/>
         : mode === 'disable' ? <PasswordAndCodeForm danger submitLabel={t('Turn off')} busy={disable.isPending} error={error} onCancel={close}
             onSubmit={(password, code) => { setError(''); disable.mutate({ data: { password, code } }, { onSuccess: () => { close(); setMessage(t('Two-step sign-in is off.')); refresh(); }, onError: (e) => setError(errText(e)) }); }}/>

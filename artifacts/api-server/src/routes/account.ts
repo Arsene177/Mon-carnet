@@ -31,11 +31,13 @@ import {
   ResolveAdminDeletionRequestParams,
   ResolveAdminDeletionRequestResponse,
 } from "@workspace/api-zod";
-import { requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
+import { requireAuth, userResponse, verifyAccountPassword } from "../lib/medichain-auth";
+import { deleteAuthUser } from "../lib/supabase";
 import { languageOf, notificationMessages } from "../lib/notification-messages";
 import { recordSecurityEvent } from "../lib/security-events";
 import { accountSecretLimiter } from "../lib/rate-limits";
-import { createSignedObjectUrl, emergencyResponse, invalidBody, isUniqueViolation, recordsResponse } from "./medichain";
+import { emergencyResponse, invalidBody, isUniqueViolation, recordsResponse } from "./medichain";
+import { deleteStoredFiles } from "../lib/object-storage";
 
 const router: IRouter = Router();
 
@@ -190,7 +192,7 @@ router.post("/account/deletion-request", requireAuth(), accountSecretLimiter, as
     return;
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, current.id)).limit(1);
-  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
+  if (!user || !(await verifyAccountPassword(user, parsed.data.password))) {
     res.status(403).json({ error: "Current password is incorrect." });
     return;
   }
@@ -289,7 +291,8 @@ async function closeAccount(tx: Parameters<Parameters<typeof db.transaction>[0]>
       isActive: false,
       closedAt: now,
       email: `closed-${user.id}-${randomBytes(6).toString("hex")}@account-closed.invalid`,
-      passwordHash: `closed$${randomBytes(16).toString("hex")}`,
+      authUserId: null,
+      passwordHash: null,
       contactInfo: null,
       nationalIdNumber: null,
       locationRegion: null,
@@ -348,14 +351,20 @@ router.post("/admin/deletion-requests/:requestId/resolve", requireAuth("ADMIN"),
       .from(medicalAttachmentsTable)
       .where(eq(medicalAttachmentsTable.patientId, user.id));
     try {
-      for (const { objectPath } of attachments) {
-        const url = await createSignedObjectUrl(objectPath, "DELETE", 60);
-        const deleted = await fetch(url, { method: "DELETE", signal: AbortSignal.timeout(30_000) });
-        if (!deleted.ok && deleted.status !== 404) throw new Error(`Storage returned ${deleted.status}`);
-      }
+      await deleteStoredFiles(attachments.map(({ objectPath }) => objectPath));
     } catch (error) {
       req.log.error({ err: error }, "Could not delete stored attachments before erasing an account");
       res.status(503).json({ error: "Attached files could not be deleted from storage, so nothing was erased. Try again later." });
+      return;
+    }
+  }
+  // Erasing or closing removes the sign-in first, so the account cannot be used while the rest is done.
+  if (action !== "REJECT" && user.authUserId) {
+    try {
+      await deleteAuthUser(user.authUserId);
+    } catch (error) {
+      req.log.error({ err: error }, "Could not delete the sign-in before closing an account");
+      res.status(503).json({ error: "The sign-in could not be removed, so nothing was changed. Try again later." });
       return;
     }
   }

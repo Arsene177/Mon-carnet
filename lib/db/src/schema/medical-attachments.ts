@@ -35,7 +35,7 @@ export const medicalAttachmentsTable = pgTable(
     index("medichain_attachments_expiry_index").on(table.expiresAt),
     index("medichain_attachments_record_index").on(table.recordId),
   ],
-);
+).enableRLS();
 
 export const insertMedicalAttachmentSchema = createInsertSchema(medicalAttachmentsTable).omit({
   id: true,

@@ -1,20 +1,14 @@
 // Access-rule tests: who can see and change which patient data.
 //
-// Runs the built API server against a dedicated, disposable Postgres database:
-//   TEST_DATABASE_URL=postgres://…/moncarnet_test pnpm --filter @workspace/db run push   (with DATABASE_URL set to the same URL)
-//   TEST_DATABASE_URL=postgres://…/moncarnet_test pnpm --filter @workspace/api-server run test
-// Every run empties the Mon carnet tables, so the database name must contain "test".
+// Runs the built API server against a local Supabase stack (see tests/supabase-test-env.mjs and
+// docs/supabase.md). Every run empties the app's tables and deletes every sign-in.
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHmac, randomBytes, scryptSync } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-
-const DATABASE_URL = process.env.TEST_DATABASE_URL;
-if (!DATABASE_URL || !/test/i.test(new URL(DATABASE_URL).pathname)) {
-  throw new Error("Set TEST_DATABASE_URL to a disposable database whose name contains \"test\"; it is emptied on every run.");
-}
+import { DATABASE_URL, SUPABASE_URL, allowCodeReuse as allowCodeReuseFor, createAuthUser, insertStaff, resetDatabase, serverEnv } from "./supabase-test-env.mjs";
 const PORT = 5400 + Math.floor(Math.random() * 500);
 const BASE = `http://127.0.0.1:${PORT}/api`;
 const PASSWORD = "Correct-horse-9";
@@ -64,7 +58,7 @@ function totp(secret, offsetSteps = 0) {
 }
 
 /** Lets a test sign in again within the same 30 seconds, which a real code cannot do. */
-const allowCodeReuse = (email) => sql.query("update medichain_users set mfa_last_used_step = null where email = $1", [email]);
+const allowCodeReuse = (email) => allowCodeReuseFor(sql, email);
 
 const login = async (email) => {
   let { status, body } = await api("POST", "/auth/login", { body: { email, password: PASSWORD } });
@@ -117,17 +111,11 @@ async function currentCmId(userId) {
 /** Doctors and admins are inserted directly, as an administrator would have approved them. */
 async function createStaff(role, { verified = true, name, mfa = true } = {}) {
   const email = `${unique(role.toLowerCase())}@test.cm`;
-  const salt = randomBytes(16).toString("hex");
-  const hash = `scrypt$${salt}$${scryptSync(PASSWORD, salt, 64).toString("hex")}`;
-  const { rows } = await sql.query(
-    `insert into medichain_users (email, password_hash, role, name, hospital_name, professional_medical_number, doctor_verified, contact_info, terms_version, terms_accepted_at)
-     values ($1, $2, $3, $4, $5, $6, $7, '+237677000000', $8, now()) returning id`,
-    [email, hash, role, name ?? `${role} ${unique("")}`, role === "ADMIN" ? null : "Hôpital Laquintinie", role === "ADMIN" ? null : "ONMC-1234", verified, TERMS_VERSION],
-  );
+  const id = await insertStaff(sql, { email, password: PASSWORD, role, name: name ?? `${role} ${unique("")}`, terms: TERMS_VERSION, verified });
   const token = await login(email);
   // Doctors and administrators must use two-step sign-in before they can do anything else.
-  if (!mfa || role === "PENDING_DOCTOR" || role === "PATIENT") return { id: rows[0].id, email, token };
-  return { id: rows[0].id, email, token: (await enableMfa(email, token)).token };
+  if (!mfa || role === "PENDING_DOCTOR" || role === "PATIENT") return { id, email, token };
+  return { id, email, token: (await enableMfa(email, token)).token };
 }
 
 const consultation = {
@@ -147,12 +135,11 @@ async function openBooklet(doctor, patient) {
 }
 
 before(async () => {
-  const { rows } = await sql.query("select tablename from pg_tables where schemaname = 'public' and tablename like 'medichain\\_%' and tablename <> 'medichain_disease_codes'");
-  if (rows.length) await sql.query(`truncate ${rows.map((row) => `"${row.tablename}"`).join(", ")} restart identity cascade`);
+  await resetDatabase(sql);
 
   server = spawn(process.execPath, ["dist/index.mjs"], {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...process.env, DATABASE_URL, PORT: String(PORT), JWT_SECRET: randomBytes(24).toString("hex"), NODE_ENV: "test", TRUST_PROXY: "1", LOG_LEVEL: "warn" },
+    env: serverEnv(PORT),
     stdio: ["ignore", "ignore", "inherit"],
   });
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -215,8 +202,9 @@ describe("sessions", () => {
     });
     assert.equal(changed.status, 200, JSON.stringify(changed.body));
     assert.equal((await api("GET", "/auth/me", { token: otherDevice })).status, 401);
-    assert.equal((await api("GET", "/auth/me", { token: patient.token })).status, 401);
-    assert.equal((await api("GET", "/auth/me", { token: changed.body.token })).status, 200);
+    assert.equal((await api("GET", "/auth/me", { token: patient.token })).status, 200);
+    assert.equal((await api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD } })).status, 401);
+    assert.equal((await api("POST", "/auth/login", { body: { email: patient.email, password: "New-horse-battery-7" } })).status, 200);
   });
 
   test("signing out of other devices ends their sessions only", async () => {
@@ -244,13 +232,29 @@ describe("sessions", () => {
     assert.equal(signedIn.status, 200);
   });
 
-  test("a token whose session version was changed is refused", async () => {
+  test("a changed token is refused, and signing out ends the session on the server at once", async () => {
     const patient = await registerPatient();
-    const [header, payload] = patient.token.split(".");
+    const [header, payload, signature] = patient.token.split(".");
     const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    assert.equal(claims.sv, 0);
-    const forged = `${header}.${Buffer.from(JSON.stringify({ ...claims, sv: 1 })).toString("base64url")}.${patient.token.split(".")[2]}`;
+    const forged = `${header}.${Buffer.from(JSON.stringify({ ...claims, aal: "aal2", sub: claims.sub })).toString("base64url")}.${signature}`;
     assert.equal((await api("GET", "/auth/me", { token: forged })).status, 401);
+    const other = await api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD } });
+    assert.equal((await api("POST", "/auth/sign-out", { token: patient.token })).status, 204);
+    assert.equal((await api("GET", "/auth/me", { token: patient.token })).status, 401);
+    assert.equal((await api("GET", "/auth/me", { token: other.body.token })).status, 200);
+  });
+
+  test("a refresh token renews the session, and stops working once the account is suspended", async () => {
+    const patient = await registerPatient();
+    const signedIn = await api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD } });
+    const renewed = await api("POST", "/auth/refresh", { body: { refreshToken: signedIn.body.refreshToken } });
+    assert.equal(renewed.status, 200, JSON.stringify(renewed.body));
+    assert.ok(renewed.body.refreshToken && renewed.body.expiresAt);
+    assert.equal((await api("GET", "/auth/me", { token: renewed.body.token })).status, 200);
+    const admin = await createStaff("ADMIN");
+    assert.equal((await api("PUT", `/admin/users/${patient.id}/status`, { token: admin.token, body: { isActive: false } })).status, 200);
+    assert.equal((await api("POST", "/auth/refresh", { body: { refreshToken: renewed.body.refreshToken } })).status, 401);
+    assert.equal((await api("POST", "/auth/refresh", { body: { refreshToken: "not-a-token" } })).status, 401);
   });
 });
 
@@ -295,17 +299,45 @@ describe("two-step sign-in", () => {
     assert.equal((await api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD, code } })).status, 401);
   });
 
-  test("a recovery code works once, and the secret is stored encrypted", async () => {
+  test("a recovery code signs in once and removes the lost authenticator", async () => {
+    const doctor = await createStaff("DOCTOR");
+    const { rows: before } = await sql.query("select count(*)::int as n from medichain_mfa_recovery_codes where user_id = $1", [doctor.id]);
+    assert.equal(before[0].n, 10);
+    assert.equal((await api("POST", "/auth/login", { body: { email: doctor.email, password: PASSWORD, code: "abcd-efgh" } })).status, 401);
+    // New recovery codes need a code from the app, not a recovery code.
+    await allowCodeReuse(doctor.email);
+    const fresh = await api("POST", "/auth/mfa/recovery-codes", { token: doctor.token, body: { password: PASSWORD, code: totp(mfaSecrets.get(doctor.email)) } });
+    assert.equal(fresh.status, 200, JSON.stringify(fresh.body));
+    assert.equal((await api("POST", "/auth/mfa/recovery-codes", { token: doctor.token, body: { password: PASSWORD, code: fresh.body.recoveryCodes[1] } })).status, 400);
+    const signedIn = await api("POST", "/auth/login", { body: { email: doctor.email, password: PASSWORD, code: fresh.body.recoveryCodes[0].toUpperCase() } });
+    assert.equal(signedIn.status, 200, JSON.stringify(signedIn.body));
+    assert.equal(signedIn.body.authenticatorRemoved, true);
+    assert.equal(signedIn.body.user.mfaEnabled, false);
+    const { rows: factors } = await sql.query("select count(*)::int as n from auth.mfa_factors f join medichain_users u on u.auth_user_id = f.user_id where u.id = $1", [doctor.id]);
+    assert.equal(factors[0].n, 0);
+    const { rows: codes } = await sql.query("select count(*)::int as n from medichain_mfa_recovery_codes where user_id = $1", [doctor.id]);
+    assert.equal(codes[0].n, 0);
+    // A doctor must set it up again before anything else.
     const patient = await registerPatient();
-    const { recoveryCodes } = await enableMfa(patient.email, patient.token);
-    assert.equal(recoveryCodes.length, 10);
-    const [row] = (await sql.query("select mfa_secret from medichain_users where id = $1", [patient.id])).rows;
-    assert.ok(!row.mfa_secret.includes(mfaSecrets.get(patient.email)));
-    const useCode = () => api("POST", "/auth/login", { body: { email: patient.email, password: PASSWORD, code: recoveryCodes[0].toUpperCase() } });
-    assert.equal((await useCode()).status, 200);
-    assert.equal((await useCode()).status, 401);
-    const status = await api("GET", "/auth/mfa", { token: await login(patient.email) });
-    assert.equal(status.body.recoveryCodesRemaining, 9);
+    assert.equal((await openBooklet({ ...doctor, token: signedIn.body.token }, patient)).body.code, "MFA_SETUP_REQUIRED");
+    // The app never stores the authenticator secret itself.
+    const { rows: columns } = await sql.query("select column_name from information_schema.columns where table_name = 'medichain_users' and column_name like 'mfa%secret%'");
+    assert.deepEqual(columns, []);
+  });
+
+  test("a password-only session from Supabase Auth is refused for an account with two-step sign-in on", async () => {
+    const patient = await registerPatient();
+    await enableMfa(patient.email, patient.token);
+    // Someone with only the password signs in at Supabase Auth directly, skipping the app.
+    const direct = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: process.env.SUPABASE_SECRET_KEY, "content-type": "application/json" },
+      body: JSON.stringify({ email: patient.email, password: PASSWORD }),
+    });
+    const session = await direct.json();
+    assert.equal(direct.status, 200);
+    assert.equal((await api("GET", "/patient/records", { token: session.access_token })).status, 401);
+    assert.equal((await api("GET", "/auth/me", { token: session.access_token })).status, 401);
   });
 
   test("patients can turn it off; doctors cannot", async () => {
@@ -613,7 +645,52 @@ describe("fixes found in review", () => {
     await time(patient.email);
     const known = Math.min(await time(patient.email), await time(patient.email));
     const unknown = Math.min(await time(`${unique("nobody")}@test.cm`), await time(`${unique("nobody")}@test.cm`));
-    // scrypt takes tens of milliseconds; without it an unknown email answered several times faster.
+    // A password check takes tens of milliseconds; without one an unknown email answered several times faster.
     assert.ok(unknown > known * 0.5, `unknown ${unknown.toFixed(1)} ms vs known ${known.toFixed(1)} ms`);
+  });
+});
+
+describe("Supabase", () => {
+  test("the public key of the Supabase project reads nothing from the app's tables", async (t) => {
+    const publicKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+    if (!publicKey) return t.skip("SUPABASE_PUBLISHABLE_KEY is not set");
+    await registerPatient();
+    for (const table of ["medichain_users", "medichain_medical_records", "medichain_emergency_info", "medichain_mfa_recovery_codes"]) {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, { headers: { apikey: publicKey } });
+      const body = await response.json();
+      assert.ok(response.status === 401 || response.status === 403 || (Array.isArray(body) && body.length === 0), `${table}: ${response.status} ${JSON.stringify(body).slice(0, 120)}`);
+    }
+    const { rows } = await sql.query("select count(*)::int as n from pg_tables where schemaname = 'public' and tablename like 'medichain\\_%' and not rowsecurity");
+    assert.equal(rows[0].n, 0, "every table has row-level security on");
+  });
+
+  test("an account copied from the previous database keeps its password, which moves to Supabase Auth on first sign-in", async () => {
+    const email = `${unique("copied")}@test.cm`;
+    const salt = randomBytes(16).toString("hex");
+    const legacyHash = ["scrypt", salt, scryptSync(PASSWORD, salt, 64).toString("hex")].join("$");
+    const authUserId = await createAuthUser(email);
+    const { rows: [{ id }] } = await sql.query(
+      `insert into medichain_users (email, auth_user_id, password_hash, role, name, sex, date_of_birth, contact_info, terms_version, terms_accepted_at, health_data_consent_at, patient_display_id, patient_access_id)
+       values ($1, $2, $3, 'PATIENT', 'Copied Patient', 'MALE', '1980-02-03', '+237690000001', $4, now(), now(), $5, $5) returning id`,
+      [email, authUserId, legacyHash, TERMS_VERSION, `CM${unique("").toUpperCase().slice(-6)}1A`],
+    );
+    assert.equal((await api("POST", "/auth/login", { body: { email, password: "Wrong-password-1" } })).status, 401);
+    const first = await api("POST", "/auth/login", { body: { email, password: PASSWORD } });
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    const { rows: [row] } = await sql.query("select password_hash from medichain_users where id = $1", [id]);
+    assert.equal(row.password_hash, null, "the old hash is cleared once the password has moved");
+    assert.equal((await api("POST", "/auth/login", { body: { email, password: PASSWORD } })).status, 200);
+  });
+
+  test("closing an account deletes its Supabase sign-in", async () => {
+    const patient = await registerPatient();
+    const admin = await createStaff("ADMIN");
+    assert.equal((await api("POST", "/account/deletion-request", { token: patient.token, body: { password: PASSWORD, reason: null } })).status, 201);
+    const { rows: [request] } = await sql.query("select id from medichain_account_deletion_requests where user_id = $1", [patient.id]);
+    const { rows: [before] } = await sql.query("select auth_user_id from medichain_users where id = $1", [patient.id]);
+    assert.equal((await api("POST", `/admin/deletion-requests/${request.id}/resolve`, { token: admin.token, body: { action: "CLOSE", note: null } })).status, 200);
+    const { rows: signIns } = await sql.query("select count(*)::int as n from auth.users where id = $1", [before.auth_user_id]);
+    assert.equal(signIns[0].n, 0);
+    assert.equal((await api("GET", "/auth/me", { token: patient.token })).status, 401);
   });
 });

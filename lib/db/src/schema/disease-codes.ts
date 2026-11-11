@@ -28,7 +28,7 @@ export const diseaseCodesTable = pgTable(
     index("medichain_disease_codes_name_index").on(table.diseaseName),
     index("medichain_disease_codes_status_index").on(table.status),
   ],
-);
+).enableRLS();
 
 export const insertDiseaseCodeSchema = createInsertSchema(diseaseCodesTable).omit({
   id: true,

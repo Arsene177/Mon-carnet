@@ -42,7 +42,7 @@ Stop the damage before investigating in depth. Depending on what happened:
 
 - **Account takeover (doctor or admin):** suspend the account in User search. This signs it out at once. Reset its two-step sign-in, and have the owner set a new password through password recovery once their identity is confirmed.
 - **Patient account takeover:** suspend it, then contact the patient by a known phone number.
-- **Many accounts or unknown scope:** in Replit, rotate `JWT_SECRET` (or `SESSION_SECRET`). This signs everyone out. Do **not** change `MFA_ENCRYPTION_KEY` or `BACKUP_ENCRYPTION_KEY`.
+- **Many accounts or unknown scope:** sign everyone out by ending every session in Supabase (SQL Editor: `delete from auth.sessions;`), which stops every token on the next request. If the project's secret key may have leaked, create a new secret key in Supabase (Project Settings > API Keys), put it in `SUPABASE_SECRET_KEY`, publish, then delete the old key. Do **not** change `BACKUP_ENCRYPTION_KEY`.
 - **Leaked secret (database password, API key):** rotate it in Replit immediately, then redeploy.
 - **Malicious code or bad release:** roll back to the previous deployment in Replit.
 - **Ongoing attack from an address:** note it from Security events; the rate limits already slow it down. Ask Replit support if it must be blocked.

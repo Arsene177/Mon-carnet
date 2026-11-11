@@ -2,12 +2,12 @@
 // the reflow rule (no sideways scrolling at 320 px wide, which is what 400% zoom looks like).
 //
 // Needs the built web app (pnpm --filter @workspace/medichain run build), the built API server,
-// a Chromium for Playwright, and TEST_DATABASE_URL like the other tests:
+// a Chromium for Playwright, and the local Supabase stack like the other tests (tests/supabase-test-env.mjs):
 //   pnpm --filter @workspace/api-server run test:accessibility
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createHmac, randomBytes, scryptSync } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { existsSync, readFileSync, createReadStream, statSync } from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -15,11 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { chromium } from "playwright";
-
-const DATABASE_URL = process.env.TEST_DATABASE_URL;
-if (!DATABASE_URL || !/test/i.test(new URL(DATABASE_URL).pathname)) {
-  throw new Error("Set TEST_DATABASE_URL to a disposable database whose name contains \"test\".");
-}
+import { DATABASE_URL, insertStaff, serverEnv } from "../supabase-test-env.mjs";
 const serverDir = fileURLToPath(new URL("../..", import.meta.url));
 const webDir = path.resolve(serverDir, "../medichain/dist/public");
 if (!existsSync(path.join(webDir, "index.html"))) {
@@ -30,6 +26,7 @@ const API_PORT = 5900 + Math.floor(Math.random() * 300);
 const WEB_PORT = API_PORT + 400;
 const BASE = `http://127.0.0.1:${WEB_PORT}`;
 const PASSWORD = "Correct-horse-9";
+const patientEmail = `patient-a11y-${Date.now()}@test.cm`;
 const TERMS = "2026-11-draft-1";
 const RULES = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
@@ -75,12 +72,7 @@ async function api(method, route, { token, body } = {}) {
 /** Doctors and administrators, inserted as an administrator would approve them, with two-step sign-in on. */
 async function createStaff(role, name, { mfa = true } = {}) {
   const email = `${role.toLowerCase()}-a11y-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.cm`;
-  const salt = randomBytes(16).toString("hex");
-  await sql.query(
-    `insert into medichain_users (email, password_hash, role, name, hospital_name, professional_medical_number, doctor_verified, contact_info, terms_version, terms_accepted_at)
-     values ($1, $2, $3, $4, $5, $6, true, '+237677000000', $7, now())`,
-    [email, `scrypt$${salt}$${scryptSync(PASSWORD, salt, 64).toString("hex")}`, role, name, role === "ADMIN" ? null : "Hôpital Laquintinie", role === "ADMIN" ? null : "ONMC-1234", TERMS],
-  );
+  await insertStaff(sql, { email, password: PASSWORD, role, name, terms: TERMS });
   let { token } = await api("POST", "/auth/login", { body: { email, password: PASSWORD } });
   if (!mfa) return token;
   const setup = await api("POST", "/auth/mfa/setup", { token, body: { password: PASSWORD } });
@@ -156,7 +148,7 @@ async function checkWorkspace(role, width, language) {
 before(async () => {
   apiServer = spawn(process.execPath, ["dist/index.mjs"], {
     cwd: serverDir,
-    env: { ...process.env, DATABASE_URL, PORT: String(API_PORT), JWT_SECRET: randomBytes(24).toString("hex"), NODE_ENV: "test", TRUST_PROXY: "1", LOG_LEVEL: "warn" },
+    env: serverEnv(API_PORT),
     stdio: ["ignore", "ignore", "inherit"],
   });
   await startWebServer();
@@ -165,7 +157,7 @@ before(async () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   const patient = await api("POST", "/auth/register", {
-    body: { name: "Awa Ngono", email: `patient-a11y-${Date.now()}@test.cm`, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
+    body: { name: "Awa Ngono", email: patientEmail, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
   });
   tokens.patient = patient.token;
   await api("PUT", "/patient/emergency-info", { token: tokens.patient, body: { bloodGroup: "O+", weightKg: 62, heightCm: 165, allergies: "Pénicilline", emergencyContact: "Paul Ngono +237 699 00 00 00" } });
@@ -174,6 +166,36 @@ before(async () => {
   const profile = await api("GET", "/patient/profile", { token: tokens.patient });
   await api("POST", "/doctor/patient-access", { token: tokens.doctor, body: { patientDisplayId: profile.patientDisplayId } });
   browser = await chromium.launch();
+});
+
+describe("the signed-in session in the browser", () => {
+  test("renews the access token before it expires, and signing out ends the session on the server", async () => {
+    const page = await openPage({ width: 1280, language: "en" });
+    await page.goto(BASE + "/login");
+    await page.getByTestId("input-email").fill(patientEmail);
+    await page.getByTestId("input-password").fill(PASSWORD);
+    await page.getByTestId("button-auth-submit").click();
+    await page.getByTestId("nav-profile").waitFor({ state: "attached", timeout: 15_000 });
+    const first = await page.evaluate(() => localStorage.getItem("medichain_token"));
+    assert.ok(first && await page.evaluate(() => localStorage.getItem("medichain_refresh_token")), "access and refresh tokens are kept");
+    // Pretend the access token expires in a minute: the next request renews it first.
+    await page.evaluate(() => localStorage.setItem("medichain_token_expires_at", String(Date.now() + 60_000)));
+    const renewed = page.waitForResponse((response) => response.url().endsWith("/api/auth/refresh") && response.status() === 200);
+    await page.getByTestId("nav-profile").evaluate((element) => element.click());
+    await renewed;
+    // The renewed session expires in about an hour again. (Within the same second, Supabase can
+    // return the same access token, so the expiry is what shows the renewal.)
+    await page.waitForFunction(() => Number(localStorage.getItem("medichain_token_expires_at")) > Date.now() + 30 * 60_000);
+    const second = await page.evaluate(() => localStorage.getItem("medichain_token"));
+    const meStatus = async (token) => (await fetch(`${BASE}/api/auth/me`, { headers: { authorization: `Bearer ${token}` } })).status;
+    assert.equal(await meStatus(second), 200);
+    // Signing out ends the session on the server, not only in this browser.
+    const signedOut = page.waitForResponse((response) => response.url().endsWith("/api/auth/sign-out"));
+    await page.getByTestId("button-signout-top").evaluate((element) => element.click());
+    assert.equal((await signedOut).status(), 204);
+    assert.equal(await meStatus(second), 401);
+    await page.context().close();
+  });
 });
 
 after(async () => {

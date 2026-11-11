@@ -10,6 +10,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
   real,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -28,7 +29,11 @@ export const usersTable = pgTable(
   {
     id: serial("id").primaryKey(),
     email: text("email").notNull(),
-    passwordHash: text("password_hash").notNull(),
+    // The Supabase Auth user (auth.users.id) that signs in to this account. Null for closed accounts.
+    authUserId: uuid("auth_user_id"),
+    // Only for accounts copied from the previous database: the old scrypt password hash. The first
+    // successful sign-in moves the password to Supabase Auth and clears it. Null for everyone else.
+    passwordHash: text("password_hash"),
     role: text("role").notNull(),
     name: text("name").notNull(),
     hospitalName: text("hospital_name"),
@@ -54,16 +59,13 @@ export const usersTable = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     // Set when the account was closed after a deletion request. Closed accounts cannot sign in or be restored.
     closedAt: timestamp("closed_at", { withTimezone: true }),
-    // Raised to end every signed-in session at once (password change, temporary password,
-    // "sign out of all other devices"). Access tokens carry the value they were issued with.
-    sessionVersion: integer("session_version").notNull().default(0),
-    // Two-step sign-in with an authenticator app (TOTP). Secrets are encrypted (see api-server lib/mfa.ts).
-    // mfaPendingSecret holds a secret during setup until the first code confirms it.
-    mfaSecret: text("mfa_secret"),
-    mfaPendingSecret: text("mfa_pending_secret"),
+    // Two-step sign-in with an authenticator app (TOTP). The factor and its secret are held by
+    // Supabase Auth; this records when it was turned on, for display and for the required-role check.
     mfaEnabledAt: timestamp("mfa_enabled_at", { withTimezone: true }),
-    // Last 30-second time step accepted, so a code cannot be used twice.
-    mfaLastUsedStep: integer("mfa_last_used_step"),
+    // Hash and time of the last authenticator code accepted. Supabase Auth accepts a code more than
+    // once within its 30-second window, so the app refuses the same code again for 3 minutes.
+    mfaLastCodeHash: text("mfa_last_code_hash"),
+    mfaLastCodeAt: timestamp("mfa_last_code_at", { withTimezone: true }),
     // Version of the privacy policy and terms accepted, and when. Patients also record explicit
     // consent to the processing of their health data (sensitive data under Law 2024/017).
     termsVersion: text("terms_version"),
@@ -79,12 +81,13 @@ export const usersTable = pgTable(
   },
   (table) => [
     uniqueIndex("medichain_users_email_unique").on(table.email),
+    uniqueIndex("medichain_users_auth_user_id_unique").on(table.authUserId),
     uniqueIndex("medichain_users_patient_display_id_unique").on(table.patientDisplayId),
     uniqueIndex("medichain_users_patient_access_id_unique").on(table.patientAccessId),
     uniqueIndex("medichain_users_national_id_unique").on(table.nationalIdNumber),
     index("medichain_users_role_index").on(table.role),
   ],
-);
+).enableRLS();
 
 export const bookletExportsTable = pgTable(
   "medichain_booklet_exports",
@@ -99,7 +102,7 @@ export const bookletExportsTable = pgTable(
     issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("medichain_booklet_exports_patient_index").on(table.patientId, table.issuedAt)],
-);
+).enableRLS();
 
 export const notificationsTable = pgTable(
   "medichain_notifications",
@@ -121,7 +124,7 @@ export const notificationsTable = pgTable(
     index("medichain_notifications_recipient_created_index").on(table.recipientId, table.createdAt),
     index("medichain_notifications_batch_index").on(table.batchId),
   ],
-);
+).enableRLS();
 
 export const passwordResetRequestsTable = pgTable(
   "medichain_password_reset_requests",
@@ -142,7 +145,7 @@ export const passwordResetRequestsTable = pgTable(
       .where(sql`${table.resolvedAt} is null`),
     index("medichain_password_reset_requested_index").on(table.requestedAt),
   ],
-);
+).enableRLS();
 
 export const emergencyInfoTable = pgTable(
   "medichain_emergency_info",
@@ -165,7 +168,7 @@ export const emergencyInfoTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [uniqueIndex("medichain_emergency_user_unique").on(table.userId)],
-);
+).enableRLS();
 
 export const medicalRecordsTable = pgTable(
   "medichain_medical_records",
@@ -200,7 +203,7 @@ export const medicalRecordsTable = pgTable(
     index("medichain_records_followup_index").on(table.followUpToRecordId),
     index("medichain_records_created_index").on(table.createdAt),
   ],
-);
+).enableRLS();
 
 export const accessPermissionsTable = pgTable(
   "medichain_access_permissions",
@@ -228,7 +231,7 @@ export const accessPermissionsTable = pgTable(
     ),
     index("medichain_permission_expiry_index").on(table.expiresAt),
   ],
-);
+).enableRLS();
 
 export const accountDeletionRequestsTable = pgTable(
   "medichain_account_deletion_requests",
@@ -253,7 +256,7 @@ export const accountDeletionRequestsTable = pgTable(
       .where(sql`${table.status} = 'PENDING'`),
     index("medichain_deletion_request_status_index").on(table.status, table.requestedAt),
   ],
-);
+).enableRLS();
 
 export const accessRequestsTable = pgTable(
   "medichain_access_requests",
@@ -279,7 +282,7 @@ export const accessRequestsTable = pgTable(
       .where(sql`${table.status} = 'PENDING'`),
     index("medichain_access_request_patient_index").on(table.patientId, table.requestedAt),
   ],
-);
+).enableRLS();
 
 export const patientSearchesTable = pgTable(
   "medichain_patient_searches",
@@ -301,7 +304,7 @@ export const patientSearchesTable = pgTable(
   (table) => [
     index("medichain_search_patient_index").on(table.patientId, table.searchedAt),
   ],
-);
+).enableRLS();
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({
   id: true,
@@ -336,4 +339,4 @@ export const mfaRecoveryCodesTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("medichain_mfa_recovery_codes_user_index").on(table.userId)],
-);
+).enableRLS();
