@@ -73,8 +73,8 @@ async function api(method, route, { token, body } = {}) {
 }
 
 /** Doctors and administrators, inserted as an administrator would approve them, with two-step sign-in on. */
-async function createStaff(role, name) {
-  const email = `${role.toLowerCase()}-a11y-${Date.now()}@test.cm`;
+async function createStaff(role, name, { mfa = true } = {}) {
+  const email = `${role.toLowerCase()}-a11y-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.cm`;
   const salt = randomBytes(16).toString("hex");
   await sql.query(
     `insert into medichain_users (email, password_hash, role, name, hospital_name, professional_medical_number, doctor_verified, contact_info, terms_version, terms_accepted_at)
@@ -82,6 +82,7 @@ async function createStaff(role, name) {
     [email, `scrypt$${salt}$${scryptSync(PASSWORD, salt, 64).toString("hex")}`, role, name, role === "ADMIN" ? null : "Hôpital Laquintinie", role === "ADMIN" ? null : "ONMC-1234", TERMS],
   );
   let { token } = await api("POST", "/auth/login", { body: { email, password: PASSWORD } });
+  if (!mfa) return token;
   const setup = await api("POST", "/auth/mfa/setup", { token, body: { password: PASSWORD } });
   ({ token } = await api("POST", "/auth/mfa/enable", { token, body: { code: totp(setup.secret) } }));
   return token;
@@ -191,6 +192,19 @@ describe("accessibility (WCAG 2.2 AA rules checked by axe-core, and reflow)", ()
         await page.goto(BASE + route);
         found.push(...await problems(page, `${route} (${width}px, ${language})`));
       }
+      await page.context().close();
+      assert.deepEqual(found, [], `\n${found.join("\n")}`);
+    });
+    test(`two-step sign-in setup, with its QR code, at ${width}px in ${language}`, async () => {
+      // A doctor without two-step sign-in can only set it up. The QR code library loads on demand.
+      const page = await openPage({ token: await createStaff("DOCTOR", "Ngo Setup", { mfa: false }), width, language });
+      await page.goto(BASE + "/doctor");
+      await page.getByTestId("input-mfa-password").fill(PASSWORD);
+      await page.getByTestId("button-mfa-start").click();
+      const qr = page.locator(".mfa-qr img");
+      await qr.waitFor({ timeout: 10_000 });
+      assert.match(await qr.getAttribute("src"), /^data:image\/png;base64,/);
+      const found = await problems(page, `two-step setup (${width}px, ${language})`);
       await page.context().close();
       assert.deepEqual(found, [], `\n${found.join("\n")}`);
     });

@@ -1,5 +1,6 @@
 import type { MedicalRecord } from '@workspace/api-client-react';
 import { locale, t } from './i18n';
+import { splitRecordAttachments } from './record-attachments';
 
 function formatDate(value?: string | null): string {
   if (!value) return t("Not provided");
@@ -23,17 +24,19 @@ function downloadTextFile(filename: string, contents: string): void {
 }
 
 export function downloadMedicalRecord(record: MedicalRecord, patientDisplayId?: string): void {
+  // Storage paths of attached files mean nothing outside the app; list the file names instead.
+  const { notes, attachments } = splitRecordAttachments(record.notes);
   const lines = [
     t("MEDICHAIN MEDICAL RECORD"),
     '========================',
     t("Record ID: {0}", { 0: record.id }),
     ...(patientDisplayId ? [t("Patient ID: {0}", { 0: patientDisplayId })] : []),
-    t("Record type: {0}", { 0: record.recordType }),
+    t("Record type: {0}", { 0: t(record.recordType) }),
     t("Entered by: {0}", { 0: record.doctorName }),
     t("Created: {0}", { 0: formatDate(record.createdAt) }),
     t("Follow-up to record: {0}", { 0: record.followUpToRecordId ?? t("None") }),
     '',
-    'DIAGNOSIS',
+    t("DIAGNOSIS"),
     '---------',
     record.diagnosis || t("No diagnosis documented."),
     '',
@@ -42,13 +45,13 @@ export function downloadMedicalRecord(record: MedicalRecord, patientDisplayId?: 
   ];
 
   if (record.codedDiagnoses.length === 0) {
-    lines.push('None');
+    lines.push(t("None"));
   } else {
     for (const [index, diagnosis] of record.codedDiagnoses.entries()) {
       lines.push(
         `${index + 1}. ${t(diagnosis.diseaseCode.diseaseName)} (${diagnosis.diseaseCode.code})`,
         t("   Coding system: {0} {1}", { 0: diagnosis.diseaseCode.codingSystem, 1: diagnosis.diseaseCode.release }),
-        t("   Status: {0}", { 0: diagnosis.status.replaceAll('_', ' ') }),
+        t("   Status: {0}", { 0: t(diagnosis.status.replaceAll('_', ' ')) }),
         t("   Diagnosis date: {0}", { 0: formatDate(diagnosis.diagnosisDate) }),
         t("   Onset date: {0}", { 0: formatDate(diagnosis.onsetDate) }),
         t("   Notes: {0}", { 0: diagnosis.notes || t("None") }),
@@ -60,19 +63,25 @@ export function downloadMedicalRecord(record: MedicalRecord, patientDisplayId?: 
   }
 
   lines.push(
-    'TREATMENT / PLAN',
+    t("TREATMENT / PLAN"),
     '----------------',
     record.treatment || t("No treatment or plan documented."),
     '',
-    'MEDICATIONS',
+    t("MEDICATIONS"),
     '-----------',
     record.medications.length > 0 ? record.medications.join(', ') : t("None documented."),
     '',
-    'CLINICAL NOTES',
+    t("CLINICAL NOTES"),
     '--------------',
-    record.notes || t("No additional notes."),
+    notes || t("No additional notes."),
     '',
-    'VITALS',
+    ...(attachments.length > 0 ? [
+      t("ATTACHED DOCUMENTS"),
+      '------------------',
+      ...attachments.map((attachment) => t("{0} (download it from this record in the app)", { 0: attachment.fileName || t("Lab report") })),
+      '',
+    ] : []),
+    t("VITALS"),
     '------',
     t("Blood pressure: {0}", { 0: record.vitals.bloodPressure || t("Not recorded") }),
     t("Heart rate: {0}", { 0: record.vitals.heartRate ? `${record.vitals.heartRate} bpm` : t("Not recorded") }),

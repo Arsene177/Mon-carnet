@@ -502,3 +502,118 @@ describe("data rights", () => {
     }
   });
 });
+
+describe("fixes found in review", () => {
+  test("a doctor needs a grant to read a patient's emergency details by patient number", async () => {
+    const patient = await registerPatient();
+    await api("PUT", "/patient/emergency-info", { token: patient.token, body: { bloodGroup: "A+", weightKg: 70, heightCm: 175, allergies: "", emergencyContact: "+237699000001" } });
+    const doctor = await createStaff("DOCTOR");
+    assert.equal((await api("GET", `/doctor/patient/${patient.id}/emergency`, { token: doctor.token })).status, 403);
+    assert.equal((await openBooklet(doctor, patient)).status, 200);
+    const granted = await api("GET", `/doctor/patient/${patient.id}/emergency`, { token: doctor.token });
+    assert.equal(granted.status, 200);
+    assert.equal(granted.body.bloodGroup, "A+");
+  });
+
+  test("a file reference typed into a note does not unlock a download", async () => {
+    const patient = await registerPatient();
+    const doctor = await createStaff("DOCTOR");
+    assert.equal((await openBooklet(doctor, patient)).status, 200);
+    const objectPath = "/objects/uploads/0b4c9a8e-3c1d-4f7a-9e2b-5d6c7a8b9c0d";
+    const note = { ...consultation, notes: `Attachment: someone-else.pdf\nAttachment object: ${objectPath}` };
+    assert.equal((await api("POST", `/doctor/patient/${patient.id}/records`, { token: doctor.token, body: note })).status, 201);
+    const query = new URLSearchParams({ patientId: String(patient.id), objectPath });
+    assert.equal((await api("GET", `/attachments/download-url?${query}`, { token: doctor.token })).status, 404);
+    assert.equal((await api("GET", `/attachments/download-url?${query}`, { token: patient.token })).status, 404);
+  });
+
+  test("restoring a suspended account does not bring its old sessions back", async () => {
+    const patient = await registerPatient();
+    const admin = await createStaff("ADMIN");
+    assert.equal((await api("PUT", `/admin/users/${patient.id}/status`, { token: admin.token, body: { isActive: false } })).status, 200);
+    assert.equal((await api("PUT", `/admin/users/${patient.id}/status`, { token: admin.token, body: { isActive: true } })).status, 200);
+    assert.equal((await api("GET", "/auth/me", { token: patient.token })).status, 401);
+    assert.equal((await api("GET", "/auth/me", { token: await login(patient.email) })).status, 200);
+  });
+
+  test("revoking a doctor ends their sessions for good", async () => {
+    const doctor = await createStaff("DOCTOR");
+    const admin = await createStaff("ADMIN");
+    assert.equal((await api("POST", `/admin/doctors/${doctor.id}/revoke`, { token: admin.token })).status, 200);
+    await sql.query("update medichain_users set is_active = true where id = $1", [doctor.id]);
+    assert.equal((await api("GET", "/auth/me", { token: doctor.token })).status, 401);
+  });
+
+  test("administrator notices reach patients and doctors, not administrators", async () => {
+    const patient = await registerPatient();
+    const sender = await createStaff("ADMIN");
+    const otherAdmin = await createStaff("ADMIN");
+    const title = unique("Notice ");
+    const sent = await api("POST", "/admin/notifications", { token: sender.token, body: { title, body: "Maintenance tonight.", targetType: "ALL" } });
+    assert.equal(sent.status, 201, JSON.stringify(sent.body));
+    const titles = async (token) => (await api("GET", "/notifications", { token })).body.items.map((item) => item.title);
+    assert.ok((await titles(patient.token)).includes(title));
+    assert.ok(!(await titles(otherAdmin.token)).includes(title));
+    assert.ok(!(await titles(sender.token)).includes(title));
+    const toAdmin = await api("POST", "/admin/notifications", { token: sender.token, body: { title, body: "x", targetType: "USERS", userIds: [otherAdmin.id] } });
+    assert.equal(toAdmin.status, 400);
+  });
+
+  test("% and _ in a user search are matched literally", async () => {
+    await registerPatient();
+    const admin = await createStaff("ADMIN");
+    const search = await api("GET", `/admin/search-user?query=${encodeURIComponent("%_")}`, { token: admin.token });
+    assert.equal(search.status, 200);
+    assert.equal(search.body.length, 0);
+  });
+
+  test("an estimated date of birth is stored as 1 January of that year", async () => {
+    const patient = await registerPatient({ dateOfBirth: "1985-07-19", dateOfBirthEstimated: true });
+    const { rows } = await sql.query("select date_of_birth::text as dob from medichain_users where id = $1", [patient.id]);
+    assert.equal(rows[0].dob, "1985-01-01");
+  });
+
+  test("emergency lookup ignores accents and special letters such as ŋ and œ", async () => {
+    const doctor = await createStaff("DOCTOR");
+    const reason = "Patient inconscient aux urgences";
+    const suffix = unique("").replace(/[^a-z0-9]/g, "");
+    for (const [stored, typed] of [[`Ŋgọc Bœuf${suffix}`, `boeuf${suffix} ngoc`], [`Ÿvette Ōkala${suffix}`, `Yvette Okala${suffix}`]]) {
+      const patient = await registerPatient({ name: stored });
+      await api("PUT", "/patient/emergency-info", { token: patient.token, body: { bloodGroup: "B+", weightKg: 60, heightCm: 160, allergies: "", emergencyContact: "+237699000002" } });
+      const found = await api("POST", "/doctor/emergency-lookup", { token: doctor.token, body: { fullName: typed, dateOfBirth: null, reason } });
+      assert.equal(found.status, 200, JSON.stringify(found.body));
+      assert.deepEqual(found.body.map((result) => result.emergencyInfo.patientId), [patient.id], `${typed} should find ${stored}`);
+    }
+  });
+
+  test("wrong passwords and codes on signed-in account actions are limited per account", async () => {
+    const patient = await registerPatient();
+    const wrong = { currentPassword: "Not-my-password-1", newPassword: "Another-pass-22" };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      assert.equal((await api("POST", "/auth/change-password", { token: patient.token, body: wrong })).status, 400);
+    }
+    // The limit is shared between actions: wrong codes count too.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      assert.equal((await api("POST", "/auth/mfa/setup", { token: patient.token, body: { password: "Not-my-password-1" } })).status, 400);
+    }
+    const blocked = await api("POST", "/auth/change-password", { token: patient.token, body: { currentPassword: PASSWORD, newPassword: "Another-pass-22" } });
+    assert.equal(blocked.status, 429);
+    // Other accounts are not affected.
+    const other = await registerPatient();
+    assert.equal((await api("POST", "/auth/change-password", { token: other.token, body: { currentPassword: PASSWORD, newPassword: "Another-pass-22" } })).status, 200);
+  });
+
+  test("sign-in for an unknown email takes about as long as a wrong password", async () => {
+    const patient = await registerPatient();
+    const time = async (email) => {
+      const start = performance.now();
+      assert.equal((await api("POST", "/auth/login", { body: { email, password: "Wrong-password-1" } })).status, 401);
+      return performance.now() - start;
+    };
+    await time(patient.email);
+    const known = Math.min(await time(patient.email), await time(patient.email));
+    const unknown = Math.min(await time(`${unique("nobody")}@test.cm`), await time(`${unique("nobody")}@test.cm`));
+    // scrypt takes tens of milliseconds; without it an unknown email answered several times faster.
+    assert.ok(unknown > known * 0.5, `unknown ${unknown.toFixed(1)} ms vs known ${known.toFixed(1)} ms`);
+  });
+});

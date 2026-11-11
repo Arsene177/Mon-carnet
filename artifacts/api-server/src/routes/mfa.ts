@@ -44,6 +44,7 @@ import {
 import { languageOf, notificationMessages } from "../lib/notification-messages";
 import { invalidBody } from "./medichain";
 import { recordSecurityEvent } from "../lib/security-events";
+import { accountSecretLimiter } from "../lib/rate-limits";
 
 type UserRow = typeof usersTable.$inferSelect;
 type Executor = Pick<typeof db, "insert" | "delete">;
@@ -120,7 +121,7 @@ router.get("/auth/mfa", requireAuth(), async (req, res): Promise<void> => {
   }));
 });
 
-router.post("/auth/mfa/setup", requireAuth(), async (req, res): Promise<void> => {
+router.post("/auth/mfa/setup", requireAuth(), accountSecretLimiter, async (req, res): Promise<void> => {
   const parsed = StartMfaSetupBody.safeParse(req.body);
   if (!parsed.success) {
     invalidBody(res, "Enter your password.");
@@ -140,7 +141,7 @@ router.post("/auth/mfa/setup", requireAuth(), async (req, res): Promise<void> =>
   res.json(StartMfaSetupResponse.parse({ secret, otpauthUrl: otpauthUrl(secret, user.email) }));
 });
 
-router.post("/auth/mfa/enable", requireAuth(), async (req, res): Promise<void> => {
+router.post("/auth/mfa/enable", requireAuth(), accountSecretLimiter, async (req, res): Promise<void> => {
   const parsed = EnableMfaBody.safeParse(req.body);
   if (!parsed.success) {
     invalidBody(res, "Enter the 6-digit code from your authenticator app.");
@@ -193,7 +194,7 @@ router.post("/auth/mfa/enable", requireAuth(), async (req, res): Promise<void> =
   }));
 });
 
-router.post("/auth/mfa/disable", requireAuth(), async (req, res): Promise<void> => {
+router.post("/auth/mfa/disable", requireAuth(), accountSecretLimiter, async (req, res): Promise<void> => {
   const parsed = DisableMfaBody.safeParse(req.body);
   if (!parsed.success) {
     invalidBody(res, "Enter your password and a code from your authenticator app.");
@@ -223,7 +224,7 @@ router.post("/auth/mfa/disable", requireAuth(), async (req, res): Promise<void> 
   res.status(204).end();
 });
 
-router.post("/auth/mfa/recovery-codes", requireAuth(), async (req, res): Promise<void> => {
+router.post("/auth/mfa/recovery-codes", requireAuth(), accountSecretLimiter, async (req, res): Promise<void> => {
   const parsed = RegenerateMfaRecoveryCodesBody.safeParse(req.body);
   if (!parsed.success) {
     invalidBody(res, "Enter your password and a code from your authenticator app.");
