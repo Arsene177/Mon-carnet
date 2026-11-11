@@ -30,17 +30,17 @@ The file is encrypted with AES-256-GCM using a key derived from `BACKUP_ENCRYPTI
    openssl rand -base64 48
    ```
 
-   Add the result as a secret named `BACKUP_ENCRYPTION_KEY` in the Replit deployment. Also store it in a password manager **and** on paper in a safe place. If this key is lost, every backup becomes unreadable. Never change it; if it must change (for example it leaked), keep the old key as well, because older backups still need it.
+   Add the result as `BACKUP_ENCRYPTION_KEY` on the Render backup job (`mon-carnet-backup` > Environment; `docs/render.md`). Also store it in a password manager **and** on paper in a safe place. If this key is lost, every backup becomes unreadable. Never change it; if it must change (for example it leaked), keep the old key as well, because older backups still need it.
 
-2. **Schedule the daily backup.** In Replit, create a Scheduled Deployment for this project that runs once a day at a quiet hour (for example 02:00 Africa/Douala) with the command:
+2. **The daily backup.** The Render cron job `mon-carnet-backup` (from `render.yaml`) runs every day at 01:00 UTC (02:00 in Douala):
 
    ```bash
-   pnpm --filter @workspace/api-server run backup -- --upload --out /tmp/backups
+   node --enable-source-maps artifacts/api-server/dist/backup.mjs backup --upload --out /tmp/backups
    ```
 
-   It needs the same secrets as the app: `DATABASE_URL` (the Supabase database), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `BACKUP_ENCRYPTION_KEY`. `--upload` stores the file in the private Supabase Storage bucket `backups` (created on the first upload; `SUPABASE_BACKUP_BUCKET` changes the name). A file larger than the project's upload limit (Storage > Settings; 50 MB on the Free plan) is refused with a message: raise the limit, or keep that backup elsewhere. The command exits with an error if anything fails, so the scheduled run shows as failed. Check the run history weekly.
+   It needs the same secrets as the app: `DATABASE_URL` (the Supabase database), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `BACKUP_ENCRYPTION_KEY`. `--upload` stores the file in the private Supabase Storage bucket `backups` (created on the first upload; `SUPABASE_BACKUP_BUCKET` changes the name). A file larger than the project's upload limit (Storage > Settings; 50 MB on the Free plan) is refused with a message: raise the limit, or keep that backup elsewhere. The command exits with an error if anything fails, so the run shows as failed in Render (`mon-carnet-backup` > Events; turn on Render's failure email in Account Settings > Notifications). Check the run history weekly. The first time, start it by hand with **Trigger Run** and check its log.
 
-3. **Keep a copy away from Supabase (weekly).** The `backups` bucket is a second place, but it belongs to the same provider as the database. Once a week, download the newest backup to a computer and copy it to a second location that depends neither on Supabase nor on Replit, for example an external drive kept off-site or another cloud storage account. The file is encrypted, so it is safe to store there. To download it from a Replit shell:
+3. **Keep a copy away from Supabase (weekly).** The `backups` bucket is a second place, but it belongs to the same provider as the database. Once a week, download the newest backup to a computer and copy it to a second location that depends neither on Supabase nor on Render, for example an external drive kept off-site or another cloud storage account. The file is encrypted, so it is safe to store there. Download it in the Supabase dashboard (Storage > `backups`), or from a computer with this repository and the same environment variables:
 
    ```bash
    pnpm --filter @workspace/api-server run backup:download -- --name mon-carnet-backup-<date>.mcbk --out backups
@@ -90,7 +90,7 @@ Restoring replaces data, so go slowly and write down what you do.
 
 ## Requirements and limits
 
-- The backup tool needs `pg_dump` and `pg_restore` of at least the database server's major version (new Supabase projects run PostgreSQL 17; Project Settings > Infrastructure shows it) and `tar`. This Replit project provides PostgreSQL 16 tools (`postgresql-16` in `.replit`): for a PostgreSQL 17 project, change that module to `postgresql-17`, or the backup stops with "server version mismatch".
+- The backup tool needs `pg_dump` and `pg_restore` of at least the database server's major version (new Supabase projects run PostgreSQL 17; Project Settings > Infrastructure shows it) and `tar`. The Render image (`Dockerfile`) installs the PostgreSQL 17 tools; on your own computer, install PostgreSQL 17 client tools.
 - A backup holds the whole database in one file. That is fine for years at the current size; revisit if the file grows past a few gigabytes.
 - Passwords are kept as the hashes Supabase Auth stores. Authenticator factors are restored with them; if a restored project cannot read them (Supabase encrypts factor secrets with a project key on some setups), reset two-step sign-in for the affected accounts from User search.
 - The automated tests (`pnpm --filter @workspace/api-server run test`) make a backup, check that it is encrypted, refuse a wrong key and a damaged file, and restore it with its sign-ins and attached files into an emptied local Supabase project.

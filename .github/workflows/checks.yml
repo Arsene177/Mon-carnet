@@ -61,3 +61,21 @@ jobs:
         run: pnpm --filter @workspace/api-server exec playwright install --with-deps chromium
       - name: Accessibility check (WCAG 2.2 AA rules and reflow, every screen)
         run: pnpm --filter @workspace/api-server run test:accessibility
+      # The image Render builds and runs (Dockerfile, render.yaml): it must build, start against
+      # Supabase, serve the web app and the API, and contain the PostgreSQL 17 tools for backups.
+      - name: Build the Render image
+        run: docker build -t mon-carnet .
+      - name: Start the image and check it answers
+        run: |
+          docker run -d --name mon-carnet --network host \
+            -e PORT=10000 -e DATABASE_URL="$TEST_DATABASE_URL" -e SUPABASE_URL -e SUPABASE_SECRET_KEY -e SUPABASE_JWT_SECRET \
+            -e SUPABASE_STORAGE_BUCKET=medical-attachments-image-check mon-carnet
+          for attempt in $(seq 1 60); do curl -fs http://127.0.0.1:10000/api/healthz && break; sleep 1; done
+          curl -fs http://127.0.0.1:10000/api/readyz
+          curl -fs http://127.0.0.1:10000/ | grep -q '<div id="root">'
+          curl -fs http://127.0.0.1:10000/patient | grep -q '<div id="root">'
+          curl -fsI http://127.0.0.1:10000/ | grep -i '^content-security-policy:'
+          docker exec mon-carnet pg_dump --version | grep -q ' 17\.'
+      - name: Image logs
+        if: always()
+        run: docker logs mon-carnet 2>&1 | tail -50 || true

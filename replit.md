@@ -2,6 +2,8 @@
 
 Mon carnet lets patients manage emergency information and control which approved doctors can view their medical records.
 
+Hosting: the app runs on Render (`render.yaml`, `Dockerfile`; setup guide `docs/render.md`) and keeps its data in Supabase (`docs/supabase.md`). Replit is no longer used, except once to copy the old data across. This file keeps the project notes.
+
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
@@ -9,7 +11,7 @@ Mon carnet lets patients manage emergency information and control which approved
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — apply DB schema changes to the database selected by `DATABASE_URL` (the Supabase project); verify the target first. It ends by closing every `medichain_*` table to Supabase's public API (row-level security on, no rights or policies for `anon`/`authenticated`; `lib/db/scripts/lockdown.mjs`). New tables must use `.enableRLS()` in the Drizzle schema.
+- `pnpm --filter @workspace/db run push` — (runs automatically before every Render deploy) apply DB schema changes to the database selected by `DATABASE_URL` (the Supabase project); verify the target first. It ends by closing every `medichain_*` table to Supabase's public API (row-level security on, no rights or policies for `anon`/`authenticated`; `lib/db/scripts/lockdown.mjs`). New tables must use `.enableRLS()` in the Drizzle schema.
 - Run the database schema push after updating an existing environment; patient CM IDs, Supabase sign-in links, two-step sign-in, doctor credential verification, account suspension, epidemic thresholds, booklet verification references, revocable grants, profile locations, in-app notifications, and password recovery requests require the latest schema. Confirm `DATABASE_URL` points to the intended workspace or published production database before pushing.
 - `pnpm --filter @workspace/api-server run seed` — seed development demo accounts and sample records
 - `pnpm --filter @workspace/api-server run reset-users` — destructive one-time account reset; requires `RESET_ALL_USERS=DELETE_ALL_USERS` and `ADMIN_PASSWORD`, removes all users and linked patient data/attachments, then creates only `arsenedjonkoun5@gmail.com` as admin. Do not run the demo `seed` command afterward.

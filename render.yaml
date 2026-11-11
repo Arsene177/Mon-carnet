@@ -1,0 +1,56 @@
+# Render Blueprint: the Mon carnet web service and its daily encrypted backup.
+# Step-by-step setup: docs/render.md. Values marked `sync: false` are secrets: Render asks for them
+# when the Blueprint is created and never stores them in this file.
+services:
+  - type: web
+    name: mon-carnet
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Frankfurt: close to a Supabase project in Europe (Frankfurt, eu-central-1). Use the region of
+    # your Supabase project if it is elsewhere; it cannot be changed after creation.
+    region: frankfurt
+    # Starter keeps the service always on. "free" stops it after 15 minutes without visitors (the
+    # next visit then waits about a minute): fine for trying it out, not for a clinic.
+    plan: starter
+    healthCheckPath: /api/healthz
+    autoDeploy: true
+    # Before each deploy: bring the Supabase schema up to date and close it to the public API. A
+    # failure stops the deploy and the previous version keeps running. (Paid instance types only.)
+    preDeployCommand: pnpm --filter @workspace/db run push
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      # Only for Supabase projects still on the legacy JWT secret; leave empty otherwise.
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      # Optional: Slack, Discord, Teams or webhook-to-email URL for security alerts.
+      - key: ALERT_WEBHOOK_URL
+        sync: false
+      # Proxies in front of the app; check with GET /api/client-address after deploying (docs/render.md).
+      - key: TRUST_PROXY
+        value: "1"
+
+  - type: cron
+    name: mon-carnet-backup
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: frankfurt
+    plan: starter
+    # 01:00 UTC = 02:00 in Douala.
+    schedule: "0 1 * * *"
+    dockerCommand: node --enable-source-maps artifacts/api-server/dist/backup.mjs backup --upload --out /tmp/backups
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      # At least 32 characters. Keep a copy in a password manager and on paper: without it no
+      # backup can ever be read. Never change it.
+      - key: BACKUP_ENCRYPTION_KEY
+        sync: false

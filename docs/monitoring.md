@@ -58,9 +58,9 @@ The app sends JSON with `text` (Slack, Teams) and `content` (Discord) holding on
 
 Test it: try to sign in six times with a wrong password on a test account (the sixth attempt is blocked). A message should arrive within a few seconds.
 
-### 3. Replit deployment logs
+### 3. Render logs
 
-The server writes one JSON line per request (method, route, status, time; never the body or the `Authorization` header) and logs every server error with its stack trace. Look at them in the Replit deployment's Logs tab when something goes wrong.
+The server writes one JSON line per request (method, route, status, time; never the body or the `Authorization` header) and logs every server error with its stack trace. Look at them in Render (`mon-carnet` > Logs) when something goes wrong.
 
 ### 4. Backups
 
@@ -79,4 +79,4 @@ If anything looks like a breach, follow `docs/incident-response.md`.
 
 - Alert throttling and rate limits are kept in memory per server instance. With several instances (autoscale), each sends its own alert and counts attempts separately.
 - Security events show the network address seen by the server. Behind proxies this depends on `TRUST_PROXY` being right.
-- Nothing watches the hosting provider itself (Replit outages, certificate expiry). The uptime monitor will notice the effect.
+- Nothing watches the hosting provider itself (Render or Supabase outages, certificate expiry). The uptime monitor will notice the effect.

@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/dist
+**/.tsbuildinfo
+**/tsconfig.tsbuildinfo
+supabase/.temp
+supabase/.branches
+backups
+*.dump
+*.mcbk
+.env
+.env.*

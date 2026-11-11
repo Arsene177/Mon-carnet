@@ -23,8 +23,8 @@ if (!existsSync(path.join(webDir, "index.html"))) {
 }
 const AXE = readFileSync(createRequire(import.meta.url).resolve("axe-core/axe.min.js"), "utf8");
 const API_PORT = 5900 + Math.floor(Math.random() * 300);
-const WEB_PORT = API_PORT + 400;
-const BASE = `http://127.0.0.1:${WEB_PORT}`;
+// The API server serves the built web app itself (WEB_DIST_DIR), exactly as in production on Render.
+const BASE = `http://127.0.0.1:${API_PORT}`;
 const PASSWORD = "Correct-horse-9";
 const patientEmail = `patient-a11y-${Date.now()}@test.cm`;
 const TERMS = "2026-11-draft-1";
@@ -38,7 +38,6 @@ const SCREENS = {
 
 const sql = new pg.Pool({ connectionString: DATABASE_URL });
 let apiServer;
-let webServer;
 let browser;
 const tokens = {};
 
@@ -80,31 +79,15 @@ async function createStaff(role, name, { mfa = true } = {}) {
   return token;
 }
 
-/** Serves the built web app and forwards /api to the API server, like the production router. */
-function startWebServer() {
-  const types = { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2" };
-  return new Promise((resolve) => {
-    webServer = http.createServer((req, res) => {
-      if (req.url.startsWith("/api")) {
-        const upstream = http.request({ host: "127.0.0.1", port: API_PORT, path: req.url, method: req.method, headers: req.headers }, (answer) => {
-          res.writeHead(answer.statusCode, answer.headers);
-          answer.pipe(res);
-        });
-        // Requests still in flight while the servers shut down get a plain 502.
-        upstream.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); });
-        req.pipe(upstream);
-        return;
-      }
-      let file = path.join(webDir, decodeURIComponent(req.url.split("?")[0]));
-      if (!file.startsWith(webDir) || !existsSync(file) || statSync(file).isDirectory()) file = path.join(webDir, "index.html");
-      res.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream" });
-      createReadStream(file).pipe(res);
-    }).listen(WEB_PORT, "127.0.0.1", resolve);
-  });
-}
+/** Content Security Policy refusals seen on each page; any one is reported as a problem. */
+const policyRefusals = new WeakMap();
 
 async function openPage({ token = null, width, language }) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, locale: language === "fr" ? "fr-FR" : "en-US" });
+  context.on("page", (page) => {
+    policyRefusals.set(page, []);
+    page.on("console", (message) => { if (/Content Security Policy/i.test(message.text())) policyRefusals.get(page).push(message.text()); });
+  });
   await context.addInitScript(([storedToken, lang]) => {
     // Skip the first-visit guided tour, which would cover the screen.
     for (let id = 0; id < 5000; id++) localStorage.setItem(`medichain:onboarding:v1:${id}`, "complete");
@@ -121,12 +104,15 @@ async function openPage({ token = null, width, language }) {
 async function problems(page, label) {
   await page.mouse.move(2, 2);
   await page.waitForTimeout(400);
-  await page.addScriptTag({ content: AXE });
+  // Injected through the browser's debugging channel: the page's Content Security Policy (rightly)
+  // refuses inline scripts, and the test must not weaken it.
+  await page.evaluate(AXE);
   const result = await page.evaluate(async (tags) => window.axe.run(document, { runOnly: { type: "tag", values: tags }, resultTypes: ["violations"] }), RULES);
   const found = result.violations.map((violation) =>
     `${label}: ${violation.id} (${violation.impact}) ${violation.help}\n      ${violation.nodes.slice(0, 3).map((node) => `${node.target.join(" ")} — ${(node.failureSummary ?? "").split("\n")[1]?.trim() ?? ""}`).join("\n      ")}`);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   if (overflow > 1) found.push(`${label}: content is ${overflow}px wider than the screen (reflow, WCAG 1.4.10)`);
+  for (const refusal of policyRefusals.get(page) ?? []) found.push(`${label}: blocked by the Content Security Policy: ${refusal}`);
   return found;
 }
 
@@ -148,10 +134,9 @@ async function checkWorkspace(role, width, language) {
 before(async () => {
   apiServer = spawn(process.execPath, ["dist/index.mjs"], {
     cwd: serverDir,
-    env: serverEnv(API_PORT),
+    env: serverEnv(API_PORT, { WEB_DIST_DIR: webDir }),
     stdio: ["ignore", "ignore", "inherit"],
   });
-  await startWebServer();
   for (let attempt = 0; attempt < 100; attempt++) {
     try { if ((await fetch(`${BASE}/api/healthz`)).ok) break; } catch { /* not up yet */ }
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -200,7 +185,6 @@ describe("the signed-in session in the browser", () => {
 
 after(async () => {
   await browser?.close();
-  webServer?.close();
   apiServer?.kill();
   await sql.end();
 });

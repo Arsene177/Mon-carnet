@@ -1,6 +1,6 @@
 # Supabase
 
-Mon carnet keeps its data in a Supabase project: the database (Postgres), the sign-ins (Supabase Auth) and the lab files (Supabase Storage). The app itself still runs on Replit.
+Mon carnet keeps its data in a Supabase project: the database (Postgres), the sign-ins (Supabase Auth) and the lab files (Supabase Storage). The app runs on Render (`render.yaml`, `Dockerfile`): one web service that serves the website and the API, and a daily backup job. **Step-by-step setup, with where to click: `docs/render.md`.** This page is the reference.
 
 ## What is where
 
@@ -17,17 +17,17 @@ Access tokens last about an hour; the web app renews them shortly before they ex
 
 ## Settings
 
-Replit Secrets (the API server, the scripts and the published app):
+Environment variables (on Render: each service > **Environment**; the scripts read the same names):
 
 | Secret | Value |
 | --- | --- |
-| `DATABASE_URL` | Supabase **Connect** > **Session pooler** connection string, with the database password filled in. (Replit has no IPv6, which the direct connection needs.) |
+| `DATABASE_URL` | Supabase **Connect** > **Session pooler** connection string, with the database password filled in. (The direct connection needs IPv6, which Render does not offer.) |
 | `SUPABASE_URL` | Project Settings > Data API > Project URL, e.g. `https://abcd.supabase.co` |
 | `SUPABASE_SECRET_KEY` | Project Settings > API Keys > a **secret** key (`sb_secret_...`). The legacy `service_role` key also works. Never put it anywhere else: it bypasses every protection. |
 | `SUPABASE_JWT_SECRET` | Only if the project still signs tokens with the legacy JWT secret (Project Settings > JWT Keys says "Legacy JWT secret" is in use). Projects using JWT signing keys need nothing here. The server logs an error at start-up if it cannot verify tokens. |
 | `SUPABASE_STORAGE_BUCKET`, `SUPABASE_BACKUP_BUCKET` | Optional; defaults `medical-attachments` and `backups`. |
 
-No longer used once the app runs on Supabase: `JWT_SECRET`, `SESSION_SECRET`, `MFA_ENCRYPTION_KEY`, `PRIVATE_OBJECT_DIR` (still needed once, by the copy below).
+Set by `render.yaml` or the `Dockerfile`: `TRUST_PROXY` (proxies in front of the app; check `GET /api/client-address` after deploying), `WEB_DIST_DIR` (the built web app the server serves), `PORT`, `NODE_ENV`. The backup job also needs `BACKUP_ENCRYPTION_KEY`. No longer used: `JWT_SECRET`, `SESSION_SECRET`, `MFA_ENCRYPTION_KEY`; `PRIVATE_OBJECT_DIR` only for the one-time copy below.
 
 Supabase dashboard:
 
@@ -41,17 +41,13 @@ Supabase dashboard:
 
 ## Moving from Replit to Supabase (once)
 
-Do this at a quiet time. Tell doctors and administrators beforehand that they will have to set up their authenticator app again after the move (Supabase cannot take the old authenticator secrets); patients who used two-step sign-in can turn it on again in Profile. **Passwords do not change**: everyone signs in with their current password, which moves to Supabase Auth at that first sign-in.
+Follow `docs/render.md`, Part 4. In short: the copy runs one last time inside Replit (only Replit can read its file storage), with `SOURCE_DATABASE_URL` set to the old Replit database and `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_SECRET_KEY` set to Supabase: a `--dry-run` first, then the copy, then the copy again to confirm the counts match.
 
-1. **Check the Supabase project for old open tables.** An early migration (removed from this repository) let anyone with the public key read and change every row. In Table Editor, look for `medichain_*` tables. If there are any, step 3 locks them down; the copy (step 5) refuses a project that already holds accounts, so delete those old tables first if they contain test data (SQL Editor: `drop table if exists ... cascade`).
-2. **Secrets.** In Replit Secrets, add `SOURCE_DATABASE_URL` with the **current** value of `DATABASE_URL` (the Replit database). Then set `DATABASE_URL` to the Supabase session pooler string, and add `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (and `SUPABASE_JWT_SECRET` if needed). Keep `PRIVATE_OBJECT_DIR`.
-3. **Create the schema in Supabase**: `pnpm --filter @workspace/db run push`. It ends with "Locked down N tables".
-4. **Dry run**: `pnpm --filter @workspace/api-server run migrate-to-supabase -- --dry-run`. It lists what would be copied and changes nothing.
-5. **Copy**: `pnpm --filter @workspace/api-server run migrate-to-supabase`. It copies every table keeping every id, creates a sign-in per open account, copies the lab files and checks counts and sizes. If it stops (network, timeout), run it again: it continues where it stopped. Nothing is deleted from Replit.
-6. **Publish** the app again straight away, so the published app uses the new secrets. Until then it still writes to the Replit database.
-7. **Check nothing was written to Replit in between**: run step 5 again. It must say "Row counts match for every table". If it lists differences, something was saved in the old database after the copy; contact support before going further.
-8. **Try it**: sign in as an administrator with your usual password, set up the authenticator app, open a patient's record and a lab file, look at System overview > Security events.
-9. Remove `SOURCE_DATABASE_URL`, `PRIVATE_OBJECT_DIR`, `JWT_SECRET`, `SESSION_SECRET` and `MFA_ENCRYPTION_KEY` from Replit Secrets. Keep the Replit database and files untouched for 30 days, then delete them.
+- It copies every table keeping every id, in one transaction, and checks the row counts.
+- It creates a Supabase Auth sign-in for every account that is not closed. **Passwords do not change**: each account keeps its old password hash, and its first successful sign-in moves the password to Supabase Auth.
+- **Two-step sign-in has to be set up again** (Supabase cannot take the old authenticator secrets), so it is turned off and old recovery codes are not copied. Doctors and administrators are asked to set it up at their first sign-in.
+- It copies the lab files to the private bucket and checks their sizes, then closes the tables to the public API.
+- If it stops, run it again: it continues where it stopped. Nothing is deleted from Replit.
 
 ## Local development and tests
 
