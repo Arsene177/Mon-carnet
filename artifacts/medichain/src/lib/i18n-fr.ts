@@ -1025,4 +1025,12 @@ export const fr: Record<string, string> = {
   "Doctor awaiting approval": "Médecin en attente d’approbation",
   "active": "actif",
   "suspended": "suspendu",
+  "ATTACHED DOCUMENTS": "DOCUMENTS JOINTS",
+  "{0} (download it from this record in the app)": "{0} (à télécharger depuis cette fiche dans l’application)",
+  "DIAGNOSIS": "DIAGNOSTIC",
+  "TREATMENT / PLAN": "TRAITEMENT / PLAN",
+  "MEDICATIONS": "MÉDICAMENTS",
+  "CLINICAL NOTES": "NOTES CLINIQUES",
+  "VITALS": "CONSTANTES",
+  "Too many incorrect passwords or codes. Wait 15 minutes and try again.": "Trop de mots de passe ou de codes erronés. Patientez 15 minutes et réessayez.",
 };

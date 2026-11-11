@@ -573,6 +573,36 @@ describe("fixes found in review", () => {
     assert.equal(rows[0].dob, "1985-01-01");
   });
 
+  test("emergency lookup ignores accents and special letters such as ŋ and œ", async () => {
+    const doctor = await createStaff("DOCTOR");
+    const reason = "Patient inconscient aux urgences";
+    const suffix = unique("").replace(/[^a-z0-9]/g, "");
+    for (const [stored, typed] of [[`Ŋgọc Bœuf${suffix}`, `boeuf${suffix} ngoc`], [`Ÿvette Ōkala${suffix}`, `Yvette Okala${suffix}`]]) {
+      const patient = await registerPatient({ name: stored });
+      await api("PUT", "/patient/emergency-info", { token: patient.token, body: { bloodGroup: "B+", weightKg: 60, heightCm: 160, allergies: "", emergencyContact: "+237699000002" } });
+      const found = await api("POST", "/doctor/emergency-lookup", { token: doctor.token, body: { fullName: typed, dateOfBirth: null, reason } });
+      assert.equal(found.status, 200, JSON.stringify(found.body));
+      assert.deepEqual(found.body.map((result) => result.emergencyInfo.patientId), [patient.id], `${typed} should find ${stored}`);
+    }
+  });
+
+  test("wrong passwords and codes on signed-in account actions are limited per account", async () => {
+    const patient = await registerPatient();
+    const wrong = { currentPassword: "Not-my-password-1", newPassword: "Another-pass-22" };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      assert.equal((await api("POST", "/auth/change-password", { token: patient.token, body: wrong })).status, 400);
+    }
+    // The limit is shared between actions: wrong codes count too.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      assert.equal((await api("POST", "/auth/mfa/setup", { token: patient.token, body: { password: "Not-my-password-1" } })).status, 400);
+    }
+    const blocked = await api("POST", "/auth/change-password", { token: patient.token, body: { currentPassword: PASSWORD, newPassword: "Another-pass-22" } });
+    assert.equal(blocked.status, 429);
+    // Other accounts are not affected.
+    const other = await registerPatient();
+    assert.equal((await api("POST", "/auth/change-password", { token: other.token, body: { currentPassword: PASSWORD, newPassword: "Another-pass-22" } })).status, 200);
+  });
+
   test("sign-in for an unknown email takes about as long as a wrong password", async () => {
     const patient = await registerPatient();
     const time = async (email) => {

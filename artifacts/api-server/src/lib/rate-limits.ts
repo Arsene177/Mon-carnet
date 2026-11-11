@@ -92,3 +92,21 @@ export const emergencyLookupLimiter = limiter({
     details: { doctorName: req.currentUser?.name ?? null, hospital: req.currentUser?.hospitalName ?? null },
   })),
 });
+
+/**
+ * Wrong passwords and codes on signed-in account actions (two-step sign-in setup, turning it off,
+ * new recovery codes, password change, account deletion), per account. Without it, someone holding
+ * a stolen session could try codes or passwords without limit. Use after requireAuth.
+ */
+export const accountSecretLimiter = limiter({
+  windowMs: FIFTEEN_MINUTES,
+  limit: 5,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `account:${req.currentUser?.id ?? req.ip}`,
+  message: { error: "Too many incorrect passwords or codes. Wait 15 minutes and try again." },
+  ...reportWhenBlocked("ACCOUNT_LOCKED", (req) => ({
+    subject: `account:${req.currentUser?.id ?? req.ip}`,
+    userId: req.currentUser?.id,
+    details: { userId: req.currentUser?.id ?? null },
+  })),
+});

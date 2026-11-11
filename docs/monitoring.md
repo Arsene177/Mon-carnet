@@ -8,7 +8,7 @@ Security events are recorded in the database and listed for administrators under
 
 | Event | When | Level |
 |---|---|---|
-| Account locked | 5 wrong passwords or two-step codes for one account within 15 minutes | warning |
+| Account locked | 5 wrong passwords or two-step codes for one account within 15 minutes, at sign-in or, for a signed-in account, when setting up or turning off two-step sign-in, getting new recovery codes, changing the password or requesting deletion | warning |
 | Sign-in flood | more than 30 sign-in attempts from one network address within 15 minutes | warning |
 | Emergency lookup limit | a doctor reaches 10 emergency name lookups in an hour | warning |
 | Unusual record access | a doctor opens the records of 20 or more different patients within an hour (`UNUSUAL_ACCESS_PATIENTS_PER_HOUR`) | warning |

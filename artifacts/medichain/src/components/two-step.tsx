@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import QRCode from 'qrcode';
 import { Copy, Download, ShieldCheck } from 'lucide-react';
 import {
   getGetMeQueryKey, getGetMfaStatusQueryKey, useDisableMfa, useEnableMfa, useGetMfaStatus,
@@ -52,7 +51,11 @@ export function MfaSetupFlow({ onDone, onCancel }: { onDone: () => void; onCance
 
   useEffect(() => {
     if (!setup) return;
-    QRCode.toDataURL(setup.otpauthUrl, { margin: 1, width: 200 }).then(setQr).catch(() => setQr(''));
+    // The QR code library is only needed here, so it is loaded on demand.
+    import('qrcode')
+      .then(({ default: QRCode }) => QRCode.toDataURL(setup.otpauthUrl, { margin: 1, width: 200 }))
+      .then(setQr)
+      .catch(() => setQr(''));
   }, [setup]);
 
   const submitPassword = (event: FormEvent) => {

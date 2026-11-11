@@ -119,7 +119,7 @@ import {
   accessRequestsTable,
   passwordResetRequestsTable,
 } from "@workspace/db";
-import { emergencyLookupLimiter } from "../lib/rate-limits";
+import { accountSecretLimiter, emergencyLookupLimiter } from "../lib/rate-limits";
 import { languageOf, notificationMessages } from "../lib/notification-messages";
 import {
   createAccessToken,
@@ -681,7 +681,7 @@ router.get("/auth/me", requireAuth(), async (req, res): Promise<void> => {
   res.json(GetMeResponse.parse(userResponse(user)));
 });
 
-router.post("/auth/change-password", requireAuth(), async (req, res): Promise<void> => {
+router.post("/auth/change-password", requireAuth(), accountSecretLimiter, async (req, res): Promise<void> => {
   const parsed = ChangePasswordBody.safeParse(req.body);
   if (!parsed.success) {
     invalidBody(res, "Enter your current password and a new password of at least 8 characters.");
@@ -1300,19 +1300,33 @@ router.put("/doctor/profile", requireAuth("DOCTOR"), async (req, res): Promise<v
   res.json(userResponse(updated));
 });
 
-const ACCENTED = "ÀÁÂÃÄÅàáâãäåÈÉÊËèéêëÌÍÎÏìíîïÒÓÔÕÖòóôõöÙÚÛÜùúûüÇçÑñ";
-const UNACCENTED = "AAAAAAaaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn";
 const MAX_EMERGENCY_LOOKUP_MATCHES = 3;
+
+// Letters that Unicode decomposition does not reduce to a plain letter plus an accent, so they are
+// mapped explicitly (Ŋ appears in Cameroonian names). Both cases, because lower() in a database with
+// the C locale only changes ASCII letters.
+const SPECIAL_LETTERS = "ŋŊøØđĐłŁıħĦ";
+const PLAIN_LETTERS = "nNoOdDlLihH";
+const LIGATURES: Array<[string, string]> = [["œ", "oe"], ["Œ", "oe"], ["æ", "ae"], ["Æ", "ae"], ["ß", "ss"], ["ẞ", "ss"]];
+const COMBINING_MARKS = "[\u0300-\u036f]";
 
 /** Lower-case name words without accents, sorted so that word order does not matter. */
 function nameTokens(name: string): string[] {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+  let plain = name.normalize("NFD").replace(new RegExp(COMBINING_MARKS, "g"), "");
+  for (const [index, letter] of [...SPECIAL_LETTERS].entries()) plain = plain.replaceAll(letter, PLAIN_LETTERS[index]!);
+  for (const [ligature, letters] of LIGATURES) plain = plain.replaceAll(ligature, letters);
+  return plain
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(Boolean)
     .sort();
+}
+
+/** The same normalisation as `nameTokens`, in SQL, before splitting into words. */
+function searchableNameSql(column: typeof usersTable.name) {
+  let expression = sql`translate(regexp_replace(normalize(${column}, NFD), ${COMBINING_MARKS}, '', 'g'), ${SPECIAL_LETTERS}, ${PLAIN_LETTERS})`;
+  for (const [ligature, letters] of LIGATURES) expression = sql`replace(${expression}, ${ligature}, ${letters})`;
+  return sql`lower(${expression})`;
 }
 
 router.post(
@@ -1332,7 +1346,7 @@ router.post(
       return;
     }
     const dateOfBirth = parsed.data.dateOfBirth ? parsed.data.dateOfBirth.toISOString().slice(0, 10) : null;
-    const searchableName = sql`lower(translate(${usersTable.name}, ${ACCENTED}, ${UNACCENTED}))`;
+    const searchableName = searchableNameSql(usersTable.name);
     const candidates = await db
       .select()
       .from(usersTable)

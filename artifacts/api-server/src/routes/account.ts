@@ -34,6 +34,7 @@ import {
 import { requireAuth, userResponse, verifyPassword } from "../lib/medichain-auth";
 import { languageOf, notificationMessages } from "../lib/notification-messages";
 import { recordSecurityEvent } from "../lib/security-events";
+import { accountSecretLimiter } from "../lib/rate-limits";
 import { createSignedObjectUrl, emergencyResponse, invalidBody, isUniqueViolation, recordsResponse } from "./medichain";
 
 const router: IRouter = Router();
@@ -177,7 +178,7 @@ router.get("/account/deletion-request", requireAuth(), async (req, res): Promise
   res.json(GetMyDeletionRequestResponse.parse(latest ? deletionResponse(latest) : null));
 });
 
-router.post("/account/deletion-request", requireAuth(), async (req, res): Promise<void> => {
+router.post("/account/deletion-request", requireAuth(), accountSecretLimiter, async (req, res): Promise<void> => {
   const parsed = RequestAccountDeletionBody.safeParse(req.body);
   if (!parsed.success) {
     invalidBody(res, "Enter your password to confirm the request.");

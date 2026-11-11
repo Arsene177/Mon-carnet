@@ -72,6 +72,19 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Libraries change less often than the app, so keeping them in their own files lets
+        // browsers reuse them from cache after an update, and keeps each file under 500 kB.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          // Loaded only when two-step sign-in is set up.
+          if (/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:qrcode|dijkstrajs|pngjs|encode-utf8)\//.test(id)) return 'qrcode';
+          if (/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:react|react-dom|scheduler)\//.test(id)) return 'react';
+          return 'vendor';
+        },
+      },
+    },
   },
   server: {
     port,

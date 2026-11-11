@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
@@ -30,11 +30,11 @@ import type {
   AdminDeletionRequest, MedicalRecord, MedicalRecordInput, PatientBookletAccess, PatientSearchResult, PossibleDuplicateGroup, SecurityEvent, MedicalRecordRecordType, PatientProfile, User,
 } from '@workspace/api-client-react';
 import { CAMEROON_ARRONDISSEMENTS, CAMEROON_REGIONS, LEGAL_DOCUMENTS_VERSION } from '@workspace/api-zod';
-import { LegalPage } from '@/pages/legal';
 import { Form } from '@/components/ui/form';
 import { useLocation } from 'wouter';
 import { OnboardingGuide } from '@/components/onboarding-guide';
 import { downloadMedicalRecord } from '@/lib/download-medical-record';
+import { splitRecordAttachments } from '@/lib/record-attachments';
 import type { WorkspaceTab } from '@/lib/navigation';
 import { LANGUAGES, getLanguage, locale, setLanguage, t, useLanguage, type Language } from '@/lib/i18n';
 import { errText } from '@/lib/error-text';
@@ -581,7 +581,7 @@ function Router() {
       window.clearInterval(interval);
     };
   }, [token, setLocation]);
-  if (location === '/privacy' || location === '/terms') return <LegalPage kind={location === '/privacy' ? 'privacy' : 'terms'}/>;
+  if (location === '/privacy' || location === '/terms') return <Suspense fallback={<LoadingScreen />}><LegalPage kind={location === '/privacy' ? 'privacy' : 'terms'}/></Suspense>;
   if (location === '/' || location === '/login' || location === '/register' || !token) {
     if (token && me.data) {
       const target = me.data.role === 'ADMIN' ? '/admin' : me.data.role === 'DOCTOR' || me.data.role === 'PENDING_DOCTOR' ? '/doctor' : '/patient';
@@ -608,6 +608,8 @@ function Router() {
 function needsConsent(user: User) {
   return user.termsVersion !== LEGAL_DOCUMENTS_VERSION || (user.role === 'PATIENT' && !user.healthDataConsentAt);
 }
+
+const LegalPage = lazy(() => import('@/pages/legal').then((module) => ({ default: module.LegalPage })));
 
 function LegalLinks() {
   return <><a href="/terms" target="_blank" rel="noopener">{t('Terms of use')}</a> · <a href="/privacy" target="_blank" rel="noopener">{t('Privacy policy')}</a></>;
@@ -1340,17 +1342,6 @@ function DoctorPatientSummary({ records }: { records: MedicalRecord[] }) {
       <p className="field-note summary-caveat">{t("This is a factual summary of saved entries, not a medical assessment. Medication details are not reconciled against an external medication list.")}</p>
     </div>
   </section>;
-}
-
-/**
- * Lab-result files are stored in a record's notes as "Attachment: <name>" followed by
- * "Attachment object: <path>" (up to five per record). Returns the notes without those lines
- * and the attached files in order.
- */
-function splitRecordAttachments(text: string): { notes: string; attachments: Array<{ fileName: string; objectPath: string }> } {
-  const pattern = /(?:^|\r?\n)Attachment: ([^\r\n]*)\r?\nAttachment object: (\/objects\/uploads\/[0-9a-f-]{36})/g;
-  const attachments = Array.from(text.matchAll(pattern), (match) => ({ fileName: match[1].trim(), objectPath: match[2] }));
-  return { notes: text.replace(pattern, '').trim(), attachments };
 }
 
 function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFollowUp, allowDownload = false, patientDisplayId }: { record: MedicalRecord; records: MedicalRecord[]; onClose: () => void; onOpenRecord: (record: MedicalRecord) => void; onCreateFollowUp?: (record: MedicalRecord) => void; allowDownload?: boolean; patientDisplayId?: string }) {
