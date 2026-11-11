@@ -24,7 +24,8 @@ function RecoveryCodes({ codes, onDone, doneLabel }: { codes: string[]; onDone: 
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
     const link = Object.assign(document.createElement('a'), { href: url, download: 'mon-carnet-recovery-codes.txt' });
     link.click();
-    URL.revokeObjectURL(url);
+    // Revoking at once can cancel the download in some browsers.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <div>
     <p className="field-note" style={{ marginBottom: 12 }}>{t('If you lose your phone, sign in with one of these codes instead. Each code works once. Keep them somewhere safe, away from your phone. They will not be shown again.')}</p>

@@ -1019,4 +1019,10 @@ export const fr: Record<string, string> = {
   "Show all {0}": "Afficher les {0}",
   "No security events": "Aucun événement de sécurité",
   "Nothing suspicious or sensitive has been recorded.": "Rien de suspect ou de sensible n’a été enregistré.",
+  "{0} record": "Fiche {0}",
+  "Attached documents": "Documents joints",
+  "Directory CSV downloaded. Exports are limited to 5,000 entries.": "Annuaire CSV téléchargé. Les exports sont limités à 5 000 entrées.",
+  "Doctor awaiting approval": "Médecin en attente d’approbation",
+  "active": "actif",
+  "suspended": "suspendu",
 };

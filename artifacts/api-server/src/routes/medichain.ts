@@ -237,6 +237,11 @@ async function reportUnusualRecordAccess(doctor: { id: number; name: string; hos
   }
 }
 
+/** A LIKE/ILIKE pattern that matches `text` anywhere, with `%`, `_` and `\` taken literally. */
+function containsPattern(text: string): string {
+  return `%${text.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+}
+
 export function invalidBody(res: Response, message: string) {
   res.status(400).json({ error: message });
 }
@@ -550,7 +555,9 @@ router.post("/auth/register", async (req, res): Promise<void> => {
         patientAccessId: patientDisplayId,
         dateOfBirth:
           input.role === "PATIENT" && input.dateOfBirth
-            ? input.dateOfBirth.toISOString().slice(0, 10)
+            ? input.dateOfBirthEstimated
+              ? `${input.dateOfBirth.getUTCFullYear()}-01-01`
+              : input.dateOfBirth.toISOString().slice(0, 10)
             : null,
         contactInfo: input.contactInfo?.trim() || null,
         preferredLanguage: input.preferredLanguage ?? "fr",
@@ -578,6 +585,8 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   }
 });
 
+const UNKNOWN_ACCOUNT_HASH = hashPassword(randomBytes(16).toString("hex"));
+
 router.post("/auth/login", async (req, res): Promise<void> => {
   const parsed = LoginBody.safeParse(req.body);
   if (!parsed.success) {
@@ -586,7 +595,10 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
   const email = parsed.data.email.trim().toLowerCase();
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-  if (!user || !user.isActive || !verifyPassword(parsed.data.password, user.passwordHash)) {
+  // Check a password even when there is no account, so the response time does not reveal
+  // which emails are registered.
+  const passwordMatches = verifyPassword(parsed.data.password, user?.passwordHash ?? UNKNOWN_ACCOUNT_HASH);
+  if (!user || !user.isActive || !passwordMatches) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
@@ -1538,7 +1550,7 @@ router.get(
       res.status(400).json({ error: "Enter at least two characters to search." });
       return;
     }
-    const pattern = `%${parsed.data.query.trim()}%`;
+    const pattern = containsPattern(parsed.data.query.trim());
     const rows = await db
       .select()
       .from(diseaseCodesTable)
@@ -1762,11 +1774,16 @@ router.get(
       res.status(403).json({ error: "Patient access is not currently granted or has expired." });
       return;
     }
-    const [record] = await db.select({ id: medicalRecordsTable.id })
-      .from(medicalRecordsTable)
+    // The file must be attached to a saved record of this patient. Matching the stored attachment
+    // (not the record text) stops a reference to another patient's file being typed into a note.
+    const [record] = await db.select({ id: medicalAttachmentsTable.recordId })
+      .from(medicalAttachmentsTable)
+      .innerJoin(medicalRecordsTable, eq(medicalAttachmentsTable.recordId, medicalRecordsTable.id))
       .where(and(
+        eq(medicalAttachmentsTable.objectPath, objectPath),
+        eq(medicalAttachmentsTable.patientId, patientId),
+        eq(medicalAttachmentsTable.status, "ATTACHED"),
         eq(medicalRecordsTable.patientId, patientId),
-        ilike(medicalRecordsTable.notes, `%${objectPath}%`),
       ))
       .limit(1);
     if (!record) {
@@ -1805,10 +1822,16 @@ router.get(
     const [patient] = await db
       .select()
       .from(usersTable)
-      .where(and(eq(usersTable.id, parsed.data.patientId), eq(usersTable.role, "PATIENT")))
+      .where(and(eq(usersTable.id, parsed.data.patientId), eq(usersTable.role, "PATIENT"), eq(usersTable.isActive, true)))
       .limit(1);
     if (!patient) {
       res.status(404).json({ error: "Patient not found" });
+      return;
+    }
+    // Without a grant, doctors use the emergency lookup, which needs the full name and a reason,
+    // is rate-limited and tells the patient.
+    if (!(await getActivePermission(patient.id, req.currentUser!.id))) {
+      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
       return;
     }
     const [info] = await db
@@ -2371,7 +2394,7 @@ router.post("/admin/doctors/:doctorId/revoke", requireAuth("ADMIN"), async (req,
   }
   const [doctor] = await db
     .update(usersTable)
-    .set({ isActive: false, updatedAt: new Date() })
+    .set({ isActive: false, sessionVersion: nextSessionVersion(), updatedAt: new Date() })
     .where(
       and(
         eq(usersTable.id, parsed.data.doctorId),
@@ -2445,7 +2468,12 @@ router.put("/admin/users/:userId/status", requireAuth("ADMIN"), async (req, res)
   }
   const [updated] = await db
     .update(usersTable)
-    .set({ isActive: parsedBody.data.isActive, updatedAt: new Date() })
+    .set({
+      isActive: parsedBody.data.isActive,
+      // Suspension ends every session; otherwise tokens issued before it would work again on restore.
+      ...(parsedBody.data.isActive ? {} : { sessionVersion: nextSessionVersion() }),
+      updatedAt: new Date(),
+    })
     .where(eq(usersTable.id, target.id))
     .returning();
   if (!updated) {
@@ -2600,7 +2628,7 @@ router.get("/admin/search-user", requireAuth("ADMIN"), async (req, res): Promise
     res.status(400).json({ error: "Enter at least two characters to search." });
     return;
   }
-  const query = `%${parsed.data.query.trim()}%`;
+  const query = containsPattern(parsed.data.query.trim());
   const users = await db
     .select()
     .from(usersTable)
@@ -2673,6 +2701,7 @@ router.post("/admin/notifications", requireAuth("ADMIN"), async (req, res): Prom
   if (notice.targetType === "ALL") {
     const users = await db.select({ id: usersTable.id }).from(usersTable).where(and(
       eq(usersTable.isActive, true),
+      ne(usersTable.role, "ADMIN"),
     ));
     recipientIds = users.map((user) => user.id);
   } else if (notice.targetType === "REGION" || notice.targetType === "ARRONDISSEMENT") {
@@ -2686,6 +2715,7 @@ router.post("/admin/notifications", requireAuth("ADMIN"), async (req, res): Prom
     }
     const users = await db.select({ id: usersTable.id }).from(usersTable).where(and(
       eq(usersTable.isActive, true),
+      ne(usersTable.role, "ADMIN"),
       eq(usersTable.locationRegion, region!),
       ...(arrondissement ? [eq(usersTable.locationArrondissement, arrondissement)] : []),
     ));
@@ -2699,6 +2729,7 @@ router.post("/admin/notifications", requireAuth("ADMIN"), async (req, res): Prom
     const users = await db.select({ id: usersTable.id }).from(usersTable).where(and(
       inArray(usersTable.id, requestedIds),
       eq(usersTable.isActive, true),
+      ne(usersTable.role, "ADMIN"),
     ));
     if (users.length !== requestedIds.length) {
       invalidBody(res, "One or more selected users are unavailable or are not eligible to receive notices.");

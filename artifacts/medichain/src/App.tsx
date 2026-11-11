@@ -862,8 +862,8 @@ function PatientBookletPrint({ user, patientDisplayId, emergency, records, verif
     <section className="booklet-records">
       <h2>{t("Medical record history")}</h2>
       {records.length === 0 ? <p>{t("No medical records are currently available.")}</p> : records.map((record) => {
-        const attachments = Array.from(record.notes.matchAll(/(?:^|\r?\n)Attachment: ([^\r\n]+)/g), (match) => match[1]);
-        const notes = record.notes.replace(/(?:^|\r?\n)Attachment: [^\r\n]*\r?\nAttachment object: [^\r\n]*/g, '').trim();
+        const { notes, attachments: attachedFiles } = splitRecordAttachments(record.notes);
+        const attachments = attachedFiles.map((attachment) => attachment.fileName);
         return <article className="booklet-record" key={record.id}>
           <h3>{t(record.recordType)}</h3>
           <p className="booklet-record-byline">{t("Entered by")} {record.doctorName} · {dateLabel(record.createdAt)} {t("· Record #")}{record.id}</p>
@@ -1342,13 +1342,23 @@ function DoctorPatientSummary({ records }: { records: MedicalRecord[] }) {
   </section>;
 }
 
+/**
+ * Lab-result files are stored in a record's notes as "Attachment: <name>" followed by
+ * "Attachment object: <path>" (up to five per record). Returns the notes without those lines
+ * and the attached files in order.
+ */
+function splitRecordAttachments(text: string): { notes: string; attachments: Array<{ fileName: string; objectPath: string }> } {
+  const pattern = /(?:^|\r?\n)Attachment: ([^\r\n]*)\r?\nAttachment object: (\/objects\/uploads\/[0-9a-f-]{36})/g;
+  const attachments = Array.from(text.matchAll(pattern), (match) => ({ fileName: match[1].trim(), objectPath: match[2] }));
+  return { notes: text.replace(pattern, '').trim(), attachments };
+}
+
 function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFollowUp, allowDownload = false, patientDisplayId }: { record: MedicalRecord; records: MedicalRecord[]; onClose: () => void; onOpenRecord: (record: MedicalRecord) => void; onCreateFollowUp?: (record: MedicalRecord) => void; allowDownload?: boolean; patientDisplayId?: string }) {
   const vitals = record.vitals;
-  const attachmentPath = record.notes.match(/Attachment object: (\/objects\/uploads\/[0-9a-f-]{36})/)?.[1];
-  const attachmentName = record.notes.match(/Attachment: (.+)/)?.[1];
+  const { notes: clinicalNotes, attachments } = splitRecordAttachments(record.notes);
   const parentRecord = records.find((item) => item.id === record.followUpToRecordId);
   const followUps = records.filter((item) => item.followUpToRecordId === record.id);
-  return <Modal title={`${record.recordType} record`} onClose={onClose}>
+  return <Modal title={t("{0} record", { 0: t(record.recordType) })} onClose={onClose}>
     <div className="record-details" data-testid={`record-details-${record.id}`}>
       <div className="record-detail-byline"><span className="tag">{t("Entered by")} {record.doctorName}</span><div className="record-detail-actions"><time>{dateLabel(record.createdAt)}</time>{allowDownload && <button type="button" className="btn secondary small no-print" onClick={() => downloadMedicalRecord(record, patientDisplayId)} data-testid={`button-download-record-${record.id}`}><Download size={13}/> {t("Download .txt")}</button>}</div></div>
       <div className="notice record-readonly-note">{onCreateFollowUp ? t("This record is read-only. Add a linked follow-up to document a correction or new information.") : t("This record is read-only. Doctors add corrections or new information as linked follow-up records.")}</div>
@@ -1371,8 +1381,8 @@ function RecordDetailsModal({ record, records, onClose, onOpenRecord, onCreateFo
        })}</section>}
       <section className="record-detail-section"><h3>{t("Treatment / plan")}</h3><p>{record.treatment || t("No treatment or plan documented.")}</p></section>
       <section className="record-detail-section"><h3>{t("Medications")}</h3><p>{record.medications.length ? record.medications.join(', ') : t("No medications documented.")}</p></section>
-      <section className="record-detail-section"><h3>{t("Clinical notes")}</h3><p>{record.notes || t("No additional notes.")}</p></section>
-       {attachmentPath && <section className="record-detail-section"><h3>{t("Attached document")}</h3><AttachmentDownloadLink patientId={record.patientId} objectPath={attachmentPath} fileName={attachmentName || t("Lab report")}/></section>}
+      <section className="record-detail-section"><h3>{t("Clinical notes")}</h3><p>{clinicalNotes || t("No additional notes.")}</p></section>
+       {attachments.length > 0 && <section className="record-detail-section"><h3>{attachments.length > 1 ? t("Attached documents") : t("Attached document")}</h3>{attachments.map((attachment) => <div key={attachment.objectPath}><AttachmentDownloadLink patientId={record.patientId} objectPath={attachment.objectPath} fileName={attachment.fileName || t("Lab report")}/></div>)}</section>}
       <section className="record-detail-section"><h3>{t("Vitals")}</h3>
         <div className="record-vitals">
           <div><span>{t("Blood pressure")}</span><strong>{vitals.bloodPressure || t("Not recorded")}</strong></div>
@@ -2203,8 +2213,8 @@ function AdminDirectoryNotices() {
       link.href = url;
       link.download = `mon-carnet-${kind.toLowerCase()}-directory.csv`;
       link.click();
-      URL.revokeObjectURL(url);
-      setStatus('Directory CSV downloaded. Exports are limited to 5,000 entries.');
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatus(t("Directory CSV downloaded. Exports are limited to 5,000 entries."));
     } catch (cause) {
       setStatus(errText(cause));
       setStatusError(true);
@@ -2303,11 +2313,18 @@ function AdminDirectoryNotices() {
   </>;
 }
 
+const ROLE_LABELS: Record<User['role'], () => string> = {
+  PATIENT: () => t("Patient"),
+  PENDING_DOCTOR: () => t("Doctor awaiting approval"),
+  DOCTOR: () => t("Doctor"),
+  ADMIN: () => t("Administrator"),
+};
+
 function SearchField({ value, onChange, placeholder, testId }: { value: string; onChange: (value: string) => void; placeholder: string; testId: string }) {
   return <div className="searchbox"><Search size={15} color="#81918c"/><input type="search" value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} data-testid={testId}/></div>;
 }
 function UserResult({ user, action }: { user: User; action: ReactNode }) {
-  return <div className="data-row user-result" data-testid={`user-result-${user.id}`}><div className="person-cell"><div className="avatar">{initials(user.name)}</div><span>{user.name}{user.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> {t("Certified")}</span>}<small style={{display:'block',fontWeight:400,color:'#606e68',marginTop:3}}>{user.email}</small>{(user.role==='DOCTOR'||user.role==='PENDING_DOCTOR')&&<small style={{display:'block',fontWeight:400,color:'#5c6d7d',marginTop:3}}>{t("Medical number:")} {user.professionalMedicalNumber||t("Not submitted")} · {user.doctorVerified?t("Verified"):t("Not verified")}</small>}</span></div><span className={user.status==='PENDING'||!user.isActive?'tag warning':'tag'}>{user.role.replaceAll('_',' ')} · {user.isActive?user.status.toLowerCase():'suspended'}</span>{action}</div>;
+  return <div className="data-row user-result" data-testid={`user-result-${user.id}`}><div className="person-cell"><div className="avatar">{initials(user.name)}</div><span>{user.name}{user.doctorVerified&&<span className="tag certified"><BadgeCheck size={12}/> {t("Certified")}</span>}<small style={{display:'block',fontWeight:400,color:'#606e68',marginTop:3}}>{user.email}</small>{(user.role==='DOCTOR'||user.role==='PENDING_DOCTOR')&&<small style={{display:'block',fontWeight:400,color:'#5c6d7d',marginTop:3}}>{t("Medical number:")} {user.professionalMedicalNumber||t("Not submitted")} · {user.doctorVerified?t("Verified"):t("Not verified")}</small>}</span></div><span className={user.status==='PENDING'||!user.isActive?'tag warning':'tag'}>{ROLE_LABELS[user.role]()} · {user.isActive?(user.status==='PENDING'?t("pending"):t("active")):t("suspended")}</span>{action}</div>;
 }
 
 export default App;
