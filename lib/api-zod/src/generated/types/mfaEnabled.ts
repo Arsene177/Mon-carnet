@@ -9,4 +9,6 @@
 export interface MfaEnabled {
   recoveryCodes: string[];
   token: string;
+  refreshToken: string;
+  expiresAt: Date;
 }

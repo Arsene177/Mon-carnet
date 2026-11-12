@@ -2,12 +2,12 @@
 // the reflow rule (no sideways scrolling at 320 px wide, which is what 400% zoom looks like).
 //
 // Needs the built web app (pnpm --filter @workspace/medichain run build), the built API server,
-// a Chromium for Playwright, and TEST_DATABASE_URL like the other tests:
+// a Chromium for Playwright, and the local Supabase stack like the other tests (tests/supabase-test-env.mjs):
 //   pnpm --filter @workspace/api-server run test:accessibility
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createHmac, randomBytes, scryptSync } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { existsSync, readFileSync, createReadStream, statSync } from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -15,11 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { chromium } from "playwright";
-
-const DATABASE_URL = process.env.TEST_DATABASE_URL;
-if (!DATABASE_URL || !/test/i.test(new URL(DATABASE_URL).pathname)) {
-  throw new Error("Set TEST_DATABASE_URL to a disposable database whose name contains \"test\".");
-}
+import { DATABASE_URL, insertStaff, serverEnv } from "../supabase-test-env.mjs";
 const serverDir = fileURLToPath(new URL("../..", import.meta.url));
 const webDir = path.resolve(serverDir, "../medichain/dist/public");
 if (!existsSync(path.join(webDir, "index.html"))) {
@@ -27,9 +23,10 @@ if (!existsSync(path.join(webDir, "index.html"))) {
 }
 const AXE = readFileSync(createRequire(import.meta.url).resolve("axe-core/axe.min.js"), "utf8");
 const API_PORT = 5900 + Math.floor(Math.random() * 300);
-const WEB_PORT = API_PORT + 400;
-const BASE = `http://127.0.0.1:${WEB_PORT}`;
+// The API server serves the built web app itself (WEB_DIST_DIR), exactly as in production on Render.
+const BASE = `http://127.0.0.1:${API_PORT}`;
 const PASSWORD = "Correct-horse-9";
+const patientEmail = `patient-a11y-${Date.now()}@test.cm`;
 const TERMS = "2026-11-draft-1";
 const RULES = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
@@ -41,7 +38,6 @@ const SCREENS = {
 
 const sql = new pg.Pool({ connectionString: DATABASE_URL });
 let apiServer;
-let webServer;
 let browser;
 const tokens = {};
 
@@ -75,12 +71,7 @@ async function api(method, route, { token, body } = {}) {
 /** Doctors and administrators, inserted as an administrator would approve them, with two-step sign-in on. */
 async function createStaff(role, name, { mfa = true } = {}) {
   const email = `${role.toLowerCase()}-a11y-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.cm`;
-  const salt = randomBytes(16).toString("hex");
-  await sql.query(
-    `insert into medichain_users (email, password_hash, role, name, hospital_name, professional_medical_number, doctor_verified, contact_info, terms_version, terms_accepted_at)
-     values ($1, $2, $3, $4, $5, $6, true, '+237677000000', $7, now())`,
-    [email, `scrypt$${salt}$${scryptSync(PASSWORD, salt, 64).toString("hex")}`, role, name, role === "ADMIN" ? null : "Hôpital Laquintinie", role === "ADMIN" ? null : "ONMC-1234", TERMS],
-  );
+  await insertStaff(sql, { email, password: PASSWORD, role, name, terms: TERMS });
   let { token } = await api("POST", "/auth/login", { body: { email, password: PASSWORD } });
   if (!mfa) return token;
   const setup = await api("POST", "/auth/mfa/setup", { token, body: { password: PASSWORD } });
@@ -88,31 +79,15 @@ async function createStaff(role, name, { mfa = true } = {}) {
   return token;
 }
 
-/** Serves the built web app and forwards /api to the API server, like the production router. */
-function startWebServer() {
-  const types = { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2" };
-  return new Promise((resolve) => {
-    webServer = http.createServer((req, res) => {
-      if (req.url.startsWith("/api")) {
-        const upstream = http.request({ host: "127.0.0.1", port: API_PORT, path: req.url, method: req.method, headers: req.headers }, (answer) => {
-          res.writeHead(answer.statusCode, answer.headers);
-          answer.pipe(res);
-        });
-        // Requests still in flight while the servers shut down get a plain 502.
-        upstream.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); });
-        req.pipe(upstream);
-        return;
-      }
-      let file = path.join(webDir, decodeURIComponent(req.url.split("?")[0]));
-      if (!file.startsWith(webDir) || !existsSync(file) || statSync(file).isDirectory()) file = path.join(webDir, "index.html");
-      res.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream" });
-      createReadStream(file).pipe(res);
-    }).listen(WEB_PORT, "127.0.0.1", resolve);
-  });
-}
+/** Content Security Policy refusals seen on each page; any one is reported as a problem. */
+const policyRefusals = new WeakMap();
 
 async function openPage({ token = null, width, language }) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, locale: language === "fr" ? "fr-FR" : "en-US" });
+  context.on("page", (page) => {
+    policyRefusals.set(page, []);
+    page.on("console", (message) => { if (/Content Security Policy/i.test(message.text())) policyRefusals.get(page).push(message.text()); });
+  });
   await context.addInitScript(([storedToken, lang]) => {
     // Skip the first-visit guided tour, which would cover the screen.
     for (let id = 0; id < 5000; id++) localStorage.setItem(`medichain:onboarding:v1:${id}`, "complete");
@@ -129,12 +104,15 @@ async function openPage({ token = null, width, language }) {
 async function problems(page, label) {
   await page.mouse.move(2, 2);
   await page.waitForTimeout(400);
-  await page.addScriptTag({ content: AXE });
+  // Injected through the browser's debugging channel: the page's Content Security Policy (rightly)
+  // refuses inline scripts, and the test must not weaken it.
+  await page.evaluate(AXE);
   const result = await page.evaluate(async (tags) => window.axe.run(document, { runOnly: { type: "tag", values: tags }, resultTypes: ["violations"] }), RULES);
   const found = result.violations.map((violation) =>
     `${label}: ${violation.id} (${violation.impact}) ${violation.help}\n      ${violation.nodes.slice(0, 3).map((node) => `${node.target.join(" ")} — ${(node.failureSummary ?? "").split("\n")[1]?.trim() ?? ""}`).join("\n      ")}`);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   if (overflow > 1) found.push(`${label}: content is ${overflow}px wider than the screen (reflow, WCAG 1.4.10)`);
+  for (const refusal of policyRefusals.get(page) ?? []) found.push(`${label}: blocked by the Content Security Policy: ${refusal}`);
   return found;
 }
 
@@ -156,16 +134,15 @@ async function checkWorkspace(role, width, language) {
 before(async () => {
   apiServer = spawn(process.execPath, ["dist/index.mjs"], {
     cwd: serverDir,
-    env: { ...process.env, DATABASE_URL, PORT: String(API_PORT), JWT_SECRET: randomBytes(24).toString("hex"), NODE_ENV: "test", TRUST_PROXY: "1", LOG_LEVEL: "warn" },
+    env: serverEnv(API_PORT, { WEB_DIST_DIR: webDir }),
     stdio: ["ignore", "ignore", "inherit"],
   });
-  await startWebServer();
   for (let attempt = 0; attempt < 100; attempt++) {
     try { if ((await fetch(`${BASE}/api/healthz`)).ok) break; } catch { /* not up yet */ }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   const patient = await api("POST", "/auth/register", {
-    body: { name: "Awa Ngono", email: `patient-a11y-${Date.now()}@test.cm`, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
+    body: { name: "Awa Ngono", email: patientEmail, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
   });
   tokens.patient = patient.token;
   await api("PUT", "/patient/emergency-info", { token: tokens.patient, body: { bloodGroup: "O+", weightKg: 62, heightCm: 165, allergies: "Pénicilline", emergencyContact: "Paul Ngono +237 699 00 00 00" } });
@@ -176,9 +153,38 @@ before(async () => {
   browser = await chromium.launch();
 });
 
+describe("the signed-in session in the browser", () => {
+  test("renews the access token before it expires, and signing out ends the session on the server", async () => {
+    const page = await openPage({ width: 1280, language: "en" });
+    await page.goto(BASE + "/login");
+    await page.getByTestId("input-email").fill(patientEmail);
+    await page.getByTestId("input-password").fill(PASSWORD);
+    await page.getByTestId("button-auth-submit").click();
+    await page.getByTestId("nav-profile").waitFor({ state: "attached", timeout: 15_000 });
+    const first = await page.evaluate(() => localStorage.getItem("medichain_token"));
+    assert.ok(first && await page.evaluate(() => localStorage.getItem("medichain_refresh_token")), "access and refresh tokens are kept");
+    // Pretend the access token expires in a minute: the next request renews it first.
+    await page.evaluate(() => localStorage.setItem("medichain_token_expires_at", String(Date.now() + 60_000)));
+    const renewed = page.waitForResponse((response) => response.url().endsWith("/api/auth/refresh") && response.status() === 200);
+    await page.getByTestId("nav-profile").evaluate((element) => element.click());
+    await renewed;
+    // The renewed session expires in about an hour again. (Within the same second, Supabase can
+    // return the same access token, so the expiry is what shows the renewal.)
+    await page.waitForFunction(() => Number(localStorage.getItem("medichain_token_expires_at")) > Date.now() + 30 * 60_000);
+    const second = await page.evaluate(() => localStorage.getItem("medichain_token"));
+    const meStatus = async (token) => (await fetch(`${BASE}/api/auth/me`, { headers: { authorization: `Bearer ${token}` } })).status;
+    assert.equal(await meStatus(second), 200);
+    // Signing out ends the session on the server, not only in this browser.
+    const signedOut = page.waitForResponse((response) => response.url().endsWith("/api/auth/sign-out"));
+    await page.getByTestId("button-signout-top").evaluate((element) => element.click());
+    assert.equal((await signedOut).status(), 204);
+    assert.equal(await meStatus(second), 401);
+    await page.context().close();
+  });
+});
+
 after(async () => {
   await browser?.close();
-  webServer?.close();
   apiServer?.kill();
   await sql.end();
 });

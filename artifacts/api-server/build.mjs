@@ -20,6 +20,7 @@ async function buildAll() {
       path.resolve(artifactDir, "src/seed.ts"),
       path.resolve(artifactDir, "src/reset-users.ts"),
       path.resolve(artifactDir, "src/backup.ts"),
+      path.resolve(artifactDir, "src/migrate-to-supabase.ts"),
     ],
     platform: "node",
     bundle: true,

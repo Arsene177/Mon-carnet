@@ -5,10 +5,16 @@
 //   pnpm --filter @workspace/api-server run backup:restore --file FILE --target-database-url URL [--replace-existing-data] [--restore-attachments]
 //   pnpm --filter @workspace/api-server run backup:download --name NAME [--out DIR]
 //
-// Needs BACKUP_ENCRYPTION_KEY (at least 32 characters) for every command, DATABASE_URL for
-// `backup`, and pg_dump / pg_restore (PostgreSQL 16 client tools) on the PATH. Attached files
-// are read and written through private object storage (PRIVATE_OBJECT_DIR). See
-// docs/backup-and-restore.md for the schedule and the restore procedure.
+// Needs BACKUP_ENCRYPTION_KEY (at least 32 characters) for every command, DATABASE_URL (the
+// Supabase database) for `backup`, and pg_dump / pg_restore of the same major version as the
+// database (PostgreSQL 17 for new Supabase projects) on the PATH. Attached files and uploaded
+// backups are read and written in Supabase Storage (SUPABASE_URL, SUPABASE_SECRET_KEY): files in
+// the lab-file bucket, backups in a separate private bucket (SUPABASE_BACKUP_BUCKET, default
+// "backups"). See docs/backup-and-restore.md for the schedule and the restore procedure.
+//
+// A backup holds the app's tables (the public schema) and, separately, the sign-in data Supabase
+// Auth keeps for them: users with their password hashes, identities and authenticator factors.
+// Sessions are not kept, so everyone signs in again after a restore.
 import { spawn } from "node:child_process";
 import {
   createCipheriv,
@@ -21,23 +27,29 @@ import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import pg from "pg";
-import { attachmentObjectName, privateStorageRoot, signedStorageUrl } from "./lib/object-storage";
+import { readStoredFile, writeStoredFile } from "./lib/object-storage";
+import { downloadObject, ensureStorageBucket, uploadObject } from "./lib/supabase";
+import { LOCKDOWN_SQL } from "./lib/lockdown-sql";
+
+/** Supabase Auth tables a backup keeps (data only; the tables belong to Supabase). */
+const AUTH_TABLES = ["auth.users", "auth.identities", "auth.mfa_factors"];
+const backupBucket = () => process.env.SUPABASE_BACKUP_BUCKET ?? "backups";
 
 const MAGIC = Buffer.from("MCBK1");
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const HEADER_BYTES = MAGIC.length + SALT_BYTES + IV_BYTES;
-const FORMAT_VERSION = 1;
+const FORMAT_VERSION = 2;
 
 type Manifest = {
   formatVersion: number;
   createdAt: string;
   pgDumpVersion: string;
   tableRowCounts: Record<string, number>;
+  authUserCount: number;
   attachments: { objectPath: string; file: string; size: number; sha256: string }[];
   attachmentsSkipped: boolean;
 };
@@ -184,38 +196,17 @@ async function unpack(file: string): Promise<{ dir: string; manifest: Manifest }
   return { dir, manifest };
 }
 
-// ---- Storage -------------------------------------------------------------------------------
+// ---- Storage ---------------------------------------------------------------------------------
 
-function backupObjectName(name: string): { bucketName: string; objectName: string } {
-  const root = privateStorageRoot();
-  if (!root) throw new UsageError("PRIVATE_OBJECT_DIR is not set, so backups cannot be stored in object storage.");
+function checkBackupName(name: string): string {
   if (!/^mon-carnet-backup-[0-9TZ-]+\.mcbk$/.test(name)) throw new UsageError("That is not a backup file name.");
-  return { bucketName: root.bucketName, objectName: [root.directory, "backups", name].filter(Boolean).join("/") };
+  return name;
 }
 
-async function transfer(url: string, init: RequestInit & { duplex?: "half" }, what: string): Promise<Response> {
-  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(10 * 60_000) });
-  if (!response.ok) throw new Error(`${what} failed with HTTP ${response.status}.`);
-  return response;
+async function authUserCount(client: pg.ClientBase): Promise<number> {
+  return (await client.query<{ n: number }>("select count(*)::int as n from auth.users")).rows[0]!.n;
 }
 
-async function uploadFile(file: string, bucketName: string, objectName: string, contentType: string): Promise<void> {
-  const url = await signedStorageUrl(bucketName, objectName, "PUT", 15 * 60);
-  const { size } = await stat(file);
-  await transfer(url, {
-    method: "PUT",
-    headers: { "Content-Type": contentType, "Content-Length": String(size) },
-    body: Readable.toWeb(createReadStream(file)) as ReadableStream,
-    duplex: "half",
-  }, `Uploading ${objectName}`);
-}
-
-async function downloadFile(bucketName: string, objectName: string, destination: string): Promise<void> {
-  const url = await signedStorageUrl(bucketName, objectName, "GET", 15 * 60);
-  const response = await transfer(url, { method: "GET" }, `Downloading ${objectName}`);
-  if (!response.body) throw new Error(`Downloading ${objectName} returned no data.`);
-  await pipeline(Readable.fromWeb(response.body as import("node:stream/web").ReadableStream), createWriteStream(destination, { mode: 0o600 }));
-}
 
 // ---- Commands ------------------------------------------------------------------------------
 
@@ -239,24 +230,25 @@ async function backup(options: Record<string, string | boolean>): Promise<void> 
     const attachmentRows = (await client.query<{ object_path: string }>(
       "select object_path from medichain_medical_attachments where status = 'READY' order by id",
     )).rows;
+    const authUsers = await authUserCount(client);
     const pgDumpVersion = (await run("pg_dump", ["--version"])).trim();
     await run("pg_dump", [
-      "--format=custom", "--no-owner", "--no-privileges", `--snapshot=${snapshot}`,
+      "--format=custom", "--no-owner", "--no-privileges", "--schema=public", `--snapshot=${snapshot}`,
       `--file=${path.join(work, "database.dump")}`,
+    ], libpqEnv(databaseUrl));
+    await run("pg_dump", [
+      "--format=custom", "--data-only", `--snapshot=${snapshot}`, ...AUTH_TABLES.map((table) => `--table=${table}`),
+      `--file=${path.join(work, "auth.dump")}`,
     ], libpqEnv(databaseUrl));
     await client.query("commit");
 
     const attachments: Manifest["attachments"] = [];
     if (attachmentRows.length > 0 && !skipAttachments) {
-      if (!privateStorageRoot()) {
-        throw new UsageError(`There are ${attachmentRows.length} attached files but PRIVATE_OBJECT_DIR is not set. Run where object storage is available, or pass --skip-attachments.`);
-      }
       await mkdir(path.join(work, "attachments"));
       for (const [index, row] of attachmentRows.entries()) {
         const file = `attachments/${index}`;
-        const { bucketName, objectName } = attachmentObjectName(row.object_path);
-        await downloadFile(bucketName, objectName, path.join(work, file));
         const full = path.join(work, file);
+        await writeFile(full, await readStoredFile(row.object_path), { mode: 0o600 });
         attachments.push({ objectPath: row.object_path, file, size: (await stat(full)).size, sha256: await sha256File(full) });
       }
     }
@@ -266,25 +258,26 @@ async function backup(options: Record<string, string | boolean>): Promise<void> 
       createdAt: new Date().toISOString(),
       pgDumpVersion,
       tableRowCounts: tableRowCounts_,
+      authUserCount: authUsers,
       attachments,
       attachmentsSkipped: skipAttachments && attachmentRows.length > 0,
     };
     await writeFile(path.join(work, "manifest.json"), JSON.stringify(manifest, null, 2));
     const archive = path.join(work, "backup.tar.gz");
-    await run("tar", ["-czf", archive, "-C", work, "manifest.json", "database.dump", ...(attachments.length ? ["attachments"] : [])]);
+    await run("tar", ["-czf", archive, "-C", work, "manifest.json", "database.dump", "auth.dump", ...(attachments.length ? ["attachments"] : [])]);
 
     await mkdir(outDir, { recursive: true, mode: 0o700 });
     const name = `mon-carnet-backup-${manifest.createdAt.replace(/[:.]/g, "-")}.mcbk`;
     const target = path.join(outDir, name);
     await encryptFile(archive, target);
     const size = (await stat(target)).size;
-    console.log(`Backup written: ${target} (${(size / 1024 / 1024).toFixed(1)} MB, ${Object.values(tableRowCounts_).reduce((a, b) => a + b, 0)} rows, ${attachments.length} attached files)`);
+    console.log(`Backup written: ${target} (${(size / 1024 / 1024).toFixed(1)} MB, ${Object.values(tableRowCounts_).reduce((a, b) => a + b, 0)} rows, ${authUsers} sign-ins, ${attachments.length} attached files)`);
     if (manifest.attachmentsSkipped) console.warn(`Warning: ${attachmentRows.length} attached files were NOT included (--skip-attachments).`);
 
     if (options.upload === true) {
-      const { bucketName, objectName } = backupObjectName(name);
-      await uploadFile(target, bucketName, objectName, "application/octet-stream");
-      console.log(`Uploaded to object storage: ${objectName}`);
+      await ensureStorageBucket(backupBucket(), {});
+      await uploadObject(checkBackupName(name), await readFile(target), "application/octet-stream", backupBucket());
+      console.log(`Uploaded to Supabase Storage: ${backupBucket()}/${name}`);
     }
 
     // Keep the newest `keep` backups in the output folder.
@@ -306,8 +299,9 @@ async function verify(options: Record<string, string | boolean>): Promise<void> 
   const { dir, manifest } = await unpack(file);
   try {
     await run("pg_restore", ["--list", path.join(dir, "database.dump")]);
+    await run("pg_restore", ["--list", path.join(dir, "auth.dump")]);
     const rows = Object.values(manifest.tableRowCounts).reduce((a, b) => a + b, 0);
-    console.log(`Backup is readable and complete: made ${manifest.createdAt}, ${Object.keys(manifest.tableRowCounts).length} tables, ${rows} rows, ${manifest.attachments.length} attached files${manifest.attachmentsSkipped ? " (attached files were skipped when it was made)" : ""}.`);
+    console.log(`Backup is readable and complete: made ${manifest.createdAt}, ${Object.keys(manifest.tableRowCounts).length} tables, ${rows} rows, ${manifest.authUserCount} sign-ins, ${manifest.attachments.length} attached files${manifest.attachmentsSkipped ? " (attached files were skipped when it was made)" : ""}.`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -321,10 +315,14 @@ async function restore(options: Record<string, string | boolean>): Promise<void>
   const client = new pg.Client({ connectionString: target });
   await client.connect();
   try {
+    const hasAuth = (await client.query("select to_regclass('auth.users') as t")).rows[0]?.t;
+    if (!hasAuth) throw new UsageError("The target is not a Supabase database (it has no auth schema). Restore into a Supabase project.");
     const existing = await tableRowCounts(client);
-    const rowsInTarget = Object.values(existing).reduce((a, b) => a + b, 0);
-    if (rowsInTarget > 0 && options["replace-existing-data"] !== true) {
-      throw new UsageError(`The target database already holds ${rowsInTarget} rows of Mon carnet data. Restore into an empty database, or pass --replace-existing-data to overwrite it.`);
+    // The disease code catalogue is filled in when the API server first starts; the restore replaces it.
+    const rowsInTarget = Object.entries(existing).filter(([table]) => table !== "medichain_disease_codes").reduce((sum, [, rows]) => sum + rows, 0);
+    const signInsInTarget = await authUserCount(client);
+    if ((rowsInTarget > 0 || signInsInTarget > 0) && options["replace-existing-data"] !== true) {
+      throw new UsageError(`The target database already holds ${rowsInTarget} rows of Mon carnet data and ${signInsInTarget} sign-ins. Restore into an empty Supabase project, or pass --replace-existing-data to overwrite it.`);
     }
     const { dir, manifest } = await unpack(file);
     try {
@@ -333,22 +331,33 @@ async function restore(options: Record<string, string | boolean>): Promise<void>
         `--dbname=${decodeURIComponent(new URL(target).pathname.slice(1))}`,
         path.join(dir, "database.dump"),
       ], libpqEnv(target));
+      // Sign-ins: replaced as a whole, so they match the restored accounts exactly.
+      await client.query("delete from auth.users");
+      await run("pg_restore", [
+        "--data-only", "--no-owner", "--no-privileges", "--single-transaction", "--exit-on-error",
+        `--dbname=${decodeURIComponent(new URL(target).pathname.slice(1))}`,
+        path.join(dir, "auth.dump"),
+      ], libpqEnv(target));
+      await client.query(LOCKDOWN_SQL);
+      const restoredSignIns = await authUserCount(client);
+      if (restoredSignIns !== manifest.authUserCount) throw new Error(`Restored ${restoredSignIns} sign-ins, the backup has ${manifest.authUserCount}.`);
       const restored = await tableRowCounts(client);
       const mismatches = Object.entries(manifest.tableRowCounts).filter(([table, n]) => restored[table] !== n);
       if (mismatches.length) {
         throw new Error(`Restored row counts differ from the backup: ${mismatches.map(([table, n]) => `${table} expected ${n}, got ${restored[table] ?? "missing"}`).join("; ")}`);
       }
-      console.log(`Database restored from the backup made ${manifest.createdAt}: row counts match for all ${Object.keys(manifest.tableRowCounts).length} tables.`);
+      console.log(`Database restored from the backup made ${manifest.createdAt}: row counts match for all ${Object.keys(manifest.tableRowCounts).length} tables, and ${restoredSignIns} sign-ins are back. Everyone signs in again.`);
 
       if (manifest.attachments.length) {
         if (options["restore-attachments"] !== true) {
-          console.log(`${manifest.attachments.length} attached files are in the backup but were not uploaded (pass --restore-attachments to put them back in object storage).`);
+          console.log(`${manifest.attachments.length} attached files are in the backup but were not uploaded (pass --restore-attachments to put them back in Supabase Storage).`);
         } else {
+          await ensureStorageBucket();
+          const types = new Map((await client.query<{ object_path: string; content_type: string }>("select object_path, content_type from medichain_medical_attachments")).rows.map((row) => [row.object_path, row.content_type]));
           for (const attachment of manifest.attachments) {
-            const { bucketName, objectName } = attachmentObjectName(attachment.objectPath);
-            await uploadFile(path.join(dir, attachment.file), bucketName, objectName, "application/octet-stream");
+            await writeStoredFile(attachment.objectPath, await readFile(path.join(dir, attachment.file)), types.get(attachment.objectPath) ?? "application/pdf");
           }
-          console.log(`${manifest.attachments.length} attached files uploaded to object storage.`);
+          console.log(`${manifest.attachments.length} attached files uploaded to Supabase Storage.`);
         }
       }
       if (manifest.attachmentsSkipped) console.warn("Warning: this backup was made with --skip-attachments, so attached files are missing.");
@@ -365,8 +374,7 @@ async function download(options: Record<string, string | boolean>): Promise<void
   if (!name) throw new UsageError("Pass --name with the backup file name, e.g. mon-carnet-backup-2026-11-10T02-00-00-000Z.mcbk.");
   const outDir = path.resolve(stringOption(options, "out") ?? "backups");
   await mkdir(outDir, { recursive: true, mode: 0o700 });
-  const { bucketName, objectName } = backupObjectName(name);
-  await downloadFile(bucketName, objectName, path.join(outDir, name));
+  await writeFile(path.join(outDir, name), await downloadObject(checkBackupName(name), backupBucket()), { mode: 0o600 });
   console.log(`Downloaded ${path.join(outDir, name)}`);
 }
 

@@ -69,6 +69,33 @@ paths:
                 $ref: "#/components/schemas/LoginResult"
         "401":
           description: Invalid credentials or two-step code
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshInput"
+      responses:
+        "200":
+          description: New tokens for the same session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionTokens"
+        "401":
+          description: The session has ended; sign in again
+  /auth/sign-out:
+    post:
+      operationId: signOut
+      tags: [auth]
+      responses:
+        "204":
+          description: This session has ended on the server
   /auth/password-reset-requests:
     post:
       operationId: requestPasswordReset
@@ -127,7 +154,7 @@ paths:
               $ref: "#/components/schemas/ChangePasswordInput"
       responses:
         "200":
-          description: Password changed. Every other session is signed out; this device continues with the returned token.
+          description: Password changed. Every other session is signed out; this device's session continues (the returned token is its current one).
           content:
             application/json:
               schema:
@@ -140,7 +167,7 @@ paths:
       tags: [auth]
       responses:
         "200":
-          description: Every other session is signed out; this device continues with the returned token.
+          description: Every other session is signed out; this device's session continues (the returned token is its current one).
           content:
             application/json:
               schema:
@@ -1224,10 +1251,24 @@ components:
         token: { type: string }
     AuthSession:
       type: object
-      required: [token, user]
+      required: [token, refreshToken, expiresAt, user]
+      properties:
+        token: { type: string, description: "Access token (about one hour). Renew it with /auth/refresh before expiresAt." }
+        refreshToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+        user: { $ref: "#/components/schemas/User" }
+    SessionTokens:
+      type: object
+      required: [token, refreshToken, expiresAt]
       properties:
         token: { type: string }
-        user: { $ref: "#/components/schemas/User" }
+        refreshToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+    RefreshInput:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string, minLength: 1, maxLength: 512 }
     RegistrationInput:
       type: object
       required: [name, email, password, role]
@@ -1323,6 +1364,9 @@ components:
       properties:
         mfaRequired: { type: boolean }
         token: { type: string }
+        refreshToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+        authenticatorRemoved: { type: boolean, description: "True after signing in with a recovery code: the lost authenticator was removed and must be set up again." }
         user: { $ref: "#/components/schemas/User" }
     PasswordConfirmation:
       type: object
@@ -1360,10 +1404,12 @@ components:
         recoveryCodes: { type: array, items: { type: string } }
     MfaEnabled:
       type: object
-      required: [recoveryCodes, token]
+      required: [recoveryCodes, token, refreshToken, expiresAt]
       properties:
         recoveryCodes: { type: array, items: { type: string } }
         token: { type: string }
+        refreshToken: { type: string }
+        expiresAt: { type: string, format: date-time }
     PasswordResetRequestInput:
       type: object
       required: [email]

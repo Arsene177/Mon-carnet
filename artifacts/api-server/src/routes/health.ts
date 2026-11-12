@@ -11,6 +11,14 @@ router.get("/healthz", (_req, res) => {
 });
 
 /**
+ * The address this server sees for the caller, as rate limits use it. After deploying, it should
+ * be your own public address; if it is the host's, adjust TRUST_PROXY (see docs/render.md).
+ */
+router.get("/client-address", (req, res) => {
+  res.json({ address: req.ip ?? null });
+});
+
+/**
  * Readiness for uptime monitors: answers 200 only when the database responds within 3 seconds,
  * otherwise 503. Reveals nothing beyond "ok" or "unavailable".
  */

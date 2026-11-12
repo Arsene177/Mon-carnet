@@ -11,7 +11,7 @@
 //   export const postsTable = pgTable("posts", {
 //     id: serial("id").primaryKey(),
 //     title: text("title").notNull(),
-//   });
+//   }).enableRLS();
 //
 //   export const insertPostSchema = createInsertSchema(postsTable).omit({ id: true });
 //   export type InsertPost = z.infer<typeof insertPostSchema>;

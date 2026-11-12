@@ -8,6 +8,9 @@
 import type { User } from './user';
 
 export interface AuthSession {
+  /** Access token (about one hour). Renew it with /auth/refresh before expiresAt. */
   token: string;
+  refreshToken: string;
+  expiresAt: Date;
   user: User;
 }

@@ -10,5 +10,9 @@ import type { User } from './user';
 export interface LoginResult {
   mfaRequired: boolean;
   token?: string;
+  refreshToken?: string;
+  expiresAt?: Date;
+  /** True after signing in with a recovery code: the lost authenticator was removed and must be set up again. */
+  authenticatorRemoved?: boolean;
   user?: User;
 }

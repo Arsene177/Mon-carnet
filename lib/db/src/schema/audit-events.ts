@@ -22,7 +22,7 @@ export const auditEventsTable = pgTable(
     index("medichain_audit_patient_index").on(table.patientId),
     index("medichain_audit_created_index").on(table.createdAt),
   ],
-);
+).enableRLS();
 
 export const insertAuditEventSchema = createInsertSchema(auditEventsTable).omit({
   id: true,
@@ -52,5 +52,5 @@ export const securityEventsTable = pgTable(
     index("medichain_security_events_created_index").on(table.createdAt),
     index("medichain_security_events_type_index").on(table.type),
   ],
-);
+).enableRLS();
 export type SecurityEventRecord = typeof securityEventsTable.$inferSelect;

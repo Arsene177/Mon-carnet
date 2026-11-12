@@ -1033,4 +1033,7 @@ export const fr: Record<string, string> = {
   "CLINICAL NOTES": "NOTES CLINIQUES",
   "VITALS": "CONSTANTES",
   "Too many incorrect passwords or codes. Wait 15 minutes and try again.": "Trop de mots de passe ou de codes erronés. Patientez 15 minutes et réessayez.",
+  "You signed in with a recovery code, so the authenticator on your lost phone was removed. Set up two-step sign-in again with the app on your new phone.": "Vous vous êtes connecté avec un code de secours : l’authentificateur de votre téléphone perdu a donc été supprimé. Activez de nouveau la validation en deux étapes avec l’application de votre nouveau téléphone.",
+  "Choose a stronger password of at least 8 characters.": "Choisissez un mot de passe plus sûr d’au moins 8 caractères.",
+  "The sign-in could not be removed, so nothing was changed. Try again later.": "L’accès au compte n’a pas pu être supprimé, rien n’a donc été modifié. Réessayez plus tard.",
 };

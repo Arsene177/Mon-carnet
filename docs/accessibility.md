@@ -40,7 +40,7 @@ pnpm --filter @workspace/medichain run build
 pnpm --filter @workspace/api-server run test:accessibility
 ```
 
-The build needs `PORT` and `BASE_PATH` set (any port, `BASE_PATH=/`). The check also needs `TEST_DATABASE_URL`, as for the other tests. It signs in as a patient, a doctor and an administrator, opens every screen, and fails on any WCAG A/AA rule violation or on sideways scrolling at 320 px.
+The build needs `PORT` and `BASE_PATH` set (any port, `BASE_PATH=/`). The check also needs the local Supabase stack, as for the other tests (`docs/supabase.md`). It signs in as a patient, a doctor and an administrator, opens every screen, and fails on any WCAG A/AA rule violation or on sideways scrolling at 320 px.
 
 When adding screens or colours:
 

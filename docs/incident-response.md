@@ -9,11 +9,11 @@ What to do when something goes wrong with Mon carnet: an outage, lost data, or p
 | Role | Name | Phone | Email |
 |---|---|---|---|
 | Incident lead (decides, coordinates) | | | |
-| Technical lead (Replit, database, code) | | | |
+| Technical lead (Render, Supabase, code) | | | |
 | Backup person for both | | | |
 | Lawyer / data protection contact | | | |
 | Data protection authority | | | |
-| Hosting provider support | Replit | — | via the Replit dashboard |
+| Hosting provider support | Render (app), Supabase (data) | — | via each dashboard's support page |
 
 Keep a printed copy. During an incident the app, your email or your phone may not be available.
 
@@ -42,10 +42,10 @@ Stop the damage before investigating in depth. Depending on what happened:
 
 - **Account takeover (doctor or admin):** suspend the account in User search. This signs it out at once. Reset its two-step sign-in, and have the owner set a new password through password recovery once their identity is confirmed.
 - **Patient account takeover:** suspend it, then contact the patient by a known phone number.
-- **Many accounts or unknown scope:** in Replit, rotate `JWT_SECRET` (or `SESSION_SECRET`). This signs everyone out. Do **not** change `MFA_ENCRYPTION_KEY` or `BACKUP_ENCRYPTION_KEY`.
-- **Leaked secret (database password, API key):** rotate it in Replit immediately, then redeploy.
-- **Malicious code or bad release:** roll back to the previous deployment in Replit.
-- **Ongoing attack from an address:** note it from Security events; the rate limits already slow it down. Ask Replit support if it must be blocked.
+- **Many accounts or unknown scope:** sign everyone out by ending every session in Supabase (SQL Editor: `delete from auth.sessions;`), which stops every token on the next request. If the project's secret key may have leaked, create a new secret key in Supabase (Project Settings > API Keys), put it in `SUPABASE_SECRET_KEY`, publish, then delete the old key. Do **not** change `BACKUP_ENCRYPTION_KEY`.
+- **Leaked secret (database password, Supabase secret key, backup key):** create a new one in Supabase (database password: Project Settings > Database; secret key: Project Settings > API Keys), put it in the Render service and backup job (Environment), let it redeploy, then delete the old one. For `BACKUP_ENCRYPTION_KEY`, keep the old key to read older backups.
+- **Malicious code or bad release:** roll back in Render (`mon-carnet` > Events > an earlier deploy > Rollback).
+- **Ongoing attack from an address:** note it from Security events; the rate limits already slow it down. Ask Render support if it must be blocked.
 
 Do not delete logs, security events, audit entries or backups: they are evidence.
 
@@ -56,7 +56,7 @@ Answer, in the incident log:
 - What data was involved? Use the audit log: patients can see who accessed their booklet, and administrators can see security events and the deletion and access history.
 - How many people are affected? Patients, doctors?
 - Since when? Until when?
-- Was the data encrypted or otherwise unreadable to the attacker? (Backups are encrypted; the live database relies on Replit's protection.)
+- Was the data encrypted or otherwise unreadable to the attacker? (Backups are encrypted; the live database relies on Supabase's protection.)
 - What is the risk for the people concerned? Discrimination, stigma, fraud, risk to health?
 
 ### 4. Notify

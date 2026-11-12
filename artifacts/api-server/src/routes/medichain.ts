@@ -69,6 +69,8 @@ import {
   GetPendingDoctorsResponse,
   LoginBody,
   LoginResponse,
+  RefreshSessionBody,
+  RefreshSessionResponse,
   SignOutOtherDevicesResponse,
   RegisterBody,
   RegisterResponse,
@@ -122,17 +124,26 @@ import {
 import { accountSecretLimiter, emergencyLookupLimiter } from "../lib/rate-limits";
 import { languageOf, notificationMessages } from "../lib/notification-messages";
 import {
-  createAccessToken,
-  endAllSessions,
-  hashPassword,
-  nextSessionVersion,
+  endSessions,
   publicUser,
   requireAuth,
+  sessionTokens,
+  spendPasswordCheckTime,
   userResponse,
-  verifyPassword,
+  verifyAccountPassword,
+  verifyLegacyPassword,
 } from "../lib/medichain-auth";
-import { verifySecondFactor } from "./mfa";
-import { attachmentObjectName, signedStorageUrl } from "../lib/object-storage";
+import { removeAuthenticator, verifySecondFactor } from "./mfa";
+import {
+  SupabaseError,
+  changeOwnPassword,
+  createAuthUser,
+  deleteAuthUser,
+  passwordSignIn,
+  refreshSession,
+  setAuthPassword,
+} from "../lib/supabase";
+import { deleteStoredFiles, fileDownloadUrl, fileUploadUrl, storedFileExists } from "../lib/object-storage";
 import { recordSecurityEvent, unusualAccessThreshold } from "../lib/security-events";
 
 const router: IRouter = Router();
@@ -180,11 +191,6 @@ async function ensurePatientIdentifiers(user: typeof usersTable.$inferSelect) {
   return updated;
 }
 
-export async function createSignedObjectUrl(objectPath: string, method: "PUT" | "GET" | "DELETE", ttlSeconds: number) {
-  const { bucketName, objectName } = attachmentObjectName(objectPath);
-  return signedStorageUrl(bucketName, objectName, method, ttlSeconds);
-}
-
 async function purgeExpiredMedicalAttachments() {
   const expired = await db
     .select({ id: medicalAttachmentsTable.id, objectPath: medicalAttachmentsTable.objectPath })
@@ -196,13 +202,8 @@ async function purgeExpiredMedicalAttachments() {
     .limit(100);
   for (const attachment of expired) {
     try {
-      const deleteURL = await createSignedObjectUrl(attachment.objectPath, "DELETE", 60);
-      const response = await fetch(deleteURL, { method: "DELETE", signal: AbortSignal.timeout(30_000) });
-      if (response.ok || response.status === 404) {
-        await db.delete(medicalAttachmentsTable).where(eq(medicalAttachmentsTable.id, attachment.id));
-      } else {
-        console.warn("Expired private medical attachment could not be deleted", attachment.id, response.status);
-      }
+      await deleteStoredFiles([attachment.objectPath]);
+      await db.delete(medicalAttachmentsTable).where(eq(medicalAttachmentsTable.id, attachment.id));
     } catch (error) {
       console.warn("Expired private medical attachment cleanup will be retried", attachment.id, error);
     }
@@ -541,14 +542,29 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     return;
   }
 
+  const email = input.email.trim().toLowerCase();
+  let authUserId: string;
+  try {
+    authUserId = await createAuthUser(email, input.password);
+  } catch (error) {
+    if (error instanceof SupabaseError && error.code === "email_exists") {
+      res.status(409).json({ error: "Unable to create an account with those details." });
+      return;
+    }
+    if (error instanceof SupabaseError && error.code === "weak_password") {
+      invalidBody(res, "Choose a stronger password of at least 8 characters.");
+      return;
+    }
+    throw error;
+  }
   try {
     const patientDisplayId = input.role === "PATIENT" ? await createUniquePatientDisplayId() : null;
     const [created] = await db
       .insert(usersTable)
       .values({
         name: input.name.trim(),
-        email: input.email.trim().toLowerCase(),
-        passwordHash: hashPassword(input.password),
+        email,
+        authUserId,
         role: input.role === "DOCTOR" ? "PENDING_DOCTOR" : "PATIENT",
         professionalMedicalNumber: input.role === "DOCTOR" ? professionalMedicalNumber : null,
         patientDisplayId,
@@ -569,14 +585,18 @@ router.post("/auth/register", async (req, res): Promise<void> => {
         nationalIdNumber,
       })
       .returning();
-    const user = publicUser(created);
+    const session = await passwordSignIn(email, input.password);
+    if (!session) throw new Error("A newly created account could not sign in.");
     res.status(201).json(
       RegisterResponse.parse({
-        token: createAccessToken(user, created.sessionVersion),
-        user: userResponse(created),
+        ...sessionTokens(session),
+        user: userResponse(created!),
       }),
     );
   } catch (error) {
+    // No account row without its sign-in, and no sign-in without its account row.
+    await db.delete(usersTable).where(eq(usersTable.authUserId, authUserId)).catch(() => undefined);
+    await deleteAuthUser(authUserId).catch((cleanupError: unknown) => req.log.error({ err: cleanupError }, "Could not remove a half-created sign-in"));
     if (isUniqueViolation(error)) {
       res.status(409).json({ error: "Unable to create an account with those details." });
       return;
@@ -585,8 +605,6 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   }
 });
 
-const UNKNOWN_ACCOUNT_HASH = hashPassword(randomBytes(16).toString("hex"));
-
 router.post("/auth/login", async (req, res): Promise<void> => {
   const parsed = LoginBody.safeParse(req.body);
   if (!parsed.success) {
@@ -594,34 +612,84 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
   const email = parsed.data.email.trim().toLowerCase();
+  const password = parsed.data.password;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-  // Check a password even when there is no account, so the response time does not reveal
-  // which emails are registered.
-  const passwordMatches = verifyPassword(parsed.data.password, user?.passwordHash ?? UNKNOWN_ACCOUNT_HASH);
-  if (!user || !user.isActive || !passwordMatches) {
+  if (!user || !user.isActive || !user.authUserId) {
+    // Check a password anyway, so the response time does not reveal which emails are registered.
+    await spendPasswordCheckTime(password);
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
+  let session = await passwordSignIn(email, password);
+  if (!session && user.passwordHash && verifyLegacyPassword(password, user.passwordHash)) {
+    // Accounts copied from the previous database keep their password: it moves to Supabase Auth now.
+    await setAuthPassword(user.authUserId, password);
+    await db.update(usersTable).set({ passwordHash: null }).where(eq(usersTable.id, user.id));
+    session = await passwordSignIn(email, password);
+  }
+  if (!session) {
+    res.status(401).json({ error: "Invalid credentials" });
+    return;
+  }
+  let authenticatorRemoved = false;
   if (user.mfaEnabledAt) {
     const code = parsed.data.code?.trim();
     if (!code) {
-      // The password was right; ask for the code from the authenticator app.
+      // The password was right; ask for the code. This first-step session is not kept.
+      await endSessionById(session.sessionId);
       res.json(LoginResponse.parse({ mfaRequired: true }));
       return;
     }
-    if (!(await verifySecondFactor(user, code))) {
+    const second = await verifySecondFactor(user, code, session.accessToken);
+    if (!second.ok) {
+      await endSessionById(session.sessionId);
       res.status(401).json({ error: "The code is incorrect or expired.", mfaRequired: true });
       return;
     }
+    if (second.kind === "authenticator") {
+      session = second.session;
+    } else {
+      // A recovery code is for a lost phone: the old authenticator is removed and has to be set up
+      // again (doctors and administrators are asked to straight away).
+      await removeAuthenticator(user);
+      authenticatorRemoved = true;
+    }
   }
-  const current = publicUser(user);
+  const [current] = await db.select().from(usersTable).where(eq(usersTable.id, user.id)).limit(1);
   res.json(
     LoginResponse.parse({
       mfaRequired: false,
-      token: createAccessToken(current, user.sessionVersion),
-      user: userResponse(user),
+      ...sessionTokens(session),
+      ...(authenticatorRemoved ? { authenticatorRemoved } : {}),
+      user: userResponse(current!),
     }),
   );
+});
+
+/** Ends one Supabase session. */
+async function endSessionById(sessionId: string): Promise<void> {
+  await db.execute(sql`delete from auth.sessions where id = ${sessionId}::uuid`);
+}
+
+router.post("/auth/refresh", async (req, res): Promise<void> => {
+  const parsed = RefreshSessionBody.safeParse(req.body);
+  const session = parsed.success ? await refreshSession(parsed.data.refreshToken) : null;
+  if (!session) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  const [user] = await db.select({ isActive: usersTable.isActive }).from(usersTable).where(eq(usersTable.authUserId, session.authUserId)).limit(1);
+  if (!user?.isActive) {
+    await endSessionById(session.sessionId);
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  res.json(RefreshSessionResponse.parse(sessionTokens(session)));
+});
+
+router.post("/auth/sign-out", requireAuth(), async (req, res): Promise<void> => {
+  await endSessionById(req.currentSession!.sessionId);
+  res.status(204).end();
 });
 
 router.post("/auth/password-reset-requests", async (req, res): Promise<void> => {
@@ -688,7 +756,7 @@ router.post("/auth/change-password", requireAuth(), accountSecretLimiter, async 
     return;
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.currentUser!.id)).limit(1);
-  if (!user || !verifyPassword(parsed.data.currentPassword, user.passwordHash)) {
+  if (!user || !(await verifyAccountPassword(user, parsed.data.currentPassword))) {
     res.status(400).json({ error: "Current password is incorrect." });
     return;
   }
@@ -696,36 +764,38 @@ router.post("/auth/change-password", requireAuth(), accountSecretLimiter, async 
     invalidBody(res, "Choose a new password that differs from your current password.");
     return;
   }
-  // A new password ends every session, so anyone signed in with the old one is signed out.
-  // This device stays signed in with the fresh token returned here.
-  const [updated] = await db
-    .update(usersTable)
-    .set({ passwordHash: hashPassword(parsed.data.newPassword), sessionVersion: nextSessionVersion() })
-    .where(eq(usersTable.id, user.id))
-    .returning();
+  try {
+    await changeOwnPassword(req.currentSession!.accessToken, parsed.data.newPassword);
+  } catch (error) {
+    if (error instanceof SupabaseError && error.code === "weak_password") {
+      invalidBody(res, "Choose a stronger password of at least 8 characters.");
+      return;
+    }
+    throw error;
+  }
+  // A new password ends every other session, so anyone signed in with the old one is signed out.
+  // This device's session continues.
+  if (user.passwordHash) await db.update(usersTable).set({ passwordHash: null }).where(eq(usersTable.id, user.id));
+  await endSessions(user.authUserId, req.currentSession!.sessionId);
   await db.insert(auditEventsTable).values({
     actorUserId: user.id,
     action: "PASSWORD_CHANGED",
     entityType: "account",
     entityId: user.id,
   });
-  res.json(ChangePasswordResponse.parse({ token: createAccessToken(publicUser(updated!), updated!.sessionVersion) }));
+  res.json(ChangePasswordResponse.parse({ token: req.currentSession!.accessToken }));
 });
 
 router.post("/auth/sign-out-other-devices", requireAuth(), async (req, res): Promise<void> => {
   const userId = req.currentUser!.id;
-  const sessionVersion = await endAllSessions(userId);
-  if (sessionVersion === undefined) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  await endSessions(req.currentSession!.authUserId, req.currentSession!.sessionId);
   await db.insert(auditEventsTable).values({
     actorUserId: userId,
     action: "OTHER_SESSIONS_SIGNED_OUT",
     entityType: "account",
     entityId: userId,
   });
-  res.json(SignOutOtherDevicesResponse.parse({ token: createAccessToken(req.currentUser!, sessionVersion) }));
+  res.json(SignOutOtherDevicesResponse.parse({ token: req.currentSession!.accessToken }));
 });
 
 router.get("/patient/profile", requireAuth("PATIENT"), async (req, res): Promise<void> => {
@@ -1620,7 +1690,7 @@ router.post(
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       }).returning();
       if (!attachment) throw new Error("Medical attachment reservation returned no row.");
-      const uploadURL = await createSignedObjectUrl(objectPath, "PUT", 900);
+      const uploadURL = await fileUploadUrl(objectPath);
       res.status(201).json({
         attachmentId: attachment.id,
         uploadURL,
@@ -1699,13 +1769,7 @@ router.post(
       return;
     }
     try {
-      const probeURL = await createSignedObjectUrl(attachment.objectPath, "GET", 60);
-      const probe = await fetch(probeURL, {
-        headers: { Range: "bytes=0-0" },
-        signal: AbortSignal.timeout(30_000),
-      });
-      await probe.body?.cancel();
-      if (!probe.ok) {
+      if (!(await storedFileExists(attachment.objectPath))) {
         res.status(409).json({ error: "The file is not available in private storage yet. Retry the upload." });
         return;
       }
@@ -1754,12 +1818,7 @@ router.delete(
       return;
     }
     try {
-      const deleteURL = await createSignedObjectUrl(attachment.objectPath, "DELETE", 60);
-      const deleted = await fetch(deleteURL, { method: "DELETE", signal: AbortSignal.timeout(30_000) });
-      if (!deleted.ok && deleted.status !== 404) {
-        res.status(503).json({ error: "The file could not be removed from private storage." });
-        return;
-      }
+      await deleteStoredFiles([attachment.objectPath]);
       await db.delete(medicalAttachmentsTable).where(eq(medicalAttachmentsTable.id, attachment.id));
       res.status(204).end();
     } catch (error) {
@@ -1805,7 +1864,7 @@ router.get(
       return;
     }
     try {
-      const downloadURL = await createSignedObjectUrl(objectPath, "GET", 300);
+      const downloadURL = await fileDownloadUrl(objectPath, 300);
       if (current.role === "DOCTOR") {
         await db.insert(auditEventsTable).values({
           actorUserId: current.id,
@@ -2408,7 +2467,7 @@ router.post("/admin/doctors/:doctorId/revoke", requireAuth("ADMIN"), async (req,
   }
   const [doctor] = await db
     .update(usersTable)
-    .set({ isActive: false, sessionVersion: nextSessionVersion(), updatedAt: new Date() })
+    .set({ isActive: false, updatedAt: new Date() })
     .where(
       and(
         eq(usersTable.id, parsed.data.doctorId),
@@ -2420,6 +2479,7 @@ router.post("/admin/doctors/:doctorId/revoke", requireAuth("ADMIN"), async (req,
     res.status(404).json({ error: "Doctor not found" });
     return;
   }
+  await endSessions(doctor.authUserId);
   res.json(RevokeDoctorResponse.parse(userResponse(doctor)));
 });
 
@@ -2484,8 +2544,6 @@ router.put("/admin/users/:userId/status", requireAuth("ADMIN"), async (req, res)
     .update(usersTable)
     .set({
       isActive: parsedBody.data.isActive,
-      // Suspension ends every session; otherwise tokens issued before it would work again on restore.
-      ...(parsedBody.data.isActive ? {} : { sessionVersion: nextSessionVersion() }),
       updatedAt: new Date(),
     })
     .where(eq(usersTable.id, target.id))
@@ -2494,6 +2552,8 @@ router.put("/admin/users/:userId/status", requireAuth("ADMIN"), async (req, res)
     res.status(404).json({ error: "Account not found." });
     return;
   }
+  // Suspension ends every session; otherwise sessions from before it would work again on restore.
+  if (!updated.isActive) await endSessions(updated.authUserId);
   if (target.isActive !== updated.isActive) {
     await recordSecurityEvent({
       type: updated.isActive ? "ACCOUNT_RESTORED" : "ACCOUNT_SUSPENDED",
@@ -2540,7 +2600,7 @@ router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMI
     if (!request) return null;
 
     const [account] = await tx
-      .select({ id: usersTable.id, email: usersTable.email })
+      .select({ id: usersTable.id, email: usersTable.email, authUserId: usersTable.authUserId })
       .from(usersTable)
       .where(eq(usersTable.email, request.email))
       .limit(1);
@@ -2562,10 +2622,10 @@ router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMI
       .returning({ id: passwordResetRequestsTable.id });
     if (!resolved) return null;
 
-    await tx
-      .update(usersTable)
-      .set({ passwordHash: hashPassword(temporaryPassword), sessionVersion: nextSessionVersion() })
-      .where(eq(usersTable.id, account.id));
+    if (!account.authUserId) return null;
+    // Inside the transaction, so the request stays pending if Supabase refuses the password.
+    await setAuthPassword(account.authUserId, temporaryPassword);
+    await tx.update(usersTable).set({ passwordHash: null }).where(eq(usersTable.id, account.id));
     await tx.insert(auditEventsTable).values({
       actorUserId: req.currentUser!.id,
       action: "TEMPORARY_PASSWORD_ISSUED",
@@ -2579,6 +2639,8 @@ router.post("/admin/password-reset-requests/:requestId/reset", requireAuth("ADMI
     res.status(404).json({ error: "This request is no longer pending or its account no longer exists." });
     return;
   }
+  // A temporary password ends every session.
+  await endSessions(result.authUserId);
   await recordSecurityEvent({
     type: "TEMPORARY_PASSWORD_ISSUED",
     severity: "warning",

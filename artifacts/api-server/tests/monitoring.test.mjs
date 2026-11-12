@@ -3,15 +3,11 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createHmac, randomBytes, scryptSync } from "node:crypto";
+import { createHmac } from "node:crypto";
 import http from "node:http";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-
-const DATABASE_URL = process.env.TEST_DATABASE_URL;
-if (!DATABASE_URL || !/test/i.test(new URL(DATABASE_URL).pathname)) {
-  throw new Error("Set TEST_DATABASE_URL to a disposable database whose name contains \"test\".");
-}
+import { DATABASE_URL, insertStaff, serverEnv } from "./supabase-test-env.mjs";
 const PORT = 6300 + Math.floor(Math.random() * 400);
 const BASE = `http://127.0.0.1:${PORT}/api`;
 const PASSWORD = "Correct-horse-9";
@@ -67,17 +63,12 @@ async function registerPatient() {
 /** An approved doctor or administrator with two-step sign-in on. */
 async function createStaff(role, name) {
   const email = `${unique(`mon-${role.toLowerCase()}`)}@test.cm`;
-  const salt = randomBytes(16).toString("hex");
-  const { rows: [row] } = await sql.query(
-    `insert into medichain_users (email, password_hash, role, name, hospital_name, professional_medical_number, doctor_verified, contact_info, terms_version, terms_accepted_at)
-     values ($1, $2, $3, $4, $5, $6, true, '+237677000000', $7, now()) returning id`,
-    [email, `scrypt$${salt}$${scryptSync(PASSWORD, salt, 64).toString("hex")}`, role, name, role === "ADMIN" ? null : "Hôpital Laquintinie", role === "ADMIN" ? null : "ONMC-1234", TERMS],
-  );
+  const id = await insertStaff(sql, { email, password: PASSWORD, role, name, terms: TERMS });
   const signedIn = await api("POST", "/auth/login", { body: { email, password: PASSWORD } });
   const setup = await api("POST", "/auth/mfa/setup", { token: signedIn.body.token, body: { password: PASSWORD } });
   const enabled = await api("POST", "/auth/mfa/enable", { token: signedIn.body.token, body: { code: totp(setup.body.secret) } });
   assert.equal(enabled.status, 200, JSON.stringify(enabled.body));
-  return { id: row.id, email, name, token: enabled.body.token };
+  return { id, email, name, token: enabled.body.token };
 }
 
 const eventsOfType = async (type) => (await sql.query("select * from medichain_security_events where type = $1 order by id", [type])).rows;
@@ -103,11 +94,11 @@ before(async () => {
   });
   server = spawn(process.execPath, ["dist/index.mjs"], {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
-    env: {
-      ...process.env, DATABASE_URL, PORT: String(PORT), JWT_SECRET: randomBytes(24).toString("hex"), NODE_ENV: "test", TRUST_PROXY: "1", LOG_LEVEL: "error",
+    env: serverEnv(PORT, {
+      LOG_LEVEL: "error",
       ALERT_WEBHOOK_URL: `http://127.0.0.1:${webhook.address().port}/alert`,
       UNUSUAL_ACCESS_PATIENTS_PER_HOUR: "2",
-    },
+    }),
     stdio: ["ignore", "ignore", "inherit"],
   });
   for (let attempt = 0; attempt < 100; attempt++) {
