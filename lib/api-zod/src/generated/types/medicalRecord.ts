@@ -24,4 +24,15 @@ export interface MedicalRecord {
   codedDiagnoses: CodedDiagnosis[];
   vitals: MedicalRecordVitals;
   createdAt: Date;
+  /**
+     * Last correction by the author; null when never edited.
+     * @nullable
+     */
+  editedAt?: Date | null;
+  editCount?: number;
+  /**
+     * Only for the doctor who wrote it: until when they can still correct it. Null for everyone else or when the time is over.
+     * @nullable
+     */
+  editableUntil?: Date | null;
 }

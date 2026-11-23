@@ -811,6 +811,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MedicalRecord"
+  /doctor/patient/{patientId}/records/{recordId}:
+    put:
+      operationId: editDoctorPatientRecord
+      tags: [doctor]
+      description: The doctor who wrote the record corrects it, within RECORD_EDIT_WINDOW_HOURS (default 24) of saving it and while they still have access to the patient. The earlier version is kept.
+      parameters:
+        - { name: patientId, in: path, required: true, schema: { type: integer } }
+        - { name: recordId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedicalRecordEditInput"
+      responses:
+        "200":
+          description: Record corrected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedicalRecord"
+        "403":
+          description: Not the author, or no access to the patient
+        "409":
+          description: The time to correct this record is over; add a linked follow-up instead
+  /records/{recordId}/history:
+    get:
+      operationId: getMedicalRecordHistory
+      tags: [patient, doctor]
+      description: Earlier versions of a record, newest first. For the patient, and for doctors with access to the patient.
+      parameters:
+        - { name: recordId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Earlier versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MedicalRecordVersion"
   /doctor/stats:
     get:
       operationId: getDoctorStats
@@ -1593,6 +1634,46 @@ components:
             temperature: { type: ["number", "null"] }
             weightKg: { type: ["number", "null"] }
         createdAt: { type: string, format: date-time }
+        editedAt: { type: ["string", "null"], format: date-time, description: "Last correction by the author; null when never edited." }
+        editCount: { type: integer }
+        editableUntil: { type: ["string", "null"], format: date-time, description: "Only for the doctor who wrote it: until when they can still correct it. Null for everyone else or when the time is over." }
+    MedicalRecordEditInput:
+      type: object
+      required: [diagnosis, treatment, medications, notes, vitals, reason]
+      properties:
+        diagnosis: { type: string, maxLength: 5000 }
+        treatment: { type: string, maxLength: 5000 }
+        medications:
+          type: array
+          items: { type: string, maxLength: 200 }
+        notes: { type: string, maxLength: 10000, description: "Clinical notes only; references to attached files are kept by the server." }
+        vitals:
+          type: object
+          properties:
+            bloodPressure: { type: ["string", "null"], maxLength: 30 }
+            heartRate: { type: ["number", "null"], minimum: 30, maximum: 200 }
+            temperature: { type: ["number", "null"], minimum: 30, maximum: 45 }
+            weightKg: { type: ["number", "null"], minimum: 1, maximum: 500 }
+        reason: { type: string, minLength: 5, maxLength: 300, description: "Why the record is corrected; shown in its history." }
+    MedicalRecordVersion:
+      type: object
+      required: [version, diagnosis, treatment, medications, notes, vitals, replacedAt, replacedByName, changeReason]
+      properties:
+        version: { type: integer }
+        diagnosis: { type: string }
+        treatment: { type: string }
+        medications: { type: array, items: { type: string } }
+        notes: { type: string }
+        vitals:
+          type: object
+          properties:
+            bloodPressure: { type: ["string", "null"] }
+            heartRate: { type: ["number", "null"] }
+            temperature: { type: ["number", "null"] }
+            weightKg: { type: ["number", "null"] }
+        replacedAt: { type: string, format: date-time }
+        replacedByName: { type: string }
+        changeReason: { type: string }
     MedicalRecordInput:
       type: object
       required: [recordType, diagnosis, treatment, medications, notes, vitals, followUpToRecordId]

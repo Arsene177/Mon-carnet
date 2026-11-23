@@ -153,6 +153,106 @@ before(async () => {
   browser = await chromium.launch();
 });
 
+describe("access control and record corrections, clicked through in the browser", () => {
+  test("ask-me-first, approve, correct a record, see its history, revoke, grant by email", async () => {
+    const email = `patient-flow-${Date.now()}@test.cm`;
+    const patientToken = (await api("POST", "/auth/register", {
+      body: { name: "Mireille Flow", email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1988-02-03", contactInfo: "+237690000001", acceptedTermsVersion: TERMS, healthDataConsent: true },
+    })).token;
+    const doctorEmail = `doctor-flow-${Date.now()}@test.cm`;
+    await insertStaff(sql, { email: doctorEmail, password: PASSWORD, role: "DOCTOR", name: "Dr Flow", terms: TERMS });
+    let { token: doctorToken } = await api("POST", "/auth/login", { body: { email: doctorEmail, password: PASSWORD } });
+    const setup = await api("POST", "/auth/mfa/setup", { token: doctorToken, body: { password: PASSWORD } });
+    ({ token: doctorToken } = await api("POST", "/auth/mfa/enable", { token: doctorToken, body: { code: totp(setup.secret) } }));
+    const { rows: [doctorRow] } = await sql.query("select id from medichain_users where email = $1", [doctorEmail]);
+    const status = async (path, token) => (await fetch(`${BASE}/api${path}`, { headers: { authorization: `Bearer ${token}` } })).status;
+    const patientId = (await api("GET", "/patient/profile", { token: patientToken })).user.id;
+    const cmId = async () => (await api("GET", "/patient/profile", { token: patientToken })).patientDisplayId;
+
+    const patient = await openPage({ token: patientToken, width: 1280, language: "en" });
+    const doctor = await openPage({ token: doctorToken, width: 1280, language: "en" });
+    patient.on("dialog", (dialog) => dialog.accept());
+    const tab = async (page, name) => { await page.getByTestId(`nav-${name}`).waitFor({ state: "attached", timeout: 15_000 }); await page.getByTestId(`nav-${name}`).evaluate((element) => element.click()); };
+    const openBooklet = async () => {
+      await tab(doctor, "record-entry");
+      await doctor.getByTestId("input-entry-patient-id").fill(await cmId());
+      await doctor.getByTestId("button-open-patient-record").click();
+    };
+
+    // 1. The patient chooses "Ask me first".
+    await patient.goto(BASE + "/patient");
+    await tab(patient, "access-control");
+    const modeSaved = patient.waitForResponse((response) => response.url().endsWith("/api/patient/access-settings") && response.request().method() === "PUT");
+    await patient.getByTestId("radio-access-ask").click();
+    await modeSaved;
+    await patient.waitForFunction(() => document.querySelector('[data-testid="radio-access-ask"]')?.checked === true);
+    assert.equal((await api("GET", "/patient/access-settings", { token: patientToken })).accessApprovalMode, "ASK");
+
+    // 2. The doctor enters the CM ID: the request waits, and records stay closed.
+    await doctor.goto(BASE + "/doctor");
+    await openBooklet();
+    await doctor.getByTestId("text-access-request-pending").waitFor({ timeout: 15_000 });
+    assert.equal(await status(`/doctor/patient/${patientId}/records`, doctorToken), 403);
+
+    // 3. The patient approves it for 7 days.
+    await patient.reload();
+    await tab(patient, "access-control");
+    const approve = patient.locator('[data-testid^="button-approve-request-"]').first();
+    await approve.waitFor({ timeout: 15_000 });
+    await approve.click();
+    await patient.getByTestId("select-approval-duration").selectOption("7");
+    const approved = patient.waitForResponse((response) => /\/api\/patient\/access-requests\/\d+\/approve$/.test(response.url()));
+    await patient.getByTestId("button-confirm-approval").click();
+    assert.equal((await approved).status(), 200);
+    assert.equal(await status(`/doctor/patient/${patientId}/records`, doctorToken), 200);
+
+    // 4. The doctor writes a record and corrects it in the record window.
+    const record = await api("POST", `/doctor/patient/${patientId}/records`, {
+      token: doctorToken,
+      body: { recordType: "Consultation", diagnosis: "Grippe", treatment: "Repos", medications: ["Paracétamol"], notes: "", vitals: {}, followUpToRecordId: null, attachmentIds: [], codedDiagnoses: [] },
+    });
+    await openBooklet();
+    await doctor.getByTestId(`button-open-record-${record.id}`).click();
+    await doctor.getByTestId(`button-correct-record-${record.id}`).click();
+    await doctor.locator(`#fix-diagnosis-${record.id}`).fill("Paludisme simple");
+    await doctor.getByTestId(`input-correction-reason-${record.id}`).fill("Goutte épaisse positive");
+    await doctor.getByTestId(`button-save-correction-${record.id}`).click();
+    await doctor.getByTestId(`button-record-history-${record.id}`).waitFor({ timeout: 15_000 });
+    const found = await problems(doctor, "record correction (1280px, en)");
+    assert.deepEqual(found, [], `\n${found.join("\n")}`);
+
+    // 5. The patient, opening the app again, sees the corrected record and its earlier version.
+    await patient.reload();
+    await tab(patient, "records");
+    await patient.getByTestId(`button-open-record-${record.id}`).click();
+    await patient.getByTestId(`button-record-history-${record.id}`).click();
+    await patient.getByTestId("record-version-1").waitFor({ timeout: 15_000 });
+    assert.match(await patient.getByTestId("record-version-1").innerText(), /Grippe/);
+    assert.equal(await patient.locator('[data-testid^="button-correct-record-"]').count(), 0, "the patient cannot correct records");
+
+    // 6. The patient revokes the doctor's access: records close at once.
+    await patient.keyboard.press("Escape");
+    await tab(patient, "access-control");
+    const revoked = patient.waitForResponse((response) => response.url().endsWith(`/api/patient/permissions/${doctorRow.id}`));
+    await patient.getByTestId(`button-revoke-${doctorRow.id}`).click();
+    assert.equal((await revoked).status(), 204);
+    assert.equal(await status(`/doctor/patient/${patientId}/records`, doctorToken), 403);
+
+    // 7. The patient grants access again by the doctor's email, for 30 days.
+    await patient.getByTestId("button-grant-access").click();
+    await patient.getByTestId("input-doctor-email").fill(doctorEmail);
+    await patient.getByTestId("select-duration").selectOption("30");
+    const granted = patient.waitForResponse((response) => response.url().endsWith("/api/patient/permissions") && response.request().method() === "POST");
+    await patient.getByTestId("button-confirm-grant").click();
+    assert.equal((await granted).status(), 201);
+    assert.equal(await status(`/doctor/patient/${patientId}/records`, doctorToken), 200);
+    const access = await problems(patient, "access control after the flow (1280px, en)");
+    assert.deepEqual(access, [], `\n${access.join("\n")}`);
+    await patient.context().close();
+    await doctor.context().close();
+  });
+});
+
 describe("the signed-in session in the browser", () => {
   test("renews the access token before it expires, and signing out ends the session on the server", async () => {
     const page = await openPage({ width: 1280, language: "en" });

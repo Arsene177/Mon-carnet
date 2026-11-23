@@ -387,22 +387,41 @@ async function codedDiagnosesByRecordId(recordIds: number[]) {
   return grouped;
 }
 
+/** How long the doctor who wrote a record can still correct it (RECORD_EDIT_WINDOW_HOURS, default 24). */
+export function recordEditWindowMs(): number {
+  const hours = Number(process.env.RECORD_EDIT_WINDOW_HOURS ?? 24);
+  return (Number.isFinite(hours) && hours >= 0 ? hours : 24) * 60 * 60_000;
+}
+
+/** Until when `viewerDoctorId` can still correct the record, or null (not the author, or too late). */
+export function recordEditableUntil(record: typeof medicalRecordsTable.$inferSelect, viewerDoctorId: number | null): Date | null {
+  if (viewerDoctorId === null || record.doctorId !== viewerDoctorId) return null;
+  const until = new Date(record.createdAt.getTime() + recordEditWindowMs());
+  return until.getTime() > Date.now() ? until : null;
+}
+
+export async function codedDiagnosesForRecord(recordId: number) {
+  return (await codedDiagnosesByRecordId([recordId])).get(recordId) ?? [];
+}
+
 export async function recordsResponse(
   rows: Array<{
     record: typeof medicalRecordsTable.$inferSelect;
     doctorName: string;
   }>,
+  viewerDoctorId: number | null = null,
 ) {
   const diagnoses = await codedDiagnosesByRecordId(rows.map(({ record }) => record.id));
   return rows.map(({ record, doctorName }) =>
-    recordResponse(record, doctorName, diagnoses.get(record.id) ?? []),
+    recordResponse(record, doctorName, diagnoses.get(record.id) ?? [], viewerDoctorId),
   );
 }
 
-function recordResponse(
+export function recordResponse(
   record: typeof medicalRecordsTable.$inferSelect,
   doctorName: string,
   codedDiagnoses: ReturnType<typeof codedDiagnosisResponse>[] = [],
+  viewerDoctorId: number | null = null,
 ) {
   return {
     id: record.id,
@@ -418,6 +437,9 @@ function recordResponse(
     codedDiagnoses,
     vitals: record.vitals ?? {},
     createdAt: record.createdAt.toISOString(),
+    editedAt: record.editedAt?.toISOString() ?? null,
+    editCount: record.editCount,
+    editableUntil: recordEditableUntil(record, viewerDoctorId)?.toISOString() ?? null,
   };
 }
 
@@ -469,7 +491,7 @@ const ACCESS_REQUEST_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 const REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const accessRequestCutoff = () => new Date(Date.now() - ACCESS_REQUEST_LIFETIME_MS);
 
-async function getActivePermission(patientId: number, doctorId: number) {
+export async function getActivePermission(patientId: number, doctorId: number) {
   const [permission] = await db
     .select()
     .from(accessPermissionsTable)
@@ -1999,7 +2021,7 @@ router.get(
     void reportUnusualRecordAccess(req.currentUser!);
     res.json(
       GetDoctorPatientRecordsResponse.parse(
-        await recordsResponse(rows),
+        await recordsResponse(rows, req.currentUser!.id),
       ),
     );
   },
@@ -2218,6 +2240,7 @@ router.post(
           record,
           req.currentUser!.name,
           diagnosesByRecord.get(record.id) ?? [],
+          req.currentUser!.id,
         ),
       ),
     );
