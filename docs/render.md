@@ -63,6 +63,17 @@ This one you create yourself. In your password manager, generate a random passwo
 
 ---
 
+## Part 1b. Email sending with Brevo (10 minutes)
+
+New accounts confirm their email address with a link, and "Forgot password?" sends a one-hour link. The emails go through [Brevo](https://www.brevo.com) (free: 300 emails a day).
+
+1. Create a free Brevo account.
+2. **Senders, Domains & Dedicated IPs** > **Senders** > **Add a sender**: the address the emails come from (for example your Gmail address) and the name `Mon carnet`. Brevo emails that address a link: click it. With your own domain later (Domains > Add a domain), emails are less likely to land in spam.
+3. **SMTP & API** > **API Keys** > **Generate a new API key**, name it `mon-carnet`. Save it as **Mon carnet BREVO_API_KEY**.
+4. In Render, **mon-carnet-web** > **Environment**: add `BREVO_API_KEY` (the key) and `EMAIL_FROM` (the verified sender address), then **Save Changes**.
+
+Until these are set, the app refuses new accounts ("email is not set up"), so nobody is left with an account they cannot confirm. Accounts that existed before count as confirmed.
+
 ## Part 2. Supabase settings (5 minutes)
 
 Still in the Supabase dashboard, left menu **Authentication**:
@@ -145,7 +156,7 @@ The lab files are in Replit's storage, which only a program running inside Repli
 
 1. Open your Render address and sign in with `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD` (Render shows the values in **mon-carnet-web** > **Environment**). Accept the terms when asked.
 2. The app asks you to set up two-step sign-in: scan the QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, 2FAS...), enter the code, and save the recovery codes in your password manager.
-3. Check that the app sees your real address: open `https://<your-address>/api/client-address`. It must show your own public IP address (compare with [whatismyip.com](https://www.whatismyip.com)). If it shows something else, set `TRUST_PROXY` to `2` in **mon-carnet** > **Environment** and check again. This matters: rate limits and the sign-in lock work per address.
+3. Check that the app sees your real address: open `https://<your-address>/api/client-address`. `address` must be your own public IP address (compare with [whatismyip.com](https://www.whatismyip.com)), not one starting with `10.`. If it is not, set `TRUST_PROXY` in **mon-carnet-web** > **Environment** to the number shown as `forwardedAddresses` (the proxies in front of the app), save, and check again after the redeploy. This matters: rate limits and the sign-in lock work per address.
 4. If you copied data: open a patient's record and a lab file. Look at **System overview** > **Security events**.
 5. In **Profile**, change your password (this ends any other session), then remove `INITIAL_ADMIN_PASSWORD` and `INITIAL_ADMIN_EMAIL` in **mon-carnet-web** > **Environment**.
 6. The first backup is made about 2 minutes after the first start. Check it in Supabase > **Storage** > `backups`, or in the Render log ("Daily backup made").

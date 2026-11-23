@@ -51,9 +51,12 @@ export const RegisterBody = zod.object({
 })
 
 export const RegisterResponse = zod.object({
-  "token": zod.string().describe('Access token (about one hour). Renew it with /auth/refresh before expiresAt.'),
-  "refreshToken": zod.string(),
-  "expiresAt": zod.coerce.date(),
+  "verificationRequired": zod.boolean().describe('True: a confirmation link was emailed; sign in after using it.'),
+  "emailSent": zod.boolean().optional().describe('False when the confirmation email could not be sent; the person can ask for it again.'),
+  "email": zod.string(),
+  "token": zod.string().optional(),
+  "refreshToken": zod.string().optional(),
+  "expiresAt": zod.coerce.date().optional(),
   "user": zod.object({
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
@@ -77,7 +80,7 @@ export const RegisterResponse = zod.object({
   "contactInfo": zod.string().nullish(),
   "isActive": zod.boolean(),
   "createdAt": zod.coerce.date()
-})
+}).optional()
 })
 
 
@@ -123,6 +126,49 @@ export const LoginResponse = zod.object({
   "isActive": zod.boolean(),
   "createdAt": zod.coerce.date()
 }).optional()
+})
+
+
+export const verifyEmailBodyTokenMax = 200;
+
+
+
+export const VerifyEmailBody = zod.object({
+  "token": zod.string().min(1).max(verifyEmailBodyTokenMax)
+})
+
+export const VerifyEmailResponse = zod.object({
+  "verified": zod.boolean()
+})
+
+
+export const resendVerificationEmailBodyEmailMax = 254;
+
+
+
+export const ResendVerificationEmailBody = zod.object({
+  "email": zod.string().email().max(resendVerificationEmailBodyEmailMax)
+})
+
+export const ResendVerificationEmailResponse = zod.object({
+  "message": zod.string()
+})
+
+
+export const resetPasswordWithEmailLinkBodyTokenMax = 200;
+
+export const resetPasswordWithEmailLinkBodyNewPasswordMin = 8;
+export const resetPasswordWithEmailLinkBodyNewPasswordMax = 128;
+
+
+
+export const ResetPasswordWithEmailLinkBody = zod.object({
+  "token": zod.string().min(1).max(resetPasswordWithEmailLinkBodyTokenMax),
+  "newPassword": zod.string().min(resetPasswordWithEmailLinkBodyNewPasswordMin).max(resetPasswordWithEmailLinkBodyNewPasswordMax)
+})
+
+export const ResetPasswordWithEmailLinkResponse = zod.object({
+  "message": zod.string()
 })
 
 

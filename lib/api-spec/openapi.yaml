@@ -42,11 +42,11 @@ paths:
               $ref: "#/components/schemas/RegistrationInput"
       responses:
         "201":
-          description: Account created or doctor registration submitted
+          description: Account created. When email verification is on (verificationRequired true), a confirmation link was emailed and there is no session until it is used.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthSession"
+                $ref: "#/components/schemas/RegistrationResult"
         "400":
           description: Invalid registration details
   /auth/login:
@@ -69,6 +69,64 @@ paths:
                 $ref: "#/components/schemas/LoginResult"
         "401":
           description: Invalid credentials or two-step code
+  /auth/verify-email:
+    post:
+      operationId: verifyEmail
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailTokenInput"
+      responses:
+        "200":
+          description: The email address is confirmed; the account can sign in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailVerified"
+        "400":
+          description: The link is invalid, already used or expired
+  /auth/verification-email:
+    post:
+      operationId: resendVerificationEmail
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequestInput"
+      responses:
+        "202":
+          description: If an unconfirmed account uses this email, a new link was sent (the answer is the same either way)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetRequestAccepted"
+  /auth/reset-password:
+    post:
+      operationId: resetPasswordWithEmailLink
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetWithTokenInput"
+      responses:
+        "200":
+          description: The password is changed and every session has ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetRequestAccepted"
+        "400":
+          description: The link is invalid, already used or expired, or the password is too weak
   /auth/refresh:
     post:
       operationId: refreshSession
@@ -1257,6 +1315,33 @@ components:
         refreshToken: { type: string }
         expiresAt: { type: string, format: date-time }
         user: { $ref: "#/components/schemas/User" }
+    RegistrationResult:
+      type: object
+      required: [verificationRequired, email]
+      properties:
+        verificationRequired: { type: boolean, description: "True: a confirmation link was emailed; sign in after using it." }
+        emailSent: { type: boolean, description: "False when the confirmation email could not be sent; the person can ask for it again." }
+        email: { type: string }
+        token: { type: string }
+        refreshToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+        user: { $ref: "#/components/schemas/User" }
+    EmailTokenInput:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, minLength: 1, maxLength: 200 }
+    EmailVerified:
+      type: object
+      required: [verified]
+      properties:
+        verified: { type: boolean }
+    PasswordResetWithTokenInput:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token: { type: string, minLength: 1, maxLength: 200 }
+        newPassword: { type: string, minLength: 8, maxLength: 128 }
     SessionTokens:
       type: object
       required: [token, refreshToken, expiresAt]

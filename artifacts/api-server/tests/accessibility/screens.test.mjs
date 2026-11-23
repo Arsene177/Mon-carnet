@@ -194,7 +194,7 @@ describe("accessibility (WCAG 2.2 AA rules checked by axe-core, and reflow)", ()
     test(`sign-in, sign-up and legal pages at ${width}px in ${language}`, async () => {
       const page = await openPage({ width, language });
       const found = [];
-      for (const route of ["/login", "/register", "/privacy", "/terms"]) {
+      for (const route of ["/login", "/register", "/privacy", "/terms", "/verify-email", "/reset-password?token=preview-token-for-the-form-0000"]) {
         await page.goto(BASE + route);
         found.push(...await problems(page, `${route} (${width}px, ${language})`));
       }

@@ -57,6 +57,11 @@ export const usersTable = pgTable(
     // "fr" or "en": the language of the app and of notifications sent to this account.
     preferredLanguage: text("preferred_language").notNull().default("fr"),
     isActive: boolean("is_active").notNull().default(true),
+    // When the account holder proved they own the email address (link sent at registration, or a
+    // password reset by email). Null: the account cannot sign in yet. Defaults to now for accounts
+    // the app creates itself (the first administrator, demo data) and for accounts that existed
+    // before email verification; registration sets it to null and sends the link.
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }).defaultNow(),
     // Set when the account was closed after a deletion request. Closed accounts cannot sign in or be restored.
     closedAt: timestamp("closed_at", { withTimezone: true }),
     // Two-step sign-in with an authenticator app (TOTP). The factor and its secret are held by
@@ -339,4 +344,27 @@ export const mfaRecoveryCodesTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("medichain_mfa_recovery_codes_user_index").on(table.userId)],
+).enableRLS();
+
+/**
+ * Single-use links sent by email: VERIFY_EMAIL (24 hours) and RESET_PASSWORD (1 hour). Only a
+ * SHA-256 hash of the token is stored, so the database never holds a usable link.
+ */
+export const emailTokensTable = pgTable(
+  "medichain_email_tokens",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("medichain_email_tokens_hash_unique").on(table.tokenHash),
+    index("medichain_email_tokens_user_index").on(table.userId, table.purpose),
+  ],
 ).enableRLS();

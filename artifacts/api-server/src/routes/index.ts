@@ -4,6 +4,7 @@ import medichainRouter from "./medichain";
 import accountRouter from "./account";
 import mfaRouter from "./mfa";
 import securityRouter from "./security";
+import emailRouter from "./email";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(medichainRouter);
 router.use(accountRouter);
 router.use(mfaRouter);
 router.use(securityRouter);
+router.use(emailRouter);
 
 export default router;

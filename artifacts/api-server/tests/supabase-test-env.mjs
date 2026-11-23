@@ -35,6 +35,8 @@ export function serverEnv(port, extra = {}) {
     NODE_ENV: "test",
     TRUST_PROXY: "1",
     LOG_LEVEL: "warn",
+    // Most suites test other things; tests/email.test.mjs turns verification on.
+    EMAIL_VERIFICATION: "off",
     ...extra,
   };
 }

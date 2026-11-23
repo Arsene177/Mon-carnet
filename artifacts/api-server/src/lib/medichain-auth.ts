@@ -158,6 +158,11 @@ export function requireAuth(...roles: MedichainRole[]) {
       res.status(401).json({ error: "Authentication required" });
       return;
     }
+    // A session made directly at Supabase Auth for an account whose email was never confirmed.
+    if (!user.emailVerifiedAt && process.env.EMAIL_VERIFICATION !== "off") {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
     // An account with two-step sign-in on needs a session that passed it. (Without this check,
     // someone with only the password could sign in at Supabase Auth directly and use that token.)
     if (user.mfaEnabledAt && claims.aal !== "aal2") {
