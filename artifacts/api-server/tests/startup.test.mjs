@@ -35,8 +35,8 @@ async function startServer() {
       INITIAL_ADMIN_EMAIL: ADMIN.email, INITIAL_ADMIN_PASSWORD: ADMIN.password, INITIAL_ADMIN_NAME: "First Admin",
       BACKUP_SCHEDULE: "daily", BACKUP_FIRST_CHECK_SECONDS: "1", SUPABASE_BACKUP_BUCKET: BUCKET,
       BACKUP_ENCRYPTION_KEY: "startup-test-backup-key-0123456789-abcdef",
-      // Left empty so the value kept in Supabase Vault applies.
-      TRUST_PROXY: "",
+      // Vault wins over the host's environment for the allowed settings.
+      TRUST_PROXY: "1",
     }),
     stdio: ["ignore", "ignore", "inherit"],
   });
