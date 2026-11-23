@@ -63,6 +63,17 @@ This one you create yourself. In your password manager, generate a random passwo
 
 ---
 
+## Part 1b. Email sending with Brevo (10 minutes)
+
+New accounts confirm their email address with a link, and "Forgot password?" sends a one-hour link. The emails go through [Brevo](https://www.brevo.com) (free: 300 emails a day).
+
+1. Create a free Brevo account.
+2. **Senders, Domains & Dedicated IPs** > **Senders** > **Add a sender**: the address the emails come from (for example your Gmail address) and the name `Mon carnet`. Brevo emails that address a link: click it. With your own domain later (Domains > Add a domain), emails are less likely to land in spam.
+3. **SMTP & API** > **API Keys** > **Generate a new API key**, name it `mon-carnet`. Save it as **Mon carnet BREVO_API_KEY**.
+4. In Render, **mon-carnet-web** > **Environment**: add `BREVO_API_KEY` (the key) and `EMAIL_FROM` (the verified sender address), then **Save Changes**.
+
+Until these are set, the app refuses new accounts ("email is not set up"), so nobody is left with an account they cannot confirm. Accounts that existed before count as confirmed.
+
 ## Part 2. Supabase settings (5 minutes)
 
 Still in the Supabase dashboard, left menu **Authentication**:

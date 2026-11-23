@@ -134,6 +134,8 @@ import {
   verifyLegacyPassword,
 } from "../lib/medichain-auth";
 import { removeAuthenticator, verifySecondFactor } from "./mfa";
+import { emailConfigured } from "../lib/email";
+import { emailVerificationRequired, sendEmailLink } from "../lib/email-tokens";
 import {
   SupabaseError,
   changeOwnPassword,
@@ -543,6 +545,11 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   }
 
   const email = input.email.trim().toLowerCase();
+  const verify = emailVerificationRequired();
+  if (verify && !emailConfigured()) {
+    res.status(503).json({ error: "Account creation is not available yet: email is not set up. Please try again later." });
+    return;
+  }
   let authUserId: string;
   try {
     authUserId = await createAuthUser(email, input.password);
@@ -583,12 +590,21 @@ router.post("/auth/register", async (req, res): Promise<void> => {
         sex: input.role === "PATIENT" ? input.sex : null,
         dateOfBirthEstimated: input.role === "PATIENT" ? Boolean(input.dateOfBirthEstimated) : false,
         nationalIdNumber,
+        // Confirmed by the link sent below; until then the account cannot sign in.
+        emailVerifiedAt: verify ? null : new Date(),
       })
       .returning();
+    if (verify) {
+      const emailSent = await sendEmailLink(created!, "VERIFY_EMAIL");
+      res.status(201).json(RegisterResponse.parse({ verificationRequired: true, emailSent, email }));
+      return;
+    }
     const session = await passwordSignIn(email, input.password);
     if (!session) throw new Error("A newly created account could not sign in.");
     res.status(201).json(
       RegisterResponse.parse({
+        verificationRequired: false,
+        email,
         ...sessionTokens(session),
         user: userResponse(created!),
       }),
@@ -629,6 +645,12 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
   if (!session) {
     res.status(401).json({ error: "Invalid credentials" });
+    return;
+  }
+  // The password is right, but the email address was never confirmed.
+  if (!user.emailVerifiedAt && emailVerificationRequired()) {
+    await endSessionById(session.sessionId);
+    res.status(403).json({ error: "Confirm your email address first: open the link we sent you, or ask for a new one.", code: "EMAIL_NOT_VERIFIED" });
     return;
   }
   let authenticatorRemoved = false;
@@ -678,8 +700,8 @@ router.post("/auth/refresh", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Authentication required" });
     return;
   }
-  const [user] = await db.select({ isActive: usersTable.isActive }).from(usersTable).where(eq(usersTable.authUserId, session.authUserId)).limit(1);
-  if (!user?.isActive) {
+  const [user] = await db.select({ isActive: usersTable.isActive, emailVerifiedAt: usersTable.emailVerifiedAt }).from(usersTable).where(eq(usersTable.authUserId, session.authUserId)).limit(1);
+  if (!user?.isActive || (!user.emailVerifiedAt && emailVerificationRequired())) {
     await endSessionById(session.sessionId);
     res.status(401).json({ error: "Authentication required" });
     return;
@@ -700,6 +722,17 @@ router.post("/auth/password-reset-requests", async (req, res): Promise<void> => 
   }
 
   const email = parsed.data.email.trim().toLowerCase();
+  if (emailConfigured()) {
+    // A one-hour link by email. The answer is the same whether or not the account exists.
+    const [account] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    if (account && account.isActive && !account.closedAt && account.authUserId) {
+      await sendEmailLink(account, "RESET_PASSWORD");
+    }
+    res.status(202).json(RequestPasswordResetResponse.parse({
+      message: "If an account exists for that email, we have sent it a link to choose a new password. It works for one hour.",
+    }));
+    return;
+  }
   const [user] = await db
     .select({ email: usersTable.email })
     .from(usersTable)

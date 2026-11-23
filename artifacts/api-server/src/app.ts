@@ -11,7 +11,10 @@ import {
   apiLimiter,
   loginAccountLimiter,
   loginIpLimiter,
+  emailLinkLimiter,
+  inboxLimiter,
   passwordResetLimiter,
+  verificationEmailLimiter,
   registrationLimiter,
   verificationLimiter,
 } from "./lib/rate-limits";
@@ -86,7 +89,10 @@ app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 app.use("/api", apiLimiter);
 app.post("/api/auth/login", loginIpLimiter, loginAccountLimiter);
 app.post("/api/auth/register", registrationLimiter);
-app.post("/api/auth/password-reset-requests", passwordResetLimiter);
+app.post("/api/auth/password-reset-requests", passwordResetLimiter, inboxLimiter);
+app.post("/api/auth/verification-email", verificationEmailLimiter, inboxLimiter);
+app.post("/api/auth/verify-email", emailLinkLimiter);
+app.post("/api/auth/reset-password", emailLinkLimiter);
 app.get("/api/booklet-verification/:verificationCode", verificationLimiter);
 
 app.use("/api", router);

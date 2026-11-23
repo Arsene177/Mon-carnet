@@ -110,3 +110,25 @@ export const accountSecretLimiter = limiter({
     details: { userId: req.currentUser?.id ?? null },
   })),
 });
+
+/** Requests for a new confirmation email, per network address. */
+export const verificationEmailLimiter = limiter({
+  windowMs: ONE_HOUR,
+  limit: 5,
+  message: { error: "Too many requests for a confirmation email. Try again later." },
+});
+
+/** Emails one address can be sent per hour (confirmation and password links together), so nobody can flood someone's inbox. */
+export const inboxLimiter = limiter({
+  windowMs: ONE_HOUR,
+  limit: 3,
+  keyGenerator: emailKey,
+  message: { error: "Several emails were already sent to this address. Wait an hour and try again." },
+});
+
+/** Opening links from emails (the tokens are random; this only slows down noise). */
+export const emailLinkLimiter = limiter({
+  windowMs: 60_000,
+  limit: 20,
+  message: { error: "Too many requests. Wait a minute and try again." },
+});

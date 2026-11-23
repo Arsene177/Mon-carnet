@@ -32,6 +32,15 @@ services:
         sync: false
       - key: INITIAL_ADMIN_PASSWORD
         sync: false
+      # Emails (confirmation links, password reset) through Brevo: an API key, and a sender address
+      # verified in Brevo. Links use the service's address (Render's RENDER_EXTERNAL_URL) unless
+      # APP_URL is set. Without them, new accounts cannot be created (EMAIL_VERIFICATION is on).
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: Mon carnet
       # Optional: Slack, Discord, Teams or webhook-to-email URL for security alerts.
       - key: ALERT_WEBHOOK_URL
         sync: false

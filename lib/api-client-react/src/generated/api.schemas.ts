@@ -120,6 +120,43 @@ export interface AuthSession {
   user: User;
 }
 
+export interface RegistrationResult {
+  /** True: a confirmation link was emailed; sign in after using it. */
+  verificationRequired: boolean;
+  /** False when the confirmation email could not be sent; the person can ask for it again. */
+  emailSent?: boolean;
+  email: string;
+  token?: string;
+  refreshToken?: string;
+  expiresAt?: string;
+  user?: User;
+}
+
+export interface EmailTokenInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  token: string;
+}
+
+export interface EmailVerified {
+  verified: boolean;
+}
+
+export interface PasswordResetWithTokenInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  token: string;
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  newPassword: string;
+}
+
 export interface SessionTokens {
   token: string;
   refreshToken: string;

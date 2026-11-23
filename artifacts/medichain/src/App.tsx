@@ -39,6 +39,7 @@ import type { WorkspaceTab } from '@/lib/navigation';
 import { LANGUAGES, getLanguage, locale, setLanguage, t, useLanguage, type Language } from '@/lib/i18n';
 import { errText } from '@/lib/error-text';
 import { ACCESS_TOKEN_KEY, SESSION_LAST_ACTIVITY_KEY, accessToken, authorizedFetch, clearSession, endSession, hasSession, keepThisDeviceSignedIn, saveSession } from '@/lib/session';
+import { CheckEmailNotice, ResetPasswordPage, VerifyEmailPage } from '@/components/email-links';
 import { AUTHENTICATOR_REMOVED_KEY, AuthenticatorRemovedNotice, MfaSetupFlow, TwoStepCard } from '@/components/two-step';
 
 const SESSION_ENDED_NOTICE_KEY = 'medichain_session_ended';
@@ -577,6 +578,8 @@ function Router() {
       window.clearInterval(interval);
     };
   }, [token, setLocation]);
+  if (location === '/verify-email') return <VerifyEmailPage/>;
+  if (location === '/reset-password') return <ResetPasswordPage/>;
   if (location === '/privacy' || location === '/terms') return <Suspense fallback={<LoadingScreen />}><LegalPage kind={location === '/privacy' ? 'privacy' : 'terms'}/></Suspense>;
   if (location === '/' || location === '/login' || location === '/register' || !token) {
     if (token && me.data) {
@@ -671,6 +674,9 @@ function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>(location.pathname === '/register' ? 'register' : 'login');
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [resetSubmitted, setResetSubmitted] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
+  // Waiting for the email address to be confirmed: after registering, or a sign-in refused for it.
+  const [checkEmail, setCheckEmail] = useState<{ email: string; emailSent: boolean } | null>(null);
   const [role, setRole] = useState<'PATIENT' | 'DOCTOR'>('PATIENT');
   const [form, setForm] = useState({ name: '', email: '', password: '', contactInfo: '', professionalMedicalNumber: '', nationalIdNumber: '' });
   const [registerSex, setRegisterSex] = useState<Sex | ''>('');
@@ -701,11 +707,12 @@ function AuthPage() {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setFeedback('');
+    setCheckEmail(null);
     if (recoveringPassword) {
       passwordResetRequest.mutate(
         { data: { email: form.email.trim() } },
         {
-          onSuccess: () => setResetSubmitted(true),
+          onSuccess: (result) => { setResetMessage(result.message); setResetSubmitted(true); },
           onError: (error) => setFeedback(errText(error)),
         },
       );
@@ -732,17 +739,33 @@ function AuthPage() {
     if (mode === 'login') {
       login.mutate({ data: { email: form.email.trim(), password: form.password, ...(codeStep ? { code: code.trim() } : {}) } }, {
         onSuccess: onSession,
-        onError: (error) => setFeedback(codeStep && (error as { status?: number }).status === 401
-          ? t("The code is incorrect or expired. Enter the newest code from your app, or a recovery code.")
-          : loginErrorText(error)),
+        onError: (error) => {
+          if ((error as { data?: { code?: string } }).data?.code === 'EMAIL_NOT_VERIFIED') {
+            setCheckEmail({ email: form.email.trim(), emailSent: true });
+            setFeedback(errText(error));
+            return;
+          }
+          setFeedback(codeStep && (error as { status?: number }).status === 401
+            ? t("The code is incorrect or expired. Enter the newest code from your app, or a recovery code.")
+            : loginErrorText(error));
+        },
       });
     } else {
       const dateOfBirth = role === 'PATIENT' ? birthDateToSend(registerBirth) : null;
       if (role === 'PATIENT' && (!registerSex || !dateOfBirth)) { setFeedback(t('Choose your sex and enter your date of birth, or your age if you do not know the exact date.')); return; }
-      register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, preferredLanguage: getLanguage(), acceptedTermsVersion: LEGAL_DOCUMENTS_VERSION, healthDataConsent: role === 'PATIENT' && healthConsent, ...(role === 'PATIENT' && dateOfBirth && registerSex ? { dateOfBirth, dateOfBirthEstimated: registerBirth.estimated, sex: registerSex, ...(form.nationalIdNumber.trim() ? { nationalIdNumber: form.nationalIdNumber.trim() } : {}) } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: onSession, onError: (error) => setFeedback(errText(error)) });
+      register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, preferredLanguage: getLanguage(), acceptedTermsVersion: LEGAL_DOCUMENTS_VERSION, healthDataConsent: role === 'PATIENT' && healthConsent, ...(role === 'PATIENT' && dateOfBirth && registerSex ? { dateOfBirth, dateOfBirthEstimated: registerBirth.estimated, sex: registerSex, ...(form.nationalIdNumber.trim() ? { nationalIdNumber: form.nationalIdNumber.trim() } : {}) } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: (result) => {
+        if (result.verificationRequired) {
+          setCheckEmail({ email: result.email, emailSent: result.emailSent !== false });
+          setForm({ ...form, password: '' });
+          setMode('login');
+          setLocation('/login');
+          return;
+        }
+        onSession(result);
+      }, onError: (error) => setFeedback(errText(error)) });
     }
   };
-  const flipMode = (next: 'login' | 'register') => { setCodeStep(false); setCode(''); setMode(next); setRecoveringPassword(false); setResetSubmitted(false); setFeedback(''); setLocation(next === 'login' ? '/login' : '/register'); };
+  const flipMode = (next: 'login' | 'register') => { setCheckEmail(null); setCodeStep(false); setCode(''); setMode(next); setRecoveringPassword(false); setResetSubmitted(false); setFeedback(''); setLocation(next === 'login' ? '/login' : '/register'); };
   return <div className="login-page">
     <aside className="login-aside">
       <div className="brand"><NotebookLogo/><span className="brand-name">{t("Mon")} <strong>{t("carnet")}</strong></span></div>
@@ -754,9 +777,10 @@ function AuthPage() {
       <div className="auth-card">
         <div className="mobile-brand"><NotebookLogo/><span className="brand-name">{t("Mon")} <strong>{t("carnet")}</strong></span></div>
         {!recoveringPassword && <div className="auth-tabs"><button className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => flipMode('login')} data-testid="tab-login">{t("Sign in")}</button><button className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => flipMode('register')} data-testid="tab-register">{t("Create account")}</button></div>}
-        <h1 className="auth-title">{recoveringPassword ? t("Reset your password") : codeStep ? t("Enter your code") : mode === 'login' ? t("Welcome back") : t("Start your record")}</h1><p>{recoveringPassword ? t("Enter your account email. An administrator will review your request.") : codeStep ? t("Open the authenticator app on your phone and enter the 6-digit code for Mon carnet.") : mode === 'login' ? t("Sign in to continue to your secure care workspace.") : t("Create a trusted account for your care journey.")}</p>
+        <h1 className="auth-title">{recoveringPassword ? t("Reset your password") : codeStep ? t("Enter your code") : mode === 'login' ? t("Welcome back") : t("Start your record")}</h1><p>{recoveringPassword ? t("Enter the email address of your account.") : codeStep ? t("Open the authenticator app on your phone and enter the 6-digit code for Mon carnet.") : mode === 'login' ? t("Sign in to continue to your secure care workspace.") : t("Create a trusted account for your care journey.")}</p>
         {feedback && <div className="auth-feedback" role="alert"><AlertCircle size={14}/><span>{feedback}</span></div>}
-        {resetSubmitted && <div className="notice" role="status">{t("If an account exists for that email, an administrator will review your request. Please contact them through a trusted channel if you need help.")}</div>}
+        {resetSubmitted && <div className="notice" role="status" data-testid="notice-reset-requested">{resetMessage ? t(resetMessage) : t("If an account exists for that email, an administrator will review your request. Please contact them through a trusted channel if you need help.")}</div>}
+        {checkEmail && !recoveringPassword && <CheckEmailNotice email={checkEmail.email} emailSent={checkEmail.emailSent}/>}
         <form onSubmit={submit}>
           {!recoveringPassword && mode === 'register' && <>
             <div className="field"><label htmlFor="auth-name">{t("Full name")}</label><input id="auth-name" value={form.name} onChange={onField('name')} required minLength={2} autoComplete="name" data-testid="input-name" placeholder={t("Your name")}/></div>
