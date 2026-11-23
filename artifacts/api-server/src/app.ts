@@ -24,8 +24,11 @@ const app: Express = express();
 // The API runs behind the host's reverse proxy (Render's load balancer). Trusting it gives rate
 // limits the real client address instead of the proxy's; GET /api/client-address shows what the
 // server sees, to check the setting after deploying.
-const trustProxy = Number(process.env.TRUST_PROXY ?? 1);
-app.set("trust proxy", Number.isInteger(trustProxy) && trustProxy >= 0 ? trustProxy : 1);
+export function applyTrustProxy(): void {
+  const trustProxy = Number(process.env.TRUST_PROXY ?? 1);
+  app.set("trust proxy", Number.isInteger(trustProxy) && trustProxy >= 0 ? trustProxy : 1);
+}
+applyTrustProxy();
 app.disable("x-powered-by");
 
 app.use(

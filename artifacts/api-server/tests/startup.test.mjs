@@ -35,6 +35,8 @@ async function startServer() {
       INITIAL_ADMIN_EMAIL: ADMIN.email, INITIAL_ADMIN_PASSWORD: ADMIN.password, INITIAL_ADMIN_NAME: "First Admin",
       BACKUP_SCHEDULE: "daily", BACKUP_FIRST_CHECK_SECONDS: "1", SUPABASE_BACKUP_BUCKET: BUCKET,
       BACKUP_ENCRYPTION_KEY: "startup-test-backup-key-0123456789-abcdef",
+      // Left empty so the value kept in Supabase Vault applies.
+      TRUST_PROXY: "",
     }),
     stdio: ["ignore", "ignore", "inherit"],
   });
@@ -50,8 +52,13 @@ const waitFor = async (check, seconds) => {
   return false;
 };
 
+const clearVault = () => sql.query("delete from vault.secrets where name like 'mon_carnet.%'");
+
 before(async () => {
   await resetDatabase(sql);
+  await clearVault();
+  await sql.query("select vault.create_secret('3', 'mon_carnet.TRUST_PROXY')");
+  await sql.query("select vault.create_secret('ignored', 'mon_carnet.SUPABASE_SECRET_KEY')");
   const items = await storage("POST", `/object/list/${BUCKET}`, { prefix: "", limit: 1000 });
   if (Array.isArray(items) && items.length) await storage("DELETE", `/object/${BUCKET}`, { prefixes: items.map((item) => item.name) });
   server = await startServer();
@@ -59,6 +66,7 @@ before(async () => {
 
 after(async () => {
   if (server) await stop(server);
+  await clearVault();
   await resetDatabase(sql);
   await sql.end();
 });
@@ -73,6 +81,14 @@ describe("starting on a host without a Shell or scheduled jobs", () => {
     assert.equal(body.user.role, "ADMIN");
     // Two-step sign-in comes next, as for every administrator.
     assert.equal(body.user.mfaRequired, true);
+  });
+
+  test("settings kept in Supabase Vault apply, and only the allowed ones", async () => {
+    const seen = await (await fetch(`${BASE}/client-address`, { headers: { "x-forwarded-for": "198.51.100.9, 10.0.0.1, 10.0.0.2" } })).json();
+    assert.equal(seen.trustProxy, 3);
+    assert.equal(seen.address, "198.51.100.9");
+    // The server still works with its own secret key, not the one planted in Vault.
+    assert.equal((await fetch(`${BASE}/readyz`)).status, 200);
   });
 
   test("a backup is made without anyone starting it", async () => {
