@@ -93,7 +93,7 @@ async function registerPatient(overrides = {}) {
       role: "PATIENT",
       sex: "FEMALE",
       dateOfBirth: "1990-04-12",
-      contactInfo: "+237690000000",
+      countryOfOrigin: "CM", contactInfo: "+237690000000",
       acceptedTermsVersion: TERMS_VERSION,
       healthDataConsent: true,
       ...overrides,
@@ -446,6 +446,15 @@ describe("doctor access to a patient's records", () => {
     assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: byCmId.token })).status, 403);
   });
 
+  test("sign-up asks for a valid country of origin and keeps it", async () => {
+    const base = { name: "Jean Mbarga", password: PASSWORD, role: "PATIENT", sex: "MALE", dateOfBirth: "1985-06-01", contactInfo: "+237690000002", acceptedTermsVersion: TERMS_VERSION, healthDataConsent: true };
+    assert.equal((await api("POST", "/auth/register", { body: { ...base, email: `${unique("nocountry")}@test.cm` } })).status, 400);
+    assert.equal((await api("POST", "/auth/register", { body: { ...base, email: `${unique("badcountry")}@test.cm`, countryOfOrigin: "ZZ" } })).status, 400);
+    const ok = await api("POST", "/auth/register", { body: { ...base, email: `${unique("country")}@test.cm`, countryOfOrigin: "NG" } });
+    assert.equal(ok.status, 201);
+    assert.equal(ok.body.user.countryOfOrigin, "NG");
+  });
+
   test("a doctor can keep trying CM IDs without being locked out", async () => {
     const doctor = await createStaff("DOCTOR");
     for (let i = 0; i < 7; i++) {
@@ -631,7 +640,7 @@ describe("identity data", () => {
     const cni = unique("CNI").toUpperCase().slice(0, 18);
     await registerPatient({ nationalIdNumber: cni });
     const second = await api("POST", "/auth/register", {
-      body: { name: "Paul Essomba", email: `${unique("dup")}@test.cm`, password: PASSWORD, role: "PATIENT", sex: "MALE", dateOfBirth: "1980-01-01", contactInfo: "+237690000001", nationalIdNumber: cni, acceptedTermsVersion: TERMS_VERSION, healthDataConsent: true },
+      body: { name: "Paul Essomba", email: `${unique("dup")}@test.cm`, password: PASSWORD, role: "PATIENT", sex: "MALE", dateOfBirth: "1980-01-01", countryOfOrigin: "CM", contactInfo: "+237690000001", nationalIdNumber: cni, acceptedTermsVersion: TERMS_VERSION, healthDataConsent: true },
     });
     assert.equal(second.status, 409);
   });

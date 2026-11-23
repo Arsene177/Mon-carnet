@@ -112,6 +112,7 @@ export function userResponse(user: UserRow) {
     ...current,
     dateOfBirth: user.dateOfBirth ?? null,
     contactInfo: user.contactInfo ?? null,
+    countryOfOrigin: user.countryOfOrigin ?? null,
     hospitalName: user.hospitalName ?? null,
     locationRegion: user.locationRegion ?? null,
     locationArrondissement: user.locationArrondissement ?? null,

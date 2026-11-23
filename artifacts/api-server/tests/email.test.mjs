@@ -45,7 +45,7 @@ async function register(language = "fr") {
   const email = `${unique("verify")}@test.cm`;
   const result = await api("POST", "/auth/register", {
     name: "Awa Verify", email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12",
-    contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true, preferredLanguage: language,
+    countryOfOrigin: "CM", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true, preferredLanguage: language,
   });
   assert.equal(result.status, 201, JSON.stringify(result.body));
   return { email, result };

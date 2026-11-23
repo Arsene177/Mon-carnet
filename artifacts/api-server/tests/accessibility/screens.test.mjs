@@ -142,7 +142,7 @@ before(async () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   const patient = await api("POST", "/auth/register", {
-    body: { name: "Awa Ngono", email: patientEmail, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
+    body: { name: "Awa Ngono", email: patientEmail, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", countryOfOrigin: "CM", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
   });
   tokens.patient = patient.token;
   await api("PUT", "/patient/emergency-info", { token: tokens.patient, body: { bloodGroup: "O+", weightKg: 62, heightCm: 165, allergies: "Pénicilline", emergencyContact: "Paul Ngono +237 699 00 00 00" } });
@@ -157,7 +157,7 @@ describe("access control and record corrections, clicked through in the browser"
   test("ask-me-first, approve, correct a record, see its history, revoke, grant by email", async () => {
     const email = `patient-flow-${Date.now()}@test.cm`;
     const patientToken = (await api("POST", "/auth/register", {
-      body: { name: "Mireille Flow", email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1988-02-03", contactInfo: "+237690000001", acceptedTermsVersion: TERMS, healthDataConsent: true },
+      body: { name: "Mireille Flow", email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1988-02-03", countryOfOrigin: "CM", contactInfo: "+237690000001", acceptedTermsVersion: TERMS, healthDataConsent: true },
     })).token;
     const doctorEmail = `doctor-flow-${Date.now()}@test.cm`;
     await insertStaff(sql, { email: doctorEmail, password: PASSWORD, role: "DOCTOR", name: "Dr Flow", terms: TERMS });

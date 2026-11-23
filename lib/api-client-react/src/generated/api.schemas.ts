@@ -46,6 +46,11 @@ export const Language = {
 
 export interface User {
   /**
+     * ISO 3166-1 alpha-2 code; null for accounts created before it was asked.
+     * @nullable
+     */
+  countryOfOrigin: string | null;
+  /**
      * Version of the privacy policy and terms this account accepted.
      * @nullable
      */
@@ -208,6 +213,11 @@ export interface RegistrationInput {
   dateOfBirth?: string;
   /** @maxLength 300 */
   contactInfo?: string;
+  /**
+     * Country of origin, ISO 3166-1 alpha-2 code (for example CM). Required for new accounts.
+     * @pattern ^[A-Z]{2}$
+     */
+  countryOfOrigin?: string;
   /** @maxLength 120 */
   professionalMedicalNumber?: string;
 }

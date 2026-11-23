@@ -30,6 +30,7 @@ export const registerBodyNationalIdNumberMax = 30;
 
 export const registerBodyContactInfoMax = 300;
 
+export const registerBodyCountryOfOriginRegExp = new RegExp('^[A-Z]{2}$');
 export const registerBodyProfessionalMedicalNumberMax = 120;
 
 
@@ -47,6 +48,7 @@ export const RegisterBody = zod.object({
   "role": zod.enum(['PATIENT', 'DOCTOR']),
   "dateOfBirth": zod.coerce.date().optional(),
   "contactInfo": zod.string().max(registerBodyContactInfoMax).optional(),
+  "countryOfOrigin": zod.string().regex(registerBodyCountryOfOriginRegExp).optional().describe('Country of origin, ISO 3166-1 alpha-2 code (for example CM). Required for new accounts.'),
   "professionalMedicalNumber": zod.string().max(registerBodyProfessionalMedicalNumberMax).optional()
 })
 
@@ -58,6 +60,7 @@ export const RegisterResponse = zod.object({
   "refreshToken": zod.string().optional(),
   "expiresAt": zod.coerce.date().optional(),
   "user": zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -103,6 +106,7 @@ export const LoginResponse = zod.object({
   "expiresAt": zod.coerce.date().optional(),
   "authenticatorRemoved": zod.boolean().optional().describe('True after signing in with a recovery code: the lost authenticator was removed and must be set up again.'),
   "user": zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -204,6 +208,7 @@ export const RequestPasswordResetResponse = zod.object({
 
 
 export const GetMeResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -234,6 +239,7 @@ export const UpdateLanguageBody = zod.object({
 })
 
 export const UpdateLanguageResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -363,6 +369,7 @@ export const getPatientProfileResponsePatientAccessIdRegExp = new RegExp('^CM[A-
 export const GetPatientProfileResponse = zod.object({
   "nationalIdNumber": zod.string().nullable(),
   "user": zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -412,6 +419,7 @@ export const UpdatePatientLocationBody = zod.object({
 })
 
 export const UpdatePatientLocationResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -449,6 +457,7 @@ export const UpdatePatientIdentityBody = zod.object({
 })
 
 export const UpdatePatientIdentityResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -696,6 +705,7 @@ export const GetPatientAccessHistoryResponse = zod.array(GetPatientAccessHistory
 
 
 export const GetDoctorProfileResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -735,6 +745,7 @@ export const UpdateDoctorProfileBody = zod.object({
 })
 
 export const UpdateDoctorProfileResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -1282,6 +1293,7 @@ export const UpdateAdminEpidemicThresholdResponse = zod.object({
 
 
 export const GetPendingDoctorsResponseItem = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -1313,6 +1325,7 @@ export const ApproveDoctorParams = zod.object({
 })
 
 export const ApproveDoctorResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -1343,6 +1356,7 @@ export const RevokeDoctorParams = zod.object({
 })
 
 export const RevokeDoctorResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -1373,6 +1387,7 @@ export const VerifyDoctorParams = zod.object({
 })
 
 export const VerifyDoctorResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -1407,6 +1422,7 @@ export const UpdateAdminUserStatusBody = zod.object({
 })
 
 export const UpdateAdminUserStatusResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -1448,6 +1464,7 @@ export const ResetAdminUserMfaParams = zod.object({
 })
 
 export const ResetAdminUserMfaResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -1501,6 +1518,7 @@ export const AcceptLegalTermsBody = zod.object({
 })
 
 export const AcceptLegalTermsResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
@@ -1628,6 +1646,7 @@ export const SearchUsersQueryParams = zod.object({
 })
 
 export const SearchUsersResponseItem = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
   "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
   "termsAcceptedAt": zod.coerce.date().nullable(),
   "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),

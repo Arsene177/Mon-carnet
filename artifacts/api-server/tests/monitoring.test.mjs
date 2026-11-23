@@ -53,7 +53,7 @@ const unique = (prefix) => `${prefix}${Date.now().toString(36)}${counter++}`;
 async function registerPatient() {
   const email = `${unique("mon-patient")}@test.cm`;
   const { status, body } = await api("POST", "/auth/register", {
-    body: { name: `Patient ${unique("")}`, email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
+    body: { name: `Patient ${unique("")}`, email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", countryOfOrigin: "CM", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
   });
   assert.equal(status, 201, JSON.stringify(body));
   const { rows: [row] } = await sql.query("select id, patient_display_id from medichain_users where email = $1", [email]);

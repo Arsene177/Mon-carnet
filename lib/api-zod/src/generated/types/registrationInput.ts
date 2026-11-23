@@ -38,6 +38,11 @@ export interface RegistrationInput {
   dateOfBirth?: Date;
   /** @maxLength 300 */
   contactInfo?: string;
+  /**
+     * Country of origin, ISO 3166-1 alpha-2 code (for example CM). Required for new accounts.
+     * @pattern ^[A-Z]{2}$
+     */
+  countryOfOrigin?: string;
   /** @maxLength 120 */
   professionalMedicalNumber?: string;
 }

@@ -1307,8 +1307,9 @@ components:
       enum: [PENDING, ACTIVE, INACTIVE]
     User:
       type: object
-      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage, sex, dateOfBirthEstimated, termsVersion, termsAcceptedAt, healthDataConsentAt, mfaEnabled, mfaRequired]
+      required: [id, email, name, role, status, isActive, createdAt, hospitalName, professionalMedicalNumber, doctorVerified, locationRegion, locationArrondissement, preferredLanguage, sex, dateOfBirthEstimated, termsVersion, termsAcceptedAt, healthDataConsentAt, mfaEnabled, mfaRequired, countryOfOrigin]
       properties:
+        countryOfOrigin: { type: ["string", "null"], description: "ISO 3166-1 alpha-2 code; null for accounts created before it was asked." }
         termsVersion: { type: ["string", "null"], description: "Version of the privacy policy and terms this account accepted." }
         termsAcceptedAt: { type: ["string", "null"], format: date-time }
         healthDataConsentAt: { type: ["string", "null"], format: date-time, description: "Patients: when they consented to the processing of their health data." }
@@ -1411,6 +1412,7 @@ components:
         role: { type: string, enum: [PATIENT, DOCTOR] }
         dateOfBirth: { type: string, format: date }
         contactInfo: { type: string, maxLength: 300 }
+        countryOfOrigin: { type: string, pattern: "^[A-Z]{2}$", description: "Country of origin, ISO 3166-1 alpha-2 code (for example CM). Required for new accounts." }
         professionalMedicalNumber: { type: string, maxLength: 120 }
     DoctorProfileInput:
       type: object

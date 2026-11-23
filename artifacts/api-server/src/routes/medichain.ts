@@ -104,7 +104,7 @@ import {
   VerifyDoctorParams,
   VerifyDoctorResponse,
 } from "@workspace/api-zod";
-import { isValidCameroonLocation, LEGAL_DOCUMENTS_VERSION } from "@workspace/api-zod";
+import { isCountryCode, isValidCameroonLocation, LEGAL_DOCUMENTS_VERSION } from "@workspace/api-zod";
 import {
   auditEventsTable,
   bookletExportsTable,
@@ -551,6 +551,10 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     );
     return;
   }
+  if (!isCountryCode(input.countryOfOrigin)) {
+    invalidBody(res, "Choose your country of origin.");
+    return;
+  }
   if (input.role === "PATIENT" && (!input.sex || !input.dateOfBirth || !isPlausibleBirthDate(input.dateOfBirth))) {
     invalidBody(res, "Patient registration requires sex and a valid date of birth or age.");
     return;
@@ -608,6 +612,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
               : input.dateOfBirth.toISOString().slice(0, 10)
             : null,
         contactInfo: input.contactInfo?.trim() || null,
+        countryOfOrigin: input.countryOfOrigin,
         preferredLanguage: input.preferredLanguage ?? "fr",
         termsVersion: LEGAL_DOCUMENTS_VERSION,
         termsAcceptedAt: new Date(),
