@@ -24,7 +24,8 @@ export type SecurityEventType =
   | "ACCOUNT_SUSPENDED"
   | "ACCOUNT_RESTORED"
   | "ACCOUNT_ERASED"
-  | "ACCOUNT_CLOSED";
+  | "ACCOUNT_CLOSED"
+  | "BACKUP_FAILED";
 
 type Details = Record<string, string | number | null>;
 
@@ -41,6 +42,7 @@ const ALERT_TEXT: Record<SecurityEventType, { en: string; fr: string }> = {
   ACCOUNT_RESTORED: { en: "An administrator restored a suspended account.", fr: "Un administrateur a rétabli un compte suspendu." },
   ACCOUNT_ERASED: { en: "An administrator erased an account and its data.", fr: "Un administrateur a effacé un compte et ses données." },
   ACCOUNT_CLOSED: { en: "An administrator closed an account.", fr: "Un administrateur a fermé un compte." },
+  BACKUP_FAILED: { en: "The daily encrypted backup could not be made.", fr: "La sauvegarde chiffrée quotidienne n’a pas pu être faite." },
 };
 
 const ALERT_INTERVAL_MS = 15 * 60_000;

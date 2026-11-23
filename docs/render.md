@@ -6,7 +6,14 @@ This guide takes you from nothing to the app running at a web address, step by s
 - the GitHub account that owns `Arsene177/Mon-carnet`;
 - a password manager (Bitwarden, 1Password, or your browser's) to keep three values safe.
 
-How it fits together: **Supabase** keeps the data (database, sign-ins, lab files). **Render** runs the app: one web service that serves both the website and its API, and one daily job that makes an encrypted backup. Render builds the app from GitHub, using `render.yaml` and the `Dockerfile` in this repository.
+How it fits together: **Supabase** keeps the data (database, sign-ins, lab files). **Render** runs the app on its **free plan**: one web service that serves both the website and its API. Render builds it from GitHub, using `render.yaml` and the `Dockerfile` in this repository.
+
+The free plan has no pre-deploy step, no Shell and no scheduled jobs, so the server does those jobs itself (all set in `render.yaml`):
+- `SCHEMA_PUSH_ON_START=true`: before each start, it brings the Supabase tables up to date and closes them to the public API. If that fails, it does not start.
+- `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD`: on the first start it creates the first administrator. Remove them after the first sign-in.
+- `BACKUP_SCHEDULE=daily` with `BACKUP_ENCRYPTION_KEY`: about once an hour it checks for a backup from the last 24 hours and makes one if needed. A failure alerts the administrators.
+
+A free service sleeps after 15 minutes without visitors (the next visit then waits about a minute). An uptime monitor that opens `/api/readyz` every 5 minutes keeps it awake, which also keeps the hourly backup check running and stops Supabase from pausing the project (Part 5). Render's 750 free hours a month cover one service that is always on.
 
 Never paste the values below into a chat, an email or a document. They go only into Render's forms and your password manager.
 
@@ -74,33 +81,36 @@ Finally, **plan**: on the Free plan, Supabase pauses the project after a week wi
 ## Part 3. Create the app on Render (15 minutes)
 
 1. Go to [render.com](https://render.com) and click **Get Started**. Sign up **with GitHub** (the account that owns `Arsene177/Mon-carnet`).
-2. Add a payment card (**Account Settings** > **Billing**). The setup uses the **Starter** plan for the web service (always on) and a small daily job; Render shows the price before you confirm. The free plan works only for trying it out: it falls asleep after 15 minutes and has no pre-deploy step, so the database is not prepared automatically.
+2. No payment card is needed for the free plan.
 3. In the Render dashboard, click **New +** (top right) > **Blueprint**.
 4. **Connect a repository**: click **Configure account** / **Connect GitHub**, allow Render to access **Arsene177/Mon-carnet** (you can choose "Only select repositories"), then pick it in the list and click **Connect**.
 5. **Branch**: choose the branch to run. Use `main` once the Supabase change is merged; until then, the work branch `claude/gallant-clarke-rkoq8y`.
 6. **Blueprint Name**: `mon-carnet`.
-7. Render reads `render.yaml` and lists two resources: **mon-carnet** (web service) and **mon-carnet-backup** (cron job). Below, it shows a form for every secret. Fill them from your password manager:
+7. Render reads `render.yaml` and lists one resource, **mon-carnet-web**. Below, it shows a form for every secret. Fill them from your password manager:
 
-   | Field | Service | Value |
-   | --- | --- | --- |
-   | `DATABASE_URL` | both | Mon carnet DATABASE_URL |
-   | `SUPABASE_URL` | both | Mon carnet SUPABASE_URL |
-   | `SUPABASE_SECRET_KEY` | both | Mon carnet SUPABASE_SECRET_KEY |
-   | `SUPABASE_JWT_SECRET` | mon-carnet | only if you saved one in 1.4; otherwise leave empty |
-   | `ALERT_WEBHOOK_URL` | mon-carnet | optional: a Slack/Discord/Teams webhook for security alerts (`docs/monitoring.md`); otherwise empty |
-   | `BACKUP_ENCRYPTION_KEY` | mon-carnet-backup | Mon carnet BACKUP_ENCRYPTION_KEY |
+   | Field | Value |
+   | --- | --- |
+   | `DATABASE_URL` | Mon carnet DATABASE_URL |
+   | `SUPABASE_URL` | Mon carnet SUPABASE_URL |
+   | `SUPABASE_SECRET_KEY` | Mon carnet SUPABASE_SECRET_KEY |
+   | `BACKUP_ENCRYPTION_KEY` | Mon carnet BACKUP_ENCRYPTION_KEY |
+   | `INITIAL_ADMIN_EMAIL` | the administrator's email |
+   | `INITIAL_ADMIN_PASSWORD` | a long password (at least 12 characters) for the first sign-in |
+   | `ALERT_WEBHOOK_URL` | optional: a Slack/Discord/Teams webhook for security alerts (`docs/monitoring.md`); otherwise empty |
+
+   Add `SUPABASE_JWT_SECRET` afterwards (Environment) only if you saved one in 1.4.
 
    If your Supabase region is not Frankfurt, change `region` in `render.yaml` before this step (for example `oregon`, `ohio`, `virginia`, `singapore`): it cannot be changed later.
 8. Click **Deploy Blueprint** (or **Apply**).
 
-Render now builds the app (about 5 to 10 minutes the first time). Follow it in **mon-carnet** > **Events** / **Logs**. Before starting the new version, it runs the pre-deploy step, which creates the tables in Supabase and closes them to the public API (`Locked down 16 tables` in the log). When it says **Live**, the address is at the top of the service page, for example `https://mon-carnet.onrender.com`.
+Render now builds the app (about 5 to 10 minutes the first time). Follow it in **mon-carnet-web** > **Events** / **Logs**. When it starts, it creates the tables in Supabase and closes them to the public API (`Locked down 16 tables` in the log), then creates the first administrator. When it says **Live**, the address is at the top of the service page, for example `https://mon-carnet.onrender.com`.
 
 **If the deploy fails**, open **Logs**. The most common causes:
 - "password authentication failed" or "ENOTFOUND": `DATABASE_URL` is wrong. Check the password and that you chose the **Session pooler**.
 - "SUPABASE_URL and SUPABASE_SECRET_KEY must be set": a field was left empty.
 - "signs tokens with the legacy JWT secret": see step 1.4.
 
-To change a value later: **mon-carnet** (or **mon-carnet-backup**) > **Environment** > edit > **Save Changes**. The service redeploys by itself.
+To change a value later: **mon-carnet-web** > **Environment** > edit > **Save Changes**. The service redeploys by itself.
 
 ---
 
@@ -133,21 +143,14 @@ The lab files are in Replit's storage, which only a program running inside Repli
 
 ## Part 5. First sign-in and checks (10 minutes)
 
-1. Open your Render address.
-   - **Data was copied:** sign in as the administrator with your usual password.
-   - **Fresh start:** there is no administrator yet. In Render, **mon-carnet** > **Shell**, run:
-
-     ```bash
-     RESET_ALL_USERS=DELETE_ALL_USERS ADMIN_PASSWORD='choose-a-long-password' node --enable-source-maps artifacts/api-server/dist/reset-users.mjs
-     ```
-
-     This creates the administrator account `arsenedjonkoun5@gmail.com` with that password (it also deletes any other accounts, so only run it on a fresh start). Then sign in with it.
+1. Open your Render address and sign in with `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD` (Render shows the values in **mon-carnet-web** > **Environment**). Accept the terms when asked.
 2. The app asks you to set up two-step sign-in: scan the QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, 2FAS...), enter the code, and save the recovery codes in your password manager.
 3. Check that the app sees your real address: open `https://<your-address>/api/client-address`. It must show your own public IP address (compare with [whatismyip.com](https://www.whatismyip.com)). If it shows something else, set `TRUST_PROXY` to `2` in **mon-carnet** > **Environment** and check again. This matters: rate limits and the sign-in lock work per address.
 4. If you copied data: open a patient's record and a lab file. Look at **System overview** > **Security events**.
-5. Make the first backup now: **mon-carnet-backup** > **Trigger Run**. Its log must end with "Uploaded to Supabase Storage: backups/mon-carnet-backup-....mcbk". After that it runs every night at 02:00 (Douala time).
-6. Turn on failure emails: Render **Account Settings** > **Notifications** > notify on failed deploys and failed cron jobs.
-7. Set up an uptime check that opens `https://<your-address>/api/readyz` every few minutes (`docs/monitoring.md`).
+5. In **Profile**, change your password (this ends any other session), then remove `INITIAL_ADMIN_PASSWORD` and `INITIAL_ADMIN_EMAIL` in **mon-carnet-web** > **Environment**.
+6. The first backup is made about 2 minutes after the first start. Check it in Supabase > **Storage** > `backups`, or in the Render log ("Daily backup made").
+7. Set up an uptime monitor, for example [UptimeRobot](https://uptimerobot.com) (free): **New monitor** > HTTP(s) > URL `https://<your-address>/api/readyz` > every 5 minutes, with email alerts. It keeps the free service awake and tells you when the site is down.
+8. Turn on failure emails: Render **Account Settings** > **Notifications** > notify on failed deploys.
 
 ---
 

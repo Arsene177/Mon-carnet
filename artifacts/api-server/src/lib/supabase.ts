@@ -332,3 +332,13 @@ export async function uploadObject(objectName: string, data: Buffer, contentType
     throw error;
   }
 }
+
+/** Names of the files at the top level of a bucket, with their creation time (for backups). */
+export async function listTopLevelObjects(bucket: string): Promise<Array<{ name: string; createdAt: string | null }>> {
+  const items: Array<{ name: string; createdAt: string | null }> = [];
+  for (let offset = 0; ; offset += 1000) {
+    const page = await request(`/storage/v1/object/list/${bucket}`, { method: "POST", body: { prefix: "", limit: 1000, offset, sortBy: { column: "name", order: "asc" } } }) as Array<{ name: string; id: string | null; created_at?: string | null }>;
+    items.push(...page.filter((item) => item.id !== null).map((item) => ({ name: item.name, createdAt: item.created_at ?? null })));
+    if (page.length < 1000) return items;
+  }
+}

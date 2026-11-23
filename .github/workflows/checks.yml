@@ -69,8 +69,9 @@ jobs:
         run: |
           docker run -d --name mon-carnet --network host \
             -e PORT=10000 -e DATABASE_URL="$TEST_DATABASE_URL" -e SUPABASE_URL -e SUPABASE_SECRET_KEY -e SUPABASE_JWT_SECRET \
+            -e SCHEMA_PUSH_ON_START=true \
             -e SUPABASE_STORAGE_BUCKET=medical-attachments-image-check mon-carnet
-          for attempt in $(seq 1 60); do curl -fs http://127.0.0.1:10000/api/healthz && break; sleep 1; done
+          for attempt in $(seq 1 120); do curl -fs http://127.0.0.1:10000/api/healthz && break; sleep 1; done
           curl -fs http://127.0.0.1:10000/api/readyz
           curl -fs http://127.0.0.1:10000/ | grep -q '<div id="root">'
           curl -fs http://127.0.0.1:10000/patient | grep -q '<div id="root">'
