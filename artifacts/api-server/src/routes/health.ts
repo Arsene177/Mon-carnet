@@ -15,7 +15,10 @@ router.get("/healthz", (_req, res) => {
  * be your own public address; if it is the host's, adjust TRUST_PROXY (see docs/render.md).
  */
 router.get("/client-address", (req, res) => {
-  res.json({ address: req.ip ?? null });
+  // How many addresses the proxies listed in X-Forwarded-For. When the caller sent none itself, the
+  // real client is the first of them, and TRUST_PROXY must equal this number to pick it.
+  const forwarded = (req.header("x-forwarded-for") ?? "").split(",").map((part) => part.trim()).filter(Boolean);
+  res.json({ address: req.ip ?? null, forwardedAddresses: forwarded.length, trustProxy: req.app.get("trust proxy") ?? null });
 });
 
 /**
