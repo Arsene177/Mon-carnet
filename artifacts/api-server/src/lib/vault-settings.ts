@@ -1,7 +1,7 @@
 // Settings kept in Supabase Vault (encrypted secrets in the database), for when the host's own
-// environment variables cannot be set. Each Vault secret named `mon_carnet.<NAME>` fills
-// process.env.<NAME>, but only for the names listed below, and never over a value the host already
-// set: the host's environment variables always win.
+// environment variables cannot be changed. Each Vault secret named `mon_carnet.<NAME>` sets
+// process.env.<NAME>, but only for the names listed below. For those names Vault wins over the
+// host's environment: Vault is where the project owner can change them.
 //
 // Add or change one in the Supabase dashboard (Project Settings > Vault > Add new secret; name
 // for example `mon_carnet.BREVO_API_KEY`), then restart the app. Database connection settings and
@@ -42,7 +42,6 @@ export async function loadVaultSettings(): Promise<string[]> {
       logger.warn({ name }, "Ignored a Vault secret that is not an allowed setting");
       continue;
     }
-    if (process.env[key] !== undefined && process.env[key] !== "") continue;
     process.env[key] = value.trim();
     loaded.push(key);
   }

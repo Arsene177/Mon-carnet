@@ -43,7 +43,7 @@ Supabase dashboard:
 
 When the host's environment variables cannot be changed (for example a Render team role without access to them), these settings can be kept in Supabase Vault instead: `BREVO_API_KEY`, `EMAIL_FROM`, `EMAIL_FROM_NAME`, `APP_URL`, `TRUST_PROXY`, `ALERT_WEBHOOK_URL`, `RECORD_EDIT_WINDOW_HOURS`, `UNUSUAL_ACCESS_PATIENTS_PER_HOUR`.
 
-In the Supabase dashboard: **Project Settings** > **Vault** > **Add new secret**, name `mon_carnet.<NAME>` (for example `mon_carnet.BREVO_API_KEY`), value, **Save**. To change one, edit its value. The app reads them when it starts, so restart it afterwards (Render: **Manual Deploy** > **Restart service**, or any new deploy). A value set in the host's environment always wins; other names are ignored, and the database connection and Supabase keys can never come from Vault (`artifacts/api-server/src/lib/vault-settings.ts`).
+In the Supabase dashboard: **Project Settings** > **Vault** > **Add new secret**, name `mon_carnet.<NAME>` (for example `mon_carnet.BREVO_API_KEY`), value, **Save**. To change one, edit its value. The app reads them when it starts, so restart it afterwards (Render: **Manual Deploy** > **Restart service**, or any new deploy). For these names, the Vault value wins over the host's environment; other names are ignored, and the database connection and Supabase keys can never come from Vault (`artifacts/api-server/src/lib/vault-settings.ts`).
 
 ## Moving from Replit to Supabase (once)
 
