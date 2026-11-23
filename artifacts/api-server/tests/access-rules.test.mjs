@@ -411,6 +411,37 @@ describe("doctor access to a patient's records", () => {
     assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: doctor.token })).status, 403);
   });
 
+  test("switching to ask-me-first ends access opened with the CM ID alone, but keeps access the patient gave", async () => {
+    const patient = await registerPatient();
+    const byCmId = await createStaff("DOCTOR");
+    const chosen = await createStaff("DOCTOR");
+    assert.equal((await openBooklet(byCmId, patient)).body.status, "GRANTED");
+    assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: byCmId.token })).status, 200);
+    assert.equal((await api("POST", "/patient/permissions", { token: patient.token, body: { doctorEmail: chosen.email, durationDays: 30 } })).status, 201);
+
+    assert.equal((await api("PUT", "/patient/access-settings", { token: patient.token, body: { accessApprovalMode: "ASK" } })).status, 200);
+    assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: byCmId.token })).status, 403);
+    assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: chosen.token })).status, 200);
+    const inbox = await api("GET", "/notifications", { token: byCmId.token });
+    assert.ok(inbox.body.items.some((item) => /suspendu|paused/.test(item.title)), "the doctor is told their access ended");
+
+    // Entering the CM ID again only sends a request; nothing opens until the patient confirms.
+    const again = await openBooklet(byCmId, patient);
+    assert.equal(again.body.status, "PENDING");
+    assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: byCmId.token })).status, 403);
+
+    // Switching back to automatic does not bring the ended access back by itself.
+    assert.equal((await api("PUT", "/patient/access-settings", { token: patient.token, body: { accessApprovalMode: "AUTOMATIC" } })).status, 200);
+    assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: byCmId.token })).status, 403);
+  });
+
+  test("a doctor can keep trying CM IDs without being locked out", async () => {
+    const doctor = await createStaff("DOCTOR");
+    for (let i = 0; i < 7; i++) {
+      assert.equal((await api("POST", "/doctor/patient-access", { token: doctor.token, body: { patientDisplayId: "CM000000" } })).status, 404);
+    }
+  });
+
   test("a rejected doctor must wait before asking again, and a patient cannot answer someone else's request", async () => {
     const patient = await registerPatient();
     const other = await registerPatient();
