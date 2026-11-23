@@ -572,6 +572,87 @@ export interface MedicalRecord {
   codedDiagnoses: CodedDiagnosis[];
   vitals: MedicalRecordVitals;
   createdAt: string;
+  /**
+     * Last correction by the author; null when never edited.
+     * @nullable
+     */
+  editedAt?: string | null;
+  editCount?: number;
+  /**
+     * Only for the doctor who wrote it: until when they can still correct it. Null for everyone else or when the time is over.
+     * @nullable
+     */
+  editableUntil?: string | null;
+}
+
+export type MedicalRecordEditInputVitals = {
+  /**
+     * @maxLength 30
+     * @nullable
+     */
+  bloodPressure?: string | null;
+  /**
+     * @minimum 30
+     * @maximum 200
+     * @nullable
+     */
+  heartRate?: number | null;
+  /**
+     * @minimum 30
+     * @maximum 45
+     * @nullable
+     */
+  temperature?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 500
+     * @nullable
+     */
+  weightKg?: number | null;
+};
+
+export interface MedicalRecordEditInput {
+  /** @maxLength 5000 */
+  diagnosis: string;
+  /** @maxLength 5000 */
+  treatment: string;
+  /** @items.maxLength 200 */
+  medications: string[];
+  /**
+     * Clinical notes only; references to attached files are kept by the server.
+     * @maxLength 10000
+     */
+  notes: string;
+  vitals: MedicalRecordEditInputVitals;
+  /**
+     * Why the record is corrected; shown in its history.
+     * @minLength 5
+     * @maxLength 300
+     */
+  reason: string;
+}
+
+export type MedicalRecordVersionVitals = {
+  /** @nullable */
+  bloodPressure?: string | null;
+  /** @nullable */
+  heartRate?: number | null;
+  /** @nullable */
+  temperature?: number | null;
+  /** @nullable */
+  weightKg?: number | null;
+};
+
+export interface MedicalRecordVersion {
+  version: number;
+  diagnosis: string;
+  treatment: string;
+  medications: string[];
+  notes: string;
+  vitals: MedicalRecordVersionVitals;
+  replacedAt: string;
+  replacedByName: string;
+  changeReason: string;
 }
 
 export type MedicalRecordInputRecordType = typeof MedicalRecordInputRecordType[keyof typeof MedicalRecordInputRecordType];

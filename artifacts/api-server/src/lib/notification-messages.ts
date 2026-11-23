@@ -37,6 +37,11 @@ export const notificationMessages = {
       ? { title: "Accès au carnet refusé", body: `${patientName} a refusé votre demande d’ouverture de son carnet.` }
       : { title: "Booklet access declined", body: `${patientName} declined your request to open their booklet.` };
   },
+  recordCorrected(language: NotificationLanguage, doctorName: string, recordType: string, reason: string): Message {
+    return language === "fr"
+      ? { title: "Une fiche de votre carnet a été corrigée", body: `${doctorName} a corrigé une fiche « ${recordType} » qu’il ou elle avait saisie. Motif : ${reason}. L’ancienne version reste visible dans l’historique de la fiche.` }
+      : { title: "A record in your booklet was corrected", body: `${doctorName} corrected a "${recordType}" record they had written. Reason: ${reason}. The earlier version stays visible in the record's history.` };
+  },
   mfaReset(language: NotificationLanguage): Message {
     return language === "fr"
       ? { title: "Validation en deux étapes réinitialisée", body: "Un administrateur a retiré la validation en deux étapes de votre compte après avoir vérifié votre identité. Vous avez été déconnecté partout. Si vous n’êtes pas à l’origine de cette demande, contactez immédiatement l’administrateur." }

@@ -2,7 +2,7 @@
 // download your data, request deletion, and administrator handling of deletion requests.
 import { Router, type IRouter } from "express";
 import { randomBytes, randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, or } from "drizzle-orm";
 import {
   accessPermissionsTable,
   accessRequestsTable,
@@ -13,6 +13,7 @@ import {
   emergencyInfoTable,
   medicalAttachmentsTable,
   medicalRecordsTable,
+  medicalRecordVersionsTable,
   notificationsTable,
   passwordResetRequestsTable,
   patientSearchesTable,
@@ -148,9 +149,15 @@ router.get("/account/data-export", requireAuth(), async (req, res): Promise<void
       .select({ verificationCode: bookletExportsTable.verificationCode, recordCount: bookletExportsTable.recordCount, issuedAt: bookletExportsTable.issuedAt })
       .from(bookletExportsTable)
       .where(eq(bookletExportsTable.patientId, userId));
+    const recordVersions = recordRows.length ? await db
+      .select({ recordId: medicalRecordVersionsTable.recordId, version: medicalRecordVersionsTable.version, diagnosis: medicalRecordVersionsTable.diagnosis, treatment: medicalRecordVersionsTable.treatment, medications: medicalRecordVersionsTable.medications, notes: medicalRecordVersionsTable.notes, vitals: medicalRecordVersionsTable.vitals, replacedAt: medicalRecordVersionsTable.replacedAt, changeReason: medicalRecordVersionsTable.changeReason })
+      .from(medicalRecordVersionsTable)
+      .where(inArray(medicalRecordVersionsTable.recordId, recordRows.map(({ record }) => record.id)))
+      .orderBy(asc(medicalRecordVersionsTable.recordId), asc(medicalRecordVersionsTable.version)) : [];
     Object.assign(data, {
       emergencyInformation: emergency ? emergencyResponse(emergency, user) : null,
       medicalRecords: await recordsResponse(recordRows),
+      earlierRecordVersions: recordVersions,
       doctorAccess: permissions,
       doctorAccessRequests: accessRequests,
       emergencyLookups: lookups,

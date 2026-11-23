@@ -64,7 +64,9 @@ import type {
   LoginInput,
   LoginResult,
   MedicalRecord,
+  MedicalRecordEditInput,
   MedicalRecordInput,
+  MedicalRecordVersion,
   MfaCodeInput,
   MfaEnabled,
   MfaRecoveryCodes,
@@ -3802,6 +3804,168 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getAddDoctorPatientRecordMutationOptions(options));
     }
+
+export const getEditDoctorPatientRecordUrl = (patientId: number,
+    recordId: number,) => {
+
+
+
+
+  return `/api/doctor/patient/${patientId}/records/${recordId}`
+}
+
+/**
+ * The doctor who wrote the record corrects it, within RECORD_EDIT_WINDOW_HOURS (default 24) of saving it and while they still have access to the patient. The earlier version is kept.
+ */
+export const editDoctorPatientRecord = async (patientId: number,
+    recordId: number,
+    medicalRecordEditInput: MedicalRecordEditInput, options?: Parameters<typeof customFetch>[1]): Promise<MedicalRecord> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MedicalRecord>(getEditDoctorPatientRecordUrl(patientId,recordId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(medicalRecordEditInput)
+  }
+);}
+
+
+
+
+
+export const getEditDoctorPatientRecordMutationKey = () => ['editDoctorPatientRecord'] as const;
+
+export const getEditDoctorPatientRecordMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editDoctorPatientRecord>>, TError,EditDoctorPatientRecordMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof editDoctorPatientRecord>>, TError,EditDoctorPatientRecordMutationVariables, TContext> => {
+
+const mutationKey = getEditDoctorPatientRecordMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof editDoctorPatientRecord>>, EditDoctorPatientRecordMutationVariables> = (props) => {
+          const {patientId,recordId,data} = props ?? {};
+
+          return  editDoctorPatientRecord(patientId,recordId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EditDoctorPatientRecordMutationResult = NonNullable<Awaited<ReturnType<typeof editDoctorPatientRecord>>>
+    export type EditDoctorPatientRecordMutationBody = BodyType<MedicalRecordEditInput>
+    export type EditDoctorPatientRecordMutationError = ErrorType<void>
+    export type EditDoctorPatientRecordMutationVariables = {patientId: number;recordId: number;data: BodyType<MedicalRecordEditInput>}
+
+    export const useEditDoctorPatientRecord = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editDoctorPatientRecord>>, TError,EditDoctorPatientRecordMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof editDoctorPatientRecord>>,
+        TError,
+        EditDoctorPatientRecordMutationVariables,
+        TContext
+      > => {
+      return useMutation(getEditDoctorPatientRecordMutationOptions(options));
+    }
+
+export const getGetMedicalRecordHistoryUrl = (recordId: number,) => {
+
+
+
+
+  return `/api/records/${recordId}/history`
+}
+
+/**
+ * Earlier versions of a record, newest first. For the patient, and for doctors with access to the patient.
+ */
+export const getMedicalRecordHistory = async (recordId: number, options?: Parameters<typeof customFetch>[1]): Promise<MedicalRecordVersion[]> => {
+
+  return customFetch<MedicalRecordVersion[]>(getGetMedicalRecordHistoryUrl(recordId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMedicalRecordHistoryQueryKey = (recordId: number,) => {
+    return [
+    `/api/records/${recordId}/history`
+    ] as const;
+    }
+
+
+export const getGetMedicalRecordHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getMedicalRecordHistory>>, TError = ErrorType<unknown>>(recordId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMedicalRecordHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMedicalRecordHistoryQueryKey(recordId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMedicalRecordHistory>>> = ({ signal }) => getMedicalRecordHistory(recordId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: recordId !== null && recordId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMedicalRecordHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMedicalRecordHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getMedicalRecordHistory>>>
+export type GetMedicalRecordHistoryQueryError = ErrorType<unknown>
+
+
+
+export function useGetMedicalRecordHistory<TData = Awaited<ReturnType<typeof getMedicalRecordHistory>>, TError = ErrorType<unknown>>(
+ recordId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMedicalRecordHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMedicalRecordHistoryQueryOptions(recordId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetDoctorStatsUrl = () => {
 

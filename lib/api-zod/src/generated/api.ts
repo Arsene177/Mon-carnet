@@ -547,7 +547,10 @@ export const GetPatientRecordsResponseItem = zod.object({
   "temperature": zod.number().nullish(),
   "weightKg": zod.number().nullish()
 }),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "editedAt": zod.coerce.date().nullish().describe('Last correction by the author; null when never edited.'),
+  "editCount": zod.number().int().optional(),
+  "editableUntil": zod.coerce.date().nullish().describe('Only for the doctor who wrote it: until when they can still correct it. Null for everyone else or when the time is over.')
 })
 export const GetPatientRecordsResponse = zod.array(GetPatientRecordsResponseItem)
 
@@ -974,7 +977,10 @@ export const GetDoctorPatientRecordsResponseItem = zod.object({
   "temperature": zod.number().nullish(),
   "weightKg": zod.number().nullish()
 }),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "editedAt": zod.coerce.date().nullish().describe('Last correction by the author; null when never edited.'),
+  "editCount": zod.number().int().optional(),
+  "editableUntil": zod.coerce.date().nullish().describe('Only for the doctor who wrote it: until when they can still correct it. Null for everyone else or when the time is over.')
 })
 export const GetDoctorPatientRecordsResponse = zod.array(GetDoctorPatientRecordsResponseItem)
 
@@ -1073,8 +1079,128 @@ export const AddDoctorPatientRecordResponse = zod.object({
   "temperature": zod.number().nullish(),
   "weightKg": zod.number().nullish()
 }),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "editedAt": zod.coerce.date().nullish().describe('Last correction by the author; null when never edited.'),
+  "editCount": zod.number().int().optional(),
+  "editableUntil": zod.coerce.date().nullish().describe('Only for the doctor who wrote it: until when they can still correct it. Null for everyone else or when the time is over.')
 })
+
+
+/**
+ * The doctor who wrote the record corrects it, within RECORD_EDIT_WINDOW_HOURS (default 24) of saving it and while they still have access to the patient. The earlier version is kept.
+ */
+export const EditDoctorPatientRecordParams = zod.object({
+  "patientId": zod.coerce.number().int(),
+  "recordId": zod.coerce.number().int()
+})
+
+export const editDoctorPatientRecordBodyDiagnosisMax = 5000;
+
+export const editDoctorPatientRecordBodyTreatmentMax = 5000;
+
+export const editDoctorPatientRecordBodyMedicationsItemMax = 200;
+
+export const editDoctorPatientRecordBodyNotesMax = 10000;
+
+export const editDoctorPatientRecordBodyVitalsBloodPressureMax = 30;
+
+export const editDoctorPatientRecordBodyVitalsHeartRateMin = 30;
+export const editDoctorPatientRecordBodyVitalsHeartRateMax = 200;
+
+export const editDoctorPatientRecordBodyVitalsTemperatureMin = 30;
+export const editDoctorPatientRecordBodyVitalsTemperatureMax = 45;
+
+export const editDoctorPatientRecordBodyVitalsWeightKgMax = 500;
+
+export const editDoctorPatientRecordBodyReasonMin = 5;
+export const editDoctorPatientRecordBodyReasonMax = 300;
+
+
+
+export const EditDoctorPatientRecordBody = zod.object({
+  "diagnosis": zod.string().max(editDoctorPatientRecordBodyDiagnosisMax),
+  "treatment": zod.string().max(editDoctorPatientRecordBodyTreatmentMax),
+  "medications": zod.array(zod.string().max(editDoctorPatientRecordBodyMedicationsItemMax)),
+  "notes": zod.string().max(editDoctorPatientRecordBodyNotesMax).describe('Clinical notes only; references to attached files are kept by the server.'),
+  "vitals": zod.object({
+  "bloodPressure": zod.string().max(editDoctorPatientRecordBodyVitalsBloodPressureMax).nullish(),
+  "heartRate": zod.number().min(editDoctorPatientRecordBodyVitalsHeartRateMin).max(editDoctorPatientRecordBodyVitalsHeartRateMax).nullish(),
+  "temperature": zod.number().min(editDoctorPatientRecordBodyVitalsTemperatureMin).max(editDoctorPatientRecordBodyVitalsTemperatureMax).nullish(),
+  "weightKg": zod.number().min(1).max(editDoctorPatientRecordBodyVitalsWeightKgMax).nullish()
+}),
+  "reason": zod.string().min(editDoctorPatientRecordBodyReasonMin).max(editDoctorPatientRecordBodyReasonMax).describe('Why the record is corrected; shown in its history.')
+})
+
+export const EditDoctorPatientRecordResponse = zod.object({
+  "id": zod.number().int(),
+  "patientId": zod.number().int(),
+  "doctorId": zod.number().int(),
+  "doctorName": zod.string(),
+  "recordType": zod.enum(['Consultation', 'Diagnosis', 'Treatment', 'Lab Results', 'Prescription', 'Surgery', 'Emergency', 'Follow-up', 'Other']),
+  "diagnosis": zod.string(),
+  "treatment": zod.string(),
+  "medications": zod.array(zod.string()),
+  "notes": zod.string(),
+  "followUpToRecordId": zod.number().int().nullable(),
+  "codedDiagnoses": zod.array(zod.object({
+  "id": zod.number().int(),
+  "diseaseCode": zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "codingSystem": zod.string(),
+  "release": zod.string(),
+  "diseaseName": zod.string(),
+  "description": zod.string(),
+  "infectious": zod.boolean(),
+  "epidemicRelevant": zod.boolean(),
+  "pandemicRelevant": zod.boolean(),
+  "status": zod.enum(['ACTIVE', 'INACTIVE']),
+  "source": zod.string()
+}),
+  "status": zod.enum(['suspected', 'probable', 'confirmed', 'ruled_out']),
+  "diagnosisDate": zod.coerce.date(),
+  "onsetDate": zod.coerce.date().nullable(),
+  "notes": zod.string(),
+  "supportingRecordId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date()
+})),
+  "vitals": zod.object({
+  "bloodPressure": zod.string().nullish(),
+  "heartRate": zod.number().nullish(),
+  "temperature": zod.number().nullish(),
+  "weightKg": zod.number().nullish()
+}),
+  "createdAt": zod.coerce.date(),
+  "editedAt": zod.coerce.date().nullish().describe('Last correction by the author; null when never edited.'),
+  "editCount": zod.number().int().optional(),
+  "editableUntil": zod.coerce.date().nullish().describe('Only for the doctor who wrote it: until when they can still correct it. Null for everyone else or when the time is over.')
+})
+
+
+/**
+ * Earlier versions of a record, newest first. For the patient, and for doctors with access to the patient.
+ */
+export const GetMedicalRecordHistoryParams = zod.object({
+  "recordId": zod.coerce.number().int()
+})
+
+export const GetMedicalRecordHistoryResponseItem = zod.object({
+  "version": zod.number().int(),
+  "diagnosis": zod.string(),
+  "treatment": zod.string(),
+  "medications": zod.array(zod.string()),
+  "notes": zod.string(),
+  "vitals": zod.object({
+  "bloodPressure": zod.string().nullish(),
+  "heartRate": zod.number().nullish(),
+  "temperature": zod.number().nullish(),
+  "weightKg": zod.number().nullish()
+}),
+  "replacedAt": zod.coerce.date(),
+  "replacedByName": zod.string(),
+  "changeReason": zod.string()
+})
+export const GetMedicalRecordHistoryResponse = zod.array(GetMedicalRecordHistoryResponseItem)
 
 
 export const GetDoctorStatsResponse = zod.object({

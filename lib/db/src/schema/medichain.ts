@@ -201,6 +201,10 @@ export const medicalRecordsTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // Set when the author corrected the record within the edit window (each earlier version is in
+    // medichain_medical_record_versions); editCount counts the corrections.
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    editCount: integer("edit_count").notNull().default(0),
   },
   (table) => [
     index("medichain_records_patient_index").on(table.patientId),
@@ -367,4 +371,29 @@ export const emailTokensTable = pgTable(
     uniqueIndex("medichain_email_tokens_hash_unique").on(table.tokenHash),
     index("medichain_email_tokens_user_index").on(table.userId, table.purpose),
   ],
+).enableRLS();
+
+/**
+ * Earlier versions of a medical record, kept when its author corrects it within the edit window.
+ * Version 1 is the record as first saved; a record's current text is in medichain_medical_records.
+ */
+export const medicalRecordVersionsTable = pgTable(
+  "medichain_medical_record_versions",
+  {
+    id: serial("id").primaryKey(),
+    recordId: integer("record_id")
+      .notNull()
+      .references(() => medicalRecordsTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    diagnosis: text("diagnosis").notNull(),
+    treatment: text("treatment").notNull(),
+    medications: text("medications").array().notNull(),
+    notes: text("notes").notNull(),
+    vitals: jsonb("vitals").$type<MedicalVitals>().notNull(),
+    // When this version was replaced, by whom, and why (the reason given for the correction).
+    replacedAt: timestamp("replaced_at", { withTimezone: true }).notNull().defaultNow(),
+    replacedBy: integer("replaced_by").references(() => usersTable.id, { onDelete: "set null" }),
+    changeReason: text("change_reason").notNull(),
+  },
+  (table) => [uniqueIndex("medichain_record_versions_unique").on(table.recordId, table.version)],
 ).enableRLS();

@@ -431,16 +431,120 @@ describe("doctor access to a patient's records", () => {
     assert.equal((await api("GET", "/patient/records", { token: admin.token })).status, 403);
   });
 
-  test("saved records cannot be edited or deleted", async () => {
+  test("saved records can never be deleted, and PATCH does not exist", async () => {
     const patient = await registerPatient();
     const doctor = await createStaff("DOCTOR");
     await openBooklet(doctor, patient);
     const created = await api("POST", `/doctor/patient/${patient.id}/records`, { token: doctor.token, body: consultation });
     assert.equal(created.status, 201);
-    for (const method of ["PUT", "PATCH", "DELETE"]) {
+    for (const method of ["PATCH", "DELETE"]) {
       const response = await api(method, `/doctor/patient/${patient.id}/records/${created.body.id}`, { token: doctor.token, body: method === "DELETE" ? undefined : consultation });
       assert.ok([404, 405].includes(response.status), `${method} returned ${response.status}`);
     }
+  });
+});
+
+describe("correcting a record", () => {
+  const correction = {
+    diagnosis: "Paludisme grave",
+    treatment: "Artésunate IV",
+    medications: ["Artésunate"],
+    notes: "Corrigé après la goutte épaisse",
+    vitals: { bloodPressure: "110/70", heartRate: 96, temperature: 39.1, weightKg: 61 },
+    reason: "Résultat du labo reçu",
+  };
+
+  async function recordBy(doctor, patient, body = consultation) {
+    const created = await api("POST", `/doctor/patient/${patient.id}/records`, { token: doctor.token, body });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    return created.body;
+  }
+
+  test("the author corrects it within 24 hours; the earlier version is kept and the patient is told", async () => {
+    const patient = await registerPatient();
+    const doctor = await createStaff("DOCTOR");
+    await openBooklet(doctor, patient);
+    const record = await recordBy(doctor, patient);
+    assert.ok(record.editableUntil, "the author sees until when they can correct it");
+    const edited = await api("PUT", `/doctor/patient/${patient.id}/records/${record.id}`, { token: doctor.token, body: correction });
+    assert.equal(edited.status, 200, JSON.stringify(edited.body));
+    assert.equal(edited.body.diagnosis, "Paludisme grave");
+    assert.equal(edited.body.editCount, 1);
+    assert.ok(edited.body.editedAt);
+    // Record type and follow-up link cannot change through a correction.
+    assert.equal(edited.body.recordType, record.recordType);
+    const history = await api("GET", `/records/${record.id}/history`, { token: patient.token });
+    assert.equal(history.status, 200);
+    assert.equal(history.body.length, 1);
+    assert.equal(history.body[0].diagnosis, consultation.diagnosis);
+    assert.equal(history.body[0].changeReason, "Résultat du labo reçu");
+    // The patient sees the correction, without being able to edit it.
+    const mine = await api("GET", "/patient/records", { token: patient.token });
+    assert.equal(mine.body.find((item) => item.id === record.id).editableUntil, null);
+    const { rows } = await sql.query("select title from medichain_notifications where recipient_id = $1", [patient.id]);
+    assert.ok(rows.some((row) => /corrigée|corrected/.test(row.title)));
+    const audit = await sql.query("select count(*)::int as n from medichain_audit_events where action = 'MEDICAL_RECORD_EDITED' and entity_id = $1", [record.id]);
+    assert.equal(audit.rows[0].n, 1);
+  });
+
+  test("another doctor, the patient and an administrator cannot correct it", async () => {
+    const patient = await registerPatient();
+    const author = await createStaff("DOCTOR");
+    const colleague = await createStaff("DOCTOR");
+    const admin = await createStaff("ADMIN");
+    await openBooklet(author, patient);
+    await openBooklet(colleague, patient);
+    const record = await recordBy(author, patient);
+    const colleagueView = await api("GET", `/doctor/patient/${patient.id}/records`, { token: colleague.token });
+    assert.equal(colleagueView.body.find((item) => item.id === record.id).editableUntil, null);
+    assert.equal((await api("PUT", `/doctor/patient/${patient.id}/records/${record.id}`, { token: colleague.token, body: correction })).status, 403);
+    assert.equal((await api("PUT", `/doctor/patient/${patient.id}/records/${record.id}`, { token: patient.token, body: correction })).status, 403);
+    assert.equal((await api("PUT", `/doctor/patient/${patient.id}/records/${record.id}`, { token: admin.token, body: correction })).status, 403);
+    const { rows } = await sql.query("select diagnosis, edit_count from medichain_medical_records where id = $1", [record.id]);
+    assert.deepEqual(rows[0], { diagnosis: consultation.diagnosis, edit_count: 0 });
+  });
+
+  test("after 24 hours, without access, for another patient's record or without a reason, nothing changes", async () => {
+    const patient = await registerPatient();
+    const other = await registerPatient();
+    const doctor = await createStaff("DOCTOR");
+    await openBooklet(doctor, patient);
+    await openBooklet(doctor, other);
+    const record = await recordBy(doctor, patient);
+    // Wrong patient in the address, or no reason.
+    assert.equal((await api("PUT", `/doctor/patient/${other.id}/records/${record.id}`, { token: doctor.token, body: correction })).status, 404);
+    assert.equal((await api("PUT", `/doctor/patient/${patient.id}/records/${record.id}`, { token: doctor.token, body: { ...correction, reason: "" } })).status, 400);
+    // The window is over.
+    await sql.query("update medichain_medical_records set created_at = now() - interval '25 hours' where id = $1", [record.id]);
+    assert.equal((await api("PUT", `/doctor/patient/${patient.id}/records/${record.id}`, { token: doctor.token, body: correction })).status, 409);
+    // Access revoked.
+    const fresh = await recordBy(doctor, patient);
+    assert.equal((await api("DELETE", `/patient/permissions/${doctor.id}`, { token: patient.token })).status, 204);
+    assert.equal((await api("PUT", `/doctor/patient/${patient.id}/records/${fresh.id}`, { token: doctor.token, body: correction })).status, 403);
+    assert.equal((await api("GET", `/records/${fresh.id}/history`, { token: doctor.token })).status, 404);
+  });
+
+  test("attached file references survive a correction of the notes", async () => {
+    const patient = await registerPatient();
+    const doctor = await createStaff("DOCTOR");
+    await openBooklet(doctor, patient);
+    const record = await recordBy(doctor, patient);
+    const objectPath = "/objects/uploads/2f1c9a8e-3c1d-4f7a-9e2b-5d6c7a8b9c0d";
+    await sql.query("update medichain_medical_records set notes = $1 where id = $2", [`Première note\n\nAttachment: nfs.pdf\nAttachment object: ${objectPath}`, record.id]);
+    const edited = await api("PUT", `/doctor/patient/${patient.id}/records/${record.id}`, { token: doctor.token, body: { ...correction, notes: "Note corrigée" } });
+    assert.equal(edited.status, 200);
+    assert.match(edited.body.notes, /^Note corrigée/);
+    assert.ok(edited.body.notes.includes(`Attachment object: ${objectPath}`));
+  });
+
+  test("other patients' history is not visible", async () => {
+    const patient = await registerPatient();
+    const stranger = await registerPatient();
+    const doctor = await createStaff("DOCTOR");
+    await openBooklet(doctor, patient);
+    const record = await recordBy(doctor, patient);
+    assert.equal((await api("GET", `/records/${record.id}/history`, { token: stranger.token })).status, 404);
+    assert.equal((await api("GET", `/records/${record.id}/history`, { token: doctor.token })).status, 200);
   });
 });
 
