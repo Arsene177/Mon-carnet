@@ -1145,12 +1145,16 @@ router.delete(
           ),
         )
         .returning({ id: accessPermissionsTable.id });
+      // The CM ID stays the same: a doctor whose access was ended must now ask the patient
+      // (see /doctor/patient-access), so the old code cannot reopen the booklet by itself.
       if (revoked.length > 0) {
-        const patientDisplayId = await createUniquePatientDisplayId();
-        await tx
-          .update(usersTable)
-          .set({ patientDisplayId, patientAccessId: patientDisplayId })
-          .where(eq(usersTable.id, req.currentUser!.id));
+        await tx.insert(auditEventsTable).values({
+          actorUserId: req.currentUser!.id,
+          patientId: req.currentUser!.id,
+          action: "PATIENT_PERMISSION_REVOKED",
+          entityType: "access_permission",
+          entityId: revoked[0]!.id,
+        });
       }
     });
     res.status(204).send();
@@ -1611,7 +1615,20 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
       patientNationalIdNumber: status === "GRANTED" ? patient.nationalIdNumber : null,
     });
 
-  if (patient.accessApprovalMode === "ASK") {
+  // A doctor whose access the patient ended (revoked, or ended by switching to "ask me first")
+  // must ask again, even when the patient allows automatic access: the CM ID never changes, so
+  // entering it again must not undo the patient's decision.
+  const [endedAccess] = await db
+    .select({ id: accessPermissionsTable.id })
+    .from(accessPermissionsTable)
+    .where(and(
+      eq(accessPermissionsTable.patientId, patient.id),
+      eq(accessPermissionsTable.doctorId, doctor.id),
+      eq(accessPermissionsTable.granted, false),
+    ))
+    .limit(1);
+
+  if (patient.accessApprovalMode === "ASK" || endedAccess) {
     if (await getActivePermission(patient.id, doctor.id)) {
       res.json(accessResponse("GRANTED"));
       return;

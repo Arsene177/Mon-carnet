@@ -1235,7 +1235,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
         <section className="panel" style={{marginBottom:17}}>
           <div className="panel-head"><div><h2 className="panel-title">{t("Your CM ID & booklet access code")}</h2><p className="panel-caption">{approvalMode === 'ASK' ? t("Share this short code with a doctor. You approve each request before they see your booklet.") : t("Share this short code with a doctor to grant immediate booklet access.")}</p></div><span className="tag warning">{t("Private")}</span></div>
           <div className="panel-body">
-            <div className="callout"><div className="callout-head"><KeyRound size={16}/> {t("Patient CM ID")}</div><p style={{margin:'10px 0',overflowWrap:'anywhere'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-display-id">{profile.data?.patientDisplayId}</code></p><p className="field-note">{approvalMode === 'ASK' ? t("When a doctor enters this code, you approve or reject the request in Access control.") : t("Access is granted when a doctor enters this code.")} {t("Revoking a doctor's access also changes your CM ID so that doctor cannot use the old code to reconnect. Share your current CM ID with any new doctor.")}</p></div>
+            <div className="callout"><div className="callout-head"><KeyRound size={16}/> {t("Patient CM ID")}</div><p style={{margin:'10px 0',overflowWrap:'anywhere'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-display-id">{profile.data?.patientDisplayId}</code></p><p className="field-note">{approvalMode === 'ASK' ? t("When a doctor enters this code, you approve or reject the request in Access control.") : t("Access is granted when a doctor enters this code.")} {t("Your CM ID never changes. A doctor whose access you removed cannot get back in with it: they can only send a request, which you approve or reject.")}</p></div>
           </div>
         </section>
         <section className="panel">
@@ -1716,7 +1716,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       if (patient.status === 'PENDING') {
         setPatientId(null);
         setPatientDisplayId(null);
-        setAccessRequestNotice(t("Waiting for the patient’s confirmation. {0} ({1}) approves each doctor first, so you cannot open the booklet yet. You will get a notification when they decide; then enter the CM ID again to open it.", { 0: patient.patientName, 1: patient.patientDisplayId }));
+        setAccessRequestNotice(t("Waiting for the patient’s confirmation. {0} ({1}) must approve your access first, so you cannot open the booklet yet. You will get a notification when they decide; then enter the CM ID again to open it.", { 0: patient.patientName, 1: patient.patientDisplayId }));
         return;
       }
       setPatientId(patient.patientId);

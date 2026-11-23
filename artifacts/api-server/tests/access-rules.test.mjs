@@ -386,8 +386,19 @@ describe("doctor access to a patient's records", () => {
 
     assert.equal((await api("DELETE", `/patient/permissions/${doctor.id}`, { token: patient.token })).status, 204);
     assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: doctor.token })).status, 403);
-    assert.notEqual(await patient.cmId(), oldCmId);
-    assert.equal((await api("POST", "/doctor/patient-access", { token: doctor.token, body: { patientDisplayId: oldCmId } })).status, 404);
+    // The CM ID is permanent, but the removed doctor can only send a request now.
+    assert.equal(await patient.cmId(), oldCmId);
+    const again = await api("POST", "/doctor/patient-access", { token: doctor.token, body: { patientDisplayId: oldCmId } });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.status, "PENDING");
+    assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: doctor.token })).status, 403);
+    const [request] = (await api("GET", "/patient/access-requests", { token: patient.token })).body;
+    assert.equal((await api("POST", `/patient/access-requests/${request.id}/approve`, { token: patient.token, body: { durationDays: 1 } })).status, 200);
+    assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: doctor.token })).status, 200);
+
+    // A different doctor still gets in at once, with the same CM ID.
+    const other = await createStaff("DOCTOR");
+    assert.equal((await openBooklet(other, patient)).body.status, "GRANTED");
   });
 
   test("ask-me-first mode: nothing opens until the patient approves", async () => {
