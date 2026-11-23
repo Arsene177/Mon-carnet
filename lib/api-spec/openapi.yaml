@@ -630,7 +630,7 @@ paths:
         "404":
           description: Patient CM ID not found
         "429":
-          description: Too many incorrect CM IDs, or the patient recently declined this doctor
+          description: The patient recently declined this doctor
   /doctor/patient/{patientId}/attachments/upload-url:
     post:
       operationId: requestPatientAttachmentUpload

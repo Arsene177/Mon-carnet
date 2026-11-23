@@ -32,6 +32,11 @@ export const notificationMessages = {
           body: `${patientName} approved your request. Enter their CM ID again in Record entry to open the booklet.${expiresOn ? ` Access ends on ${expiresOn}.` : ""}`,
         };
   },
+  accessNowAskFirst(language: NotificationLanguage, patientName: string): Message {
+    return language === "fr"
+      ? { title: "Accès au carnet suspendu", body: `${patientName} demande désormais à approuver chaque médecin. Votre accès a pris fin. Saisissez de nouveau son identifiant CM pour envoyer une demande, puis attendez sa confirmation.` }
+      : { title: "Booklet access paused", body: `${patientName} now approves each doctor first, so your access has ended. Enter their CM ID again to send a request, then wait for their confirmation.` };
+  },
   accessRejected(language: NotificationLanguage, patientName: string): Message {
     return language === "fr"
       ? { title: "Accès au carnet refusé", body: `${patientName} a refusé votre demande d’ouverture de son carnet.` }

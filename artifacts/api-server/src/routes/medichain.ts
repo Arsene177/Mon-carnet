@@ -492,19 +492,22 @@ const REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const accessRequestCutoff = () => new Date(Date.now() - ACCESS_REQUEST_LIFETIME_MS);
 
 export async function getActivePermission(patientId: number, doctorId: number) {
-  const [permission] = await db
-    .select()
+  const [row] = await db
+    .select({ permission: accessPermissionsTable })
     .from(accessPermissionsTable)
+    .innerJoin(usersTable, eq(usersTable.id, accessPermissionsTable.patientId))
     .where(
       and(
         eq(accessPermissionsTable.patientId, patientId),
         eq(accessPermissionsTable.doctorId, doctorId),
         eq(accessPermissionsTable.granted, true),
         or(isNull(accessPermissionsTable.expiresAt), gte(accessPermissionsTable.expiresAt, new Date())),
+        // While the patient asks first, only access the patient gave counts.
+        or(eq(accessPermissionsTable.grantedVia, "PATIENT"), ne(usersTable.accessApprovalMode, "ASK")),
       ),
     )
     .limit(1);
-  return permission;
+  return row?.permission;
 }
 
 async function permissionResponse(
@@ -1103,14 +1106,22 @@ router.post("/patient/permissions", requireAuth("PATIENT"), async (req, res): Pr
       patientId: req.currentUser!.id,
       doctorId: doctor.id,
       granted: true,
+      grantedVia: "PATIENT",
       grantedAt,
       expiresAt,
     })
     .onConflictDoUpdate({
       target: [accessPermissionsTable.patientId, accessPermissionsTable.doctorId],
-      set: { granted: true, grantedAt, expiresAt },
+      set: { granted: true, grantedVia: "PATIENT", grantedAt, expiresAt },
     })
     .returning();
+  await db.insert(auditEventsTable).values({
+    actorUserId: req.currentUser!.id,
+    patientId: req.currentUser!.id,
+    action: "PATIENT_PERMISSION_GRANTED",
+    entityType: "access_permission",
+    entityId: permission?.id,
+  });
   res.status(201).json(await permissionResponse(permission));
 });
 
@@ -1196,6 +1207,38 @@ router.put("/patient/access-settings", requireAuth("PATIENT"), async (req, res):
       .update(usersTable)
       .set({ accessApprovalMode: parsed.data.accessApprovalMode })
       .where(eq(usersTable.id, patientId));
+    if (parsed.data.accessApprovalMode === "ASK") {
+      // Doctors who opened the booklet with the CM ID alone lose access; they must now ask.
+      const ended = await tx
+        .update(accessPermissionsTable)
+        .set({ granted: false })
+        .where(and(
+          eq(accessPermissionsTable.patientId, patientId),
+          eq(accessPermissionsTable.grantedVia, "CM_ID"),
+          eq(accessPermissionsTable.granted, true),
+        ))
+        .returning({ id: accessPermissionsTable.id, doctorId: accessPermissionsTable.doctorId });
+      if (ended.length) {
+        const doctors = await tx
+          .select({ id: usersTable.id, preferredLanguage: usersTable.preferredLanguage })
+          .from(usersTable)
+          .where(inArray(usersTable.id, ended.map((row) => row.doctorId)));
+        const batchId = randomUUID();
+        await tx.insert(notificationsTable).values(doctors.map((doctor) => ({
+          batchId,
+          senderId: patientId,
+          recipientId: doctor.id,
+          ...notificationMessages.accessNowAskFirst(languageOf(doctor.preferredLanguage), req.currentUser!.name),
+        })));
+        await tx.insert(auditEventsTable).values(ended.map((row) => ({
+          actorUserId: patientId,
+          patientId,
+          action: "PATIENT_PERMISSION_ENDED_ASK_FIRST",
+          entityType: "access_permission",
+          entityId: row.id,
+        })));
+      }
+    }
     await tx.insert(auditEventsTable).values({
       actorUserId: patientId,
       patientId,
@@ -1284,10 +1327,10 @@ router.post("/patient/access-requests/:requestId/approve", requireAuth("PATIENT"
       : new Date(grantedAt.getTime() + body.data.durationDays * 24 * 60 * 60 * 1000);
     [permission] = await tx
       .insert(accessPermissionsTable)
-      .values({ patientId: patient.id, doctorId: request.doctorId, granted: true, grantedAt, expiresAt })
+      .values({ patientId: patient.id, doctorId: request.doctorId, granted: true, grantedVia: "PATIENT", grantedAt, expiresAt })
       .onConflictDoUpdate({
         target: [accessPermissionsTable.patientId, accessPermissionsTable.doctorId],
-        set: { granted: true, grantedAt, expiresAt },
+        set: { granted: true, grantedVia: "PATIENT", grantedAt, expiresAt },
       })
       .returning();
     await tx.insert(auditEventsTable).values({
@@ -1533,19 +1576,6 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
     invalidBody(res, "Enter a valid patient CM ID.");
     return;
   }
-  const attemptsSince = new Date(Date.now() - 15 * 60_000);
-  const [recentFailedAttempts] = await db
-    .select({ value: count() })
-    .from(auditEventsTable)
-    .where(and(
-      eq(auditEventsTable.actorUserId, req.currentUser!.id),
-      eq(auditEventsTable.action, "PATIENT_ACCESS_CODE_REJECTED"),
-      gte(auditEventsTable.createdAt, attemptsSince),
-    ));
-  if (recentFailedAttempts.value >= 5) {
-    res.status(429).json({ error: "Too many incorrect CM IDs. Try again in 15 minutes." });
-    return;
-  }
   const [matchedPatient] = await db
     .select()
     .from(usersTable)
@@ -1655,12 +1685,13 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
         patientId: patient.id,
         doctorId: req.currentUser!.id,
         granted: true,
+        grantedVia: "CM_ID",
         grantedAt,
         expiresAt: null,
       })
       .onConflictDoUpdate({
         target: [accessPermissionsTable.patientId, accessPermissionsTable.doctorId],
-        set: { granted: true, grantedAt, expiresAt: null },
+        set: { granted: true, grantedVia: "CM_ID", grantedAt, expiresAt: null },
       })
       .returning();
     if (!permission) {

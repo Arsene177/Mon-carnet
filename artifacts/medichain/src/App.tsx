@@ -1291,7 +1291,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
               </label>
               <label className={`choice-card ${approvalMode === 'ASK' ? 'selected' : ''}`}>
                 <input type="radio" name="access-approval-mode" id="access-mode-ask" value="ASK" checked={approvalMode === 'ASK'} onChange={()=>changeApprovalMode('ASK')} data-testid="radio-access-ask"/>
-                <span><strong>{t("Ask me first")}</strong><small>{t("You get a notification and approve or reject each doctor. Requests expire after 7 days.")}</small></span>
+                <span><strong>{t("Ask me first")}</strong><small>{t("No doctor can open your booklet until you approve them. Doctors who opened it with your CM ID alone lose access. Requests expire after 7 days.")}</small></span>
               </label>
             </fieldset>}
           </div>
@@ -1716,7 +1716,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       if (patient.status === 'PENDING') {
         setPatientId(null);
         setPatientDisplayId(null);
-        setAccessRequestNotice(t("Request sent to {0} ({1}). This patient approves each doctor first. You will get a notification when they decide; then enter the CM ID again to open the booklet.", { 0: patient.patientName, 1: patient.patientDisplayId }));
+        setAccessRequestNotice(t("Waiting for the patient’s confirmation. {0} ({1}) approves each doctor first, so you cannot open the booklet yet. You will get a notification when they decide; then enter the CM ID again to open it.", { 0: patient.patientName, 1: patient.patientDisplayId }));
         return;
       }
       setPatientId(patient.patientId);

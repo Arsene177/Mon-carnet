@@ -225,6 +225,10 @@ export const accessPermissionsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
     granted: boolean("granted").notNull().default(true),
+    // PATIENT: the patient chose this doctor (shared or approved a request). CM_ID: the doctor
+    // entered the CM ID while the patient allowed automatic access. Switching to "ask me first"
+    // ends CM_ID access, and it never counts while the patient asks first.
+    grantedVia: text("granted_via").notNull().default("PATIENT"),
     grantedAt: timestamp("granted_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
