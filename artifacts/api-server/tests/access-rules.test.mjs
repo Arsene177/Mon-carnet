@@ -446,6 +446,37 @@ describe("doctor access to a patient's records", () => {
     assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: byCmId.token })).status, 403);
   });
 
+  test("only the patient can add, see and remove the photo on their medical card", async () => {
+    const patient = await registerPatient();
+    const doctor = await createStaff("DOCTOR");
+    await openBooklet(doctor, patient);
+    // A 1x1 PNG.
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+    const send = (token, method, body, type = "image/png") => fetch(`${BASE}/patient/photo`, {
+      method, headers: { "x-forwarded-for": newIp(), authorization: `Bearer ${token}`, ...(body ? { "content-type": type } : {}) }, body,
+    });
+
+    assert.equal((await send(patient.token, "GET")).status, 404);
+    assert.equal((await send(patient.token, "PUT", Buffer.from("not an image"))).status, 400, "the bytes must be a real image");
+    assert.equal((await send(patient.token, "PUT", Buffer.alloc(3 * 1024 * 1024, 0xff))).status, 413, "at most 2 MB");
+    assert.equal((await send(patient.token, "PUT", png)).status, 204);
+    const got = await send(patient.token, "GET");
+    assert.equal(got.status, 200);
+    assert.equal(got.headers.get("content-type"), "image/png");
+    assert.ok(Buffer.from(await got.arrayBuffer()).equals(png));
+
+    assert.equal((await send(doctor.token, "GET")).status, 403, "a doctor, even with access, cannot read it");
+    assert.equal((await send(doctor.token, "PUT", png)).status, 403);
+
+    const [{ photo_object_name: first }] = (await sql.query("select photo_object_name from medichain_users where id = $1", [patient.id])).rows;
+    assert.equal((await send(patient.token, "PUT", png)).status, 204);
+    const [{ photo_object_name: second }] = (await sql.query("select photo_object_name from medichain_users where id = $1", [patient.id])).rows;
+    assert.notEqual(first, second, "a new photo replaces the old one");
+
+    assert.equal((await send(patient.token, "DELETE")).status, 204);
+    assert.equal((await send(patient.token, "GET")).status, 404);
+  });
+
   test("sign-up asks for a valid country of origin and keeps it", async () => {
     const base = { name: "Jean Mbarga", password: PASSWORD, role: "PATIENT", sex: "MALE", dateOfBirth: "1985-06-01", contactInfo: "+237690000002", acceptedTermsVersion: TERMS_VERSION, healthDataConsent: true };
     assert.equal((await api("POST", "/auth/register", { body: { ...base, email: `${unique("nocountry")}@test.cm` } })).status, 400);

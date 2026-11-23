@@ -39,6 +39,7 @@ import type { WorkspaceTab } from '@/lib/navigation';
 import { LANGUAGES, getLanguage, locale, setLanguage, t, useLanguage, type Language } from '@/lib/i18n';
 import { errText } from '@/lib/error-text';
 import { ACCESS_TOKEN_KEY, SESSION_LAST_ACTIVITY_KEY, accessToken, authorizedFetch, clearSession, endSession, hasSession, keepThisDeviceSignedIn, saveSession } from '@/lib/session';
+import { MedicalCard } from '@/components/medical-card';
 import { RecordCorrection, RecordHistory } from '@/components/record-edit';
 import { CheckEmailNotice, ResetPasswordPage, VerifyEmailPage } from '@/components/email-links';
 import { AUTHENTICATOR_REMOVED_KEY, AuthenticatorRemovedNotice, MfaSetupFlow, TwoStepCard } from '@/components/two-step';
@@ -1253,6 +1254,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     {tab === 'Profile' && <>
       <Heading eyebrow={t("Patient account")} title={t("Your profile")} subtitle={t("Your CM ID identifies your profile and lets a doctor open your booklet.")}/>
       {profile.isLoading ? <div className="skeleton"/> : profile.error ? <ErrorState error={profile.error} retry={() => profile.refetch()}/> : <>
+        {profile.data?.patientDisplayId && <MedicalCard details={{ name: profile.data.user.name, cmId: profile.data.patientDisplayId, birth: birthLabel(profile.data.user.dateOfBirth, profile.data.user.dateOfBirthEstimated), sex: sexLabel(profile.data.user.sex), country: countryName(profile.data.user.countryOfOrigin) }}/>}
         <section className="panel" style={{marginBottom:17}}>
           <div className="panel-head"><div><h2 className="panel-title">{t("Your CM ID & booklet access code")}</h2><p className="panel-caption">{approvalMode === 'ASK' ? t("Share this short code with a doctor. You approve each request before they see your booklet.") : t("Share this short code with a doctor to grant immediate booklet access.")}</p></div><span className="tag warning">{t("Private")}</span></div>
           <div className="panel-body">

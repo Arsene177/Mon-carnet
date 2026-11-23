@@ -38,7 +38,7 @@ import { languageOf, notificationMessages } from "../lib/notification-messages";
 import { recordSecurityEvent } from "../lib/security-events";
 import { accountSecretLimiter } from "../lib/rate-limits";
 import { emergencyResponse, invalidBody, isUniqueViolation, recordsResponse } from "./medichain";
-import { deleteStoredFiles } from "../lib/object-storage";
+import { deletePhotos, deleteStoredFiles } from "../lib/object-storage";
 
 const router: IRouter = Router();
 
@@ -302,6 +302,7 @@ async function closeAccount(tx: Parameters<Parameters<typeof db.transaction>[0]>
       passwordHash: null,
       contactInfo: null,
       nationalIdNumber: null,
+      photoObjectName: null,
       locationRegion: null,
       locationArrondissement: null,
       updatedAt: now,
@@ -362,6 +363,16 @@ router.post("/admin/deletion-requests/:requestId/resolve", requireAuth("ADMIN"),
     } catch (error) {
       req.log.error({ err: error }, "Could not delete stored attachments before erasing an account");
       res.status(503).json({ error: "Attached files could not be deleted from storage, so nothing was erased. Try again later." });
+      return;
+    }
+  }
+  // Erasing or closing also removes the patient's photo.
+  if (action !== "REJECT" && user.photoObjectName) {
+    try {
+      await deletePhotos([user.photoObjectName]);
+    } catch (error) {
+      req.log.error({ err: error }, "Could not delete the photo before closing an account");
+      res.status(503).json({ error: "The photo could not be deleted from storage, so nothing was changed. Try again later." });
       return;
     }
   }

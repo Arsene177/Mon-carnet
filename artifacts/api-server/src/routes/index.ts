@@ -6,6 +6,7 @@ import mfaRouter from "./mfa";
 import securityRouter from "./security";
 import emailRouter from "./email";
 import recordsRouter from "./records";
+import photoRouter from "./photo";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(mfaRouter);
 router.use(securityRouter);
 router.use(emailRouter);
 router.use(recordsRouter);
+router.use(photoRouter);
 
 export default router;
