@@ -27,4 +27,5 @@ ENV NODE_ENV=production \
     PORT=10000
 EXPOSE 10000
 USER node
-CMD ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
+# scripts/start.sh updates the Supabase schema first when SCHEMA_PUSH_ON_START=true (free plan).
+CMD ["sh", "scripts/start.sh"]

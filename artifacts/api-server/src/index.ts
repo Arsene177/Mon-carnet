@@ -3,6 +3,8 @@ import { ensureDiseaseCodeCatalog } from "./lib/disease-code-catalog";
 import { logger } from "./lib/logger";
 import { purgeOldSecurityEvents } from "./lib/security-events";
 import { checkSupabaseSetup } from "./lib/supabase";
+import { ensureInitialAdmin } from "./lib/initial-admin";
+import { startBackupSchedule } from "./lib/backup-schedule";
 
 const rawPort = process.env["PORT"];
 
@@ -22,6 +24,8 @@ async function start(): Promise<void> {
   await ensureDiseaseCodeCatalog();
   // A Supabase problem is logged, not fatal: the server keeps answering so the problem can be seen.
   await checkSupabaseSetup().catch((err: unknown) => logger.error({ err }, "Supabase is not set up correctly"));
+  await ensureInitialAdmin().catch((err: unknown) => logger.error({ err }, "The first administrator account could not be created"));
+  startBackupSchedule();
   // Security events are kept for 12 months.
   const purge = () => purgeOldSecurityEvents().catch((err: unknown) => logger.error({ err }, "Old security events could not be deleted"));
   void purge();
