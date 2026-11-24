@@ -137,12 +137,14 @@ before(async () => {
     env: serverEnv(API_PORT, { WEB_DIST_DIR: webDir }),
     stdio: ["ignore", "ignore", "inherit"],
   });
-  for (let attempt = 0; attempt < 100; attempt++) {
+  // Up to 60 seconds: start-up is slower on shared CI machines.
+  for (let attempt = 0; attempt < 600; attempt++) {
     try { if ((await fetch(`${BASE}/api/healthz`)).ok) break; } catch { /* not up yet */ }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  if (!(await fetch(`${BASE}/api/healthz`).then((response) => response.ok, () => false))) throw new Error("The API server did not start.");
   const patient = await api("POST", "/auth/register", {
-    body: { name: "Awa Ngono", email: patientEmail, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
+    body: { name: "Awa Ngono", email: patientEmail, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", countryOfOrigin: "CM", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
   });
   tokens.patient = patient.token;
   await api("PUT", "/patient/emergency-info", { token: tokens.patient, body: { bloodGroup: "O+", weightKg: 62, heightCm: 165, allergies: "Pénicilline", emergencyContact: "Paul Ngono +237 699 00 00 00" } });
@@ -157,7 +159,7 @@ describe("access control and record corrections, clicked through in the browser"
   test("ask-me-first, approve, correct a record, see its history, revoke, grant by email", async () => {
     const email = `patient-flow-${Date.now()}@test.cm`;
     const patientToken = (await api("POST", "/auth/register", {
-      body: { name: "Mireille Flow", email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1988-02-03", contactInfo: "+237690000001", acceptedTermsVersion: TERMS, healthDataConsent: true },
+      body: { name: "Mireille Flow", email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1988-02-03", countryOfOrigin: "CM", contactInfo: "+237690000001", acceptedTermsVersion: TERMS, healthDataConsent: true },
     })).token;
     const doctorEmail = `doctor-flow-${Date.now()}@test.cm`;
     await insertStaff(sql, { email: doctorEmail, password: PASSWORD, role: "DOCTOR", name: "Dr Flow", terms: TERMS });
@@ -194,11 +196,9 @@ describe("access control and record corrections, clicked through in the browser"
     await doctor.getByTestId("text-access-request-pending").waitFor({ timeout: 15_000 });
     assert.equal(await status(`/doctor/patient/${patientId}/records`, doctorToken), 403);
 
-    // 3. The patient approves it for 7 days.
-    await patient.reload();
-    await tab(patient, "access-control");
+    // 3. The request appears on the patient's open screen without reloading; they approve it for 7 days.
     const approve = patient.locator('[data-testid^="button-approve-request-"]').first();
-    await approve.waitFor({ timeout: 15_000 });
+    await approve.waitFor({ timeout: 30_000 });
     await approve.click();
     await patient.getByTestId("select-approval-duration").selectOption("7");
     const approved = patient.waitForResponse((response) => /\/api\/patient\/access-requests\/\d+\/approve$/.test(response.url()));
@@ -221,8 +221,7 @@ describe("access control and record corrections, clicked through in the browser"
     const found = await problems(doctor, "record correction (1280px, en)");
     assert.deepEqual(found, [], `\n${found.join("\n")}`);
 
-    // 5. The patient, opening the app again, sees the corrected record and its earlier version.
-    await patient.reload();
+    // 5. The patient, without reloading, sees the corrected record and its earlier version.
     await tab(patient, "records");
     await patient.getByTestId(`button-open-record-${record.id}`).click();
     await patient.getByTestId(`button-record-history-${record.id}`).click();
@@ -231,12 +230,18 @@ describe("access control and record corrections, clicked through in the browser"
     assert.equal(await patient.locator('[data-testid^="button-correct-record-"]').count(), 0, "the patient cannot correct records");
 
     // 6. The patient revokes the doctor's access: records close at once.
+    const cmIdBefore = await cmId();
     await patient.keyboard.press("Escape");
     await tab(patient, "access-control");
     const revoked = patient.waitForResponse((response) => response.url().endsWith(`/api/patient/permissions/${doctorRow.id}`));
     await patient.getByTestId(`button-revoke-${doctorRow.id}`).click();
     assert.equal((await revoked).status(), 204);
     assert.equal(await status(`/doctor/patient/${patientId}/records`, doctorToken), 403);
+    // The doctor's open screen changes by itself: no access, wait for the patient's approval.
+    await doctor.getByText("You do not have access to this patient's booklet", { exact: false }).first().waitFor({ timeout: 30_000 });
+    // The CM ID did not change, and the doctor was told.
+    assert.equal(await cmId(), cmIdBefore);
+    assert.ok((await api("GET", "/notifications", { token: doctorToken })).items.some((item) => item.title === "Booklet access removed" || item.title === "Accès au carnet retiré"));
 
     // 7. The patient grants access again by the doctor's email, for 30 days.
     await patient.getByTestId("button-grant-access").click();

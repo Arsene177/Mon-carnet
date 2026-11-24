@@ -35,7 +35,7 @@ router.put("/doctor/patient/:patientId/records/:recordId", requireAuth("DOCTOR")
   const doctor = req.currentUser!;
   const { patientId, recordId } = params.data;
   if (!(await getActivePermission(patientId, doctor.id))) {
-    res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+    res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
     return;
   }
   const [record] = await db.select().from(medicalRecordsTable).where(and(eq(medicalRecordsTable.id, recordId), eq(medicalRecordsTable.patientId, patientId))).limit(1);

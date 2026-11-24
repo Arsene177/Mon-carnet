@@ -104,7 +104,7 @@ import {
   VerifyDoctorParams,
   VerifyDoctorResponse,
 } from "@workspace/api-zod";
-import { isValidCameroonLocation, LEGAL_DOCUMENTS_VERSION } from "@workspace/api-zod";
+import { isCountryCode, isValidCameroonLocation, LEGAL_DOCUMENTS_VERSION } from "@workspace/api-zod";
 import {
   auditEventsTable,
   bookletExportsTable,
@@ -551,6 +551,10 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     );
     return;
   }
+  if (!isCountryCode(input.countryOfOrigin)) {
+    invalidBody(res, "Choose your country of origin.");
+    return;
+  }
   if (input.role === "PATIENT" && (!input.sex || !input.dateOfBirth || !isPlausibleBirthDate(input.dateOfBirth))) {
     invalidBody(res, "Patient registration requires sex and a valid date of birth or age.");
     return;
@@ -608,6 +612,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
               : input.dateOfBirth.toISOString().slice(0, 10)
             : null,
         contactInfo: input.contactInfo?.trim() || null,
+        countryOfOrigin: input.countryOfOrigin,
         preferredLanguage: input.preferredLanguage ?? "fr",
         termsVersion: LEGAL_DOCUMENTS_VERSION,
         termsAcceptedAt: new Date(),
@@ -1145,12 +1150,29 @@ router.delete(
           ),
         )
         .returning({ id: accessPermissionsTable.id });
+      // The CM ID stays the same: a doctor whose access was ended must now ask the patient
+      // (see /doctor/patient-access), so the old code cannot reopen the booklet by itself.
       if (revoked.length > 0) {
-        const patientDisplayId = await createUniquePatientDisplayId();
-        await tx
-          .update(usersTable)
-          .set({ patientDisplayId, patientAccessId: patientDisplayId })
-          .where(eq(usersTable.id, req.currentUser!.id));
+        const [doctor] = await tx
+          .select({ preferredLanguage: usersTable.preferredLanguage })
+          .from(usersTable)
+          .where(eq(usersTable.id, parsed.data.doctorId))
+          .limit(1);
+        if (doctor) {
+          await tx.insert(notificationsTable).values({
+            batchId: randomUUID(),
+            senderId: req.currentUser!.id,
+            recipientId: parsed.data.doctorId,
+            ...notificationMessages.accessRevoked(languageOf(doctor.preferredLanguage), req.currentUser!.name),
+          });
+        }
+        await tx.insert(auditEventsTable).values({
+          actorUserId: req.currentUser!.id,
+          patientId: req.currentUser!.id,
+          action: "PATIENT_PERMISSION_REVOKED",
+          entityType: "access_permission",
+          entityId: revoked[0]!.id,
+        });
       }
     });
     res.status(204).send();
@@ -1611,7 +1633,20 @@ router.post("/doctor/patient-access", requireAuth("DOCTOR"), async (req, res): P
       patientNationalIdNumber: status === "GRANTED" ? patient.nationalIdNumber : null,
     });
 
-  if (patient.accessApprovalMode === "ASK") {
+  // A doctor whose access the patient ended (revoked, or ended by switching to "ask me first")
+  // must ask again, even when the patient allows automatic access: the CM ID never changes, so
+  // entering it again must not undo the patient's decision.
+  const [endedAccess] = await db
+    .select({ id: accessPermissionsTable.id })
+    .from(accessPermissionsTable)
+    .where(and(
+      eq(accessPermissionsTable.patientId, patient.id),
+      eq(accessPermissionsTable.doctorId, doctor.id),
+      eq(accessPermissionsTable.granted, false),
+    ))
+    .limit(1);
+
+  if (patient.accessApprovalMode === "ASK" || endedAccess) {
     if (await getActivePermission(patient.id, doctor.id)) {
       res.json(accessResponse("GRANTED"));
       return;
@@ -1759,7 +1794,7 @@ router.post(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     await purgeExpiredMedicalAttachments();
@@ -1801,7 +1836,7 @@ router.get(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     await purgeExpiredMedicalAttachments();
@@ -1836,7 +1871,7 @@ router.post(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const [attachment] = await db.select().from(medicalAttachmentsTable).where(and(
@@ -1890,7 +1925,7 @@ router.delete(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const [attachment] = await db.select().from(medicalAttachmentsTable).where(and(
@@ -1930,7 +1965,7 @@ router.get(
       return;
     }
     if (current.role === "DOCTOR" && !(await getActivePermission(patientId, current.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     // The file must be attached to a saved record of this patient. Matching the stored attachment
@@ -1990,7 +2025,7 @@ router.get(
     // Without a grant, doctors use the emergency lookup, which needs the full name and a reason,
     // is rate-limited and tells the patient.
     if (!(await getActivePermission(patient.id, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const [info] = await db
@@ -2033,7 +2068,7 @@ router.get(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const rows = await db
@@ -2098,7 +2133,7 @@ router.post(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const readyAttachments = attachmentIds.length

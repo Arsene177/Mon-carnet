@@ -12,6 +12,11 @@ import type { Sex } from './sex';
 
 export interface User {
   /**
+     * ISO 3166-1 alpha-2 code; null for accounts created before it was asked.
+     * @nullable
+     */
+  countryOfOrigin: string | null;
+  /**
      * Version of the privacy policy and terms this account accepted.
      * @nullable
      */

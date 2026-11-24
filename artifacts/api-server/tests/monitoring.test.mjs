@@ -53,7 +53,7 @@ const unique = (prefix) => `${prefix}${Date.now().toString(36)}${counter++}`;
 async function registerPatient() {
   const email = `${unique("mon-patient")}@test.cm`;
   const { status, body } = await api("POST", "/auth/register", {
-    body: { name: `Patient ${unique("")}`, email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
+    body: { name: `Patient ${unique("")}`, email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", countryOfOrigin: "CM", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
   });
   assert.equal(status, 201, JSON.stringify(body));
   const { rows: [row] } = await sql.query("select id, patient_display_id from medichain_users where email = $1", [email]);
@@ -101,7 +101,8 @@ before(async () => {
     }),
     stdio: ["ignore", "ignore", "inherit"],
   });
-  for (let attempt = 0; attempt < 100; attempt++) {
+  // Up to 60 seconds: start-up is slower on shared CI machines.
+  for (let attempt = 0; attempt < 600; attempt++) {
     try { if ((await fetch(`${BASE}/healthz`)).ok) return; } catch { /* not up yet */ }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

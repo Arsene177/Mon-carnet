@@ -51,6 +51,10 @@ export const usersTable = pgTable(
     // Patients only: Cameroon national ID card (CNI) number, upper-case without spaces. Never shown to admins.
     nationalIdNumber: text("national_id_number"),
     contactInfo: text("contact_info"),
+    // ISO 3166-1 alpha-2 code chosen at sign-up; null for accounts created before it was asked.
+    countryOfOrigin: text("country_of_origin"),
+    // Patients: their photo for the medical card, "photos/<uuid>" in the private storage bucket.
+    photoObjectName: text("photo_object_name"),
     // Patients only. AUTOMATIC: a doctor entering the CM ID gets access until revoked.
     // ASK: the doctor's request waits until the patient approves or rejects it.
     accessApprovalMode: text("access_approval_mode").notNull().default("AUTOMATIC"),

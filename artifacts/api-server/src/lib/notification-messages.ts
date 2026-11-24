@@ -37,6 +37,11 @@ export const notificationMessages = {
       ? { title: "Accès au carnet suspendu", body: `${patientName} demande désormais à approuver chaque médecin. Votre accès a pris fin. Saisissez de nouveau son identifiant CM pour envoyer une demande, puis attendez sa confirmation.` }
       : { title: "Booklet access paused", body: `${patientName} now approves each doctor first, so your access has ended. Enter their CM ID again to send a request, then wait for their confirmation.` };
   },
+  accessRevoked(language: NotificationLanguage, patientName: string): Message {
+    return language === "fr"
+      ? { title: "Accès au carnet retiré", body: `${patientName} a retiré votre accès à son carnet. Vous n’y avez plus accès. Pour le consulter de nouveau, saisissez son identifiant CM pour envoyer une demande, puis attendez son accord.` }
+      : { title: "Booklet access removed", body: `${patientName} removed your access to their booklet. You no longer have access. To see it again, enter their CM ID to send a request, then wait for their approval.` };
+  },
   accessRejected(language: NotificationLanguage, patientName: string): Message {
     return language === "fr"
       ? { title: "Accès au carnet refusé", body: `${patientName} a refusé votre demande d’ouverture de son carnet.` }

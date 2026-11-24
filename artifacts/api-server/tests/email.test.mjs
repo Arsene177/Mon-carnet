@@ -45,7 +45,7 @@ async function register(language = "fr") {
   const email = `${unique("verify")}@test.cm`;
   const result = await api("POST", "/auth/register", {
     name: "Awa Verify", email, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12",
-    contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true, preferredLanguage: language,
+    countryOfOrigin: "CM", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true, preferredLanguage: language,
   });
   assert.equal(result.status, 201, JSON.stringify(result.body));
   return { email, result };
@@ -71,7 +71,8 @@ before(async () => {
     }),
     stdio: ["ignore", "ignore", "inherit"],
   });
-  for (let attempt = 0; attempt < 100; attempt++) {
+  // Up to 60 seconds: start-up is slower on shared CI machines.
+  for (let attempt = 0; attempt < 600; attempt++) {
     try { if ((await fetch(`${BASE}/healthz`)).ok) return; } catch { /* not up yet */ }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

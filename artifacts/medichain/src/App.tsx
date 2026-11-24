@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
-import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
 import {
   Activity, AlertCircle, ArrowRight, BadgeCheck, Bell, BookOpen, CalendarDays, Check,
@@ -29,7 +29,7 @@ import type {
   AccessApprovalMode, AccessRequest, AdminEpidemicMetric, BookletVerificationIssue, DiseaseCode, EmergencyInfo, EmergencyInfoInput,
   AdminDeletionRequest, MedicalRecord, MedicalRecordInput, PatientBookletAccess, PatientSearchResult, PossibleDuplicateGroup, SecurityEvent, MedicalRecordRecordType, PatientProfile, User,
 } from '@workspace/api-client-react';
-import { CAMEROON_ARRONDISSEMENTS, CAMEROON_REGIONS, LEGAL_DOCUMENTS_VERSION } from '@workspace/api-zod';
+import { CAMEROON_ARRONDISSEMENTS, CAMEROON_REGIONS, COUNTRY_CODES, LEGAL_DOCUMENTS_VERSION } from '@workspace/api-zod';
 import { Form } from '@/components/ui/form';
 import { useLocation } from 'wouter';
 import { OnboardingGuide } from '@/components/onboarding-guide';
@@ -39,6 +39,7 @@ import type { WorkspaceTab } from '@/lib/navigation';
 import { LANGUAGES, getLanguage, locale, setLanguage, t, useLanguage, type Language } from '@/lib/i18n';
 import { errText } from '@/lib/error-text';
 import { ACCESS_TOKEN_KEY, SESSION_LAST_ACTIVITY_KEY, accessToken, authorizedFetch, clearSession, endSession, hasSession, keepThisDeviceSignedIn, saveSession } from '@/lib/session';
+import { MedicalCard } from '@/components/medical-card';
 import { RecordCorrection, RecordHistory } from '@/components/record-edit';
 import { CheckEmailNotice, ResetPasswordPage, VerifyEmailPage } from '@/components/email-links';
 import { AUTHENTICATOR_REMOVED_KEY, AuthenticatorRemovedNotice, MfaSetupFlow, TwoStepCard } from '@/components/two-step';
@@ -55,10 +56,18 @@ function handleSessionEnded(error: unknown) {
   try { sessionStorage.setItem(SESSION_ENDED_NOTICE_KEY, '1'); } catch { /* notice is optional */ }
   window.location.assign('/login');
 }
-const queryClient = new QueryClient({
+// Screens stay current without reloading the page: every query on screen is fetched again every
+// 15 seconds while the tab is visible and when the tab comes back to the front, and every change
+// you make refreshes all data at once.
+const LIVE_REFRESH_MS = 15_000;
+const queryClient: QueryClient = new QueryClient({
+  defaultOptions: { queries: { refetchInterval: LIVE_REFRESH_MS, refetchOnWindowFocus: true, refetchOnReconnect: true } },
   queryCache: new QueryCache({ onError: handleSessionEnded }),
   // A failed sign-in also answers 401; that is a wrong password, not an ended session.
-  mutationCache: new MutationCache({ onError: (error, _variables, _context, mutation) => { if (mutation.options.mutationKey?.[0] !== 'login') handleSessionEnded(error); } }),
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => { if (mutation.options.mutationKey?.[0] !== 'login') handleSessionEnded(error); },
+    onSuccess: () => { void queryClient.invalidateQueries(); },
+  }),
 });
 setAuthTokenGetter(accessToken);
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -230,6 +239,25 @@ function NationalIdField({ idPrefix, value, onChange }: { idPrefix: string; valu
   return <div className="field"><label htmlFor={`${idPrefix}-cni`}>{t('National ID card (CNI) number')} <span className="field-note">{t('Optional')}</span></label><input id={`${idPrefix}-cni`} value={value} maxLength={30} autoComplete="off" onChange={(event) => onChange(event.target.value)} data-testid={`${idPrefix}-cni`}/><small className="field-note">{t('Helps doctors confirm your identity. Only you and doctors you give access to can see it.')}</small></div>;
 }
 
+/** A country's name in the reader's language, from its ISO code. */
+function countryName(code: string | null | undefined) {
+  if (!code) return t('Not provided');
+  try { return new Intl.DisplayNames([locale()], { type: 'region' }).of(code) ?? code; } catch { return code; }
+}
+
+function CountryField({ idPrefix, value, onChange }: { idPrefix: string; value: string; onChange: (value: string) => void }) {
+  const options = useMemo(() => {
+    const collator = new Intl.Collator(locale());
+    return COUNTRY_CODES.filter((code) => code !== 'CM').map((code) => ({ code, name: countryName(code) })).sort((a, b) => collator.compare(a.name, b.name));
+  }, []);
+  return <div className="field"><label htmlFor={`${idPrefix}-country`}>{t('Country of origin')}</label><select id={`${idPrefix}-country`} required value={value} onChange={(event) => onChange(event.target.value)} data-testid={`${idPrefix}-country`}>
+    <option value="">{t('Choose a country')}</option>
+    <option value="CM">{countryName('CM')}</option>
+    <option disabled>──────────</option>
+    {options.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
+  </select></div>;
+}
+
 function LocationFields({ idPrefix, region, arrondissement, onRegionChange, onArrondissementChange }: {
   idPrefix: string;
   region: string | null;
@@ -355,7 +383,7 @@ function AccountRightsCard({ role }: { role: User['role'] }) {
 /** Administrator decisions on account deletion requests. */
 function DeletionRequestsPanel({ active }: { active: boolean }) {
   const qc = useQueryClient();
-  const requests = useGetAdminDeletionRequests({ query: { enabled: active, queryKey: getGetAdminDeletionRequestsQueryKey(), refetchInterval: 60_000 } });
+  const requests = useGetAdminDeletionRequests({ query: { enabled: active, queryKey: getGetAdminDeletionRequestsQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const resolve = useResolveAdminDeletionRequest();
   const [deciding, setDeciding] = useState<{ request: AdminDeletionRequest; action: 'ERASE' | 'CLOSE' | 'REJECT' } | null>(null);
   const [note, setNote] = useState('');
@@ -681,6 +709,7 @@ function AuthPage() {
   const [role, setRole] = useState<'PATIENT' | 'DOCTOR'>('PATIENT');
   const [form, setForm] = useState({ name: '', email: '', password: '', contactInfo: '', professionalMedicalNumber: '', nationalIdNumber: '' });
   const [registerSex, setRegisterSex] = useState<Sex | ''>('');
+  const [registerCountry, setRegisterCountry] = useState('CM');
   const [registerBirth, setRegisterBirth] = useState<BirthInput>(emptyBirthInput);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [healthConsent, setHealthConsent] = useState(false);
@@ -754,7 +783,7 @@ function AuthPage() {
     } else {
       const dateOfBirth = role === 'PATIENT' ? birthDateToSend(registerBirth) : null;
       if (role === 'PATIENT' && (!registerSex || !dateOfBirth)) { setFeedback(t('Choose your sex and enter your date of birth, or your age if you do not know the exact date.')); return; }
-      register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, preferredLanguage: getLanguage(), acceptedTermsVersion: LEGAL_DOCUMENTS_VERSION, healthDataConsent: role === 'PATIENT' && healthConsent, ...(role === 'PATIENT' && dateOfBirth && registerSex ? { dateOfBirth, dateOfBirthEstimated: registerBirth.estimated, sex: registerSex, ...(form.nationalIdNumber.trim() ? { nationalIdNumber: form.nationalIdNumber.trim() } : {}) } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: (result) => {
+      register.mutate({ data: { name: form.name.trim(), email: form.email.trim(), password: form.password, role, countryOfOrigin: registerCountry, preferredLanguage: getLanguage(), acceptedTermsVersion: LEGAL_DOCUMENTS_VERSION, healthDataConsent: role === 'PATIENT' && healthConsent, ...(role === 'PATIENT' && dateOfBirth && registerSex ? { dateOfBirth, dateOfBirthEstimated: registerBirth.estimated, sex: registerSex, ...(form.nationalIdNumber.trim() ? { nationalIdNumber: form.nationalIdNumber.trim() } : {}) } : {}), ...(form.contactInfo ? { contactInfo: form.contactInfo.trim() } : {}), ...(role === 'DOCTOR' ? { professionalMedicalNumber: form.professionalMedicalNumber.trim() } : {}) } }, { onSuccess: (result) => {
         if (result.verificationRequired) {
           setCheckEmail({ email: result.email, emailSent: result.emailSent !== false });
           setForm({ ...form, password: '' });
@@ -792,6 +821,7 @@ function AuthPage() {
               <BirthDateFields idPrefix="auth" value={registerBirth} onChange={setRegisterBirth}/>
               <NationalIdField idPrefix="auth" value={form.nationalIdNumber} onChange={(nationalIdNumber) => setForm({ ...form, nationalIdNumber })}/>
             </>}
+            <CountryField idPrefix="auth" value={registerCountry} onChange={setRegisterCountry}/>
             <div className="field"><label htmlFor="auth-contact">{t("Contact information")}</label><input id="auth-contact" required value={form.contactInfo} onChange={onField('contactInfo')} data-testid="input-contact" placeholder={t("Phone number")}/></div>
           </>}
           {codeStep && <div className="field"><label htmlFor="auth-code">{t("6-digit code")}</label><input id="auth-code" value={code} onChange={(event) => setCode(event.target.value)} required autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={20} data-testid="input-login-code"/><small className="field-note">{t("Lost your phone? Enter one of your recovery codes instead.")}</small></div>}
@@ -815,7 +845,7 @@ function Workspace({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>(user.role === 'ADMIN' ? 'System overview' : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? 'Patients' : 'Overview');
   // Name the current screen in the browser tab, which screen readers announce on change.
   useEffect(() => { document.title = `${tabLabel(tab)} · Mon carnet`; }, [tab, getLanguage()]);
-  const notificationInbox = useGetNotificationInbox({ query: { queryKey: getGetNotificationInboxQueryKey(), refetchInterval: 60_000 } });
+  const notificationInbox = useGetNotificationInbox({ query: { queryKey: getGetNotificationInboxQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const tabs = user.role === 'ADMIN' ? adminTabs : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? doctorTabs : patientTabs;
   const base = user.role === 'ADMIN' ? '/admin' : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? '/doctor' : '/patient';
   const [, setLocation] = useLocation();
@@ -1034,7 +1064,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const permissions = useGetPatientPermissions();
   const requests = useGetPatientPendingRequests();
   const accessSettings = useGetPatientAccessSettings();
-  const accessRequests = useGetPatientAccessRequests({ query: { queryKey: getGetPatientAccessRequestsQueryKey(), refetchInterval: 30_000 } });
+  const accessRequests = useGetPatientAccessRequests({ query: { queryKey: getGetPatientAccessRequestsQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const updateAccessSettings = useUpdatePatientAccessSettings();
   const approveRequest = useApprovePatientAccessRequest();
   const rejectRequest = useRejectPatientAccessRequest();
@@ -1047,9 +1077,18 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const [grantDays, setGrantDays] = useState('30');
   const [locationRegion, setLocationRegion] = useState<string | null>(null);
   const [locationArrondissement, setLocationArrondissement] = useState<string | null>(null);
-  const [accessHistory, setAccessHistory] = useState<AccessHistoryEntry[]>([]);
-  const [accessHistoryLoading, setAccessHistoryLoading] = useState(false);
-  const [accessHistoryError, setAccessHistoryError] = useState('');
+  const accessHistoryQuery = useQuery({
+    queryKey: ['patient-access-history'],
+    enabled: tab === 'Access control',
+    queryFn: async () => {
+      const response = await authorizedFetch('/api/patient/access-history');
+      if (!response.ok) throw new Error(t("Could not load record access history."));
+      return response.json() as Promise<AccessHistoryEntry[]>;
+    },
+  });
+  const accessHistory = accessHistoryQuery.data ?? [];
+  const accessHistoryLoading = accessHistoryQuery.isLoading;
+  const accessHistoryError = accessHistoryQuery.error ? errText(accessHistoryQuery.error) : '';
   const [toast, setToast] = useState('');
   const [bookletPreparing, setBookletPreparing] = useState(false);
   const [bookletExport, setBookletExport] = useState<PatientBookletExport | null>(null);
@@ -1089,23 +1128,6 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     setLocationRegion(profile.data?.user.locationRegion ?? null);
     setLocationArrondissement(profile.data?.user.locationArrondissement ?? null);
   }, [profile.data?.user.locationRegion, profile.data?.user.locationArrondissement]);
-  useEffect(() => {
-    if (tab !== 'Access control') return;
-    let active = true;
-    setAccessHistoryLoading(true);
-    setAccessHistoryError('');
-    authorizedFetch('/api/patient/access-history').then(async (response) => {
-      if (!response.ok) throw new Error(t("Could not load record access history."));
-      return response.json() as Promise<AccessHistoryEntry[]>;
-    }).then((entries) => {
-      if (active) setAccessHistory(entries);
-    }).catch((error: unknown) => {
-      if (active) setAccessHistoryError(errText(error));
-    }).finally(() => {
-      if (active) setAccessHistoryLoading(false);
-    });
-    return () => { active = false; };
-  }, [tab]);
   useEffect(() => {
     if (!bookletExport) return;
     const previousTitle = document.title;
@@ -1232,10 +1254,11 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     {tab === 'Profile' && <>
       <Heading eyebrow={t("Patient account")} title={t("Your profile")} subtitle={t("Your CM ID identifies your profile and lets a doctor open your booklet.")}/>
       {profile.isLoading ? <div className="skeleton"/> : profile.error ? <ErrorState error={profile.error} retry={() => profile.refetch()}/> : <>
+        {profile.data?.patientDisplayId && <MedicalCard details={{ name: profile.data.user.name, cmId: profile.data.patientDisplayId, birth: birthLabel(profile.data.user.dateOfBirth, profile.data.user.dateOfBirthEstimated), sex: sexLabel(profile.data.user.sex), country: countryName(profile.data.user.countryOfOrigin) }}/>}
         <section className="panel" style={{marginBottom:17}}>
           <div className="panel-head"><div><h2 className="panel-title">{t("Your CM ID & booklet access code")}</h2><p className="panel-caption">{approvalMode === 'ASK' ? t("Share this short code with a doctor. You approve each request before they see your booklet.") : t("Share this short code with a doctor to grant immediate booklet access.")}</p></div><span className="tag warning">{t("Private")}</span></div>
           <div className="panel-body">
-            <div className="callout"><div className="callout-head"><KeyRound size={16}/> {t("Patient CM ID")}</div><p style={{margin:'10px 0',overflowWrap:'anywhere'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-display-id">{profile.data?.patientDisplayId}</code></p><p className="field-note">{approvalMode === 'ASK' ? t("When a doctor enters this code, you approve or reject the request in Access control.") : t("Access is granted when a doctor enters this code.")} {t("Revoking a doctor's access also changes your CM ID so that doctor cannot use the old code to reconnect. Share your current CM ID with any new doctor.")}</p></div>
+            <div className="callout"><div className="callout-head"><KeyRound size={16}/> {t("Patient CM ID")}</div><p style={{margin:'10px 0',overflowWrap:'anywhere'}}><code style={{fontSize:20,letterSpacing:1}} data-testid="text-patient-display-id">{profile.data?.patientDisplayId}</code></p><p className="field-note">{approvalMode === 'ASK' ? t("When a doctor enters this code, you approve or reject the request in Access control.") : t("Access is granted when a doctor enters this code.")} {t("Your CM ID never changes. A doctor whose access you removed cannot get back in with it: they can only send a request, which you approve or reject.")}</p></div>
           </div>
         </section>
         <section className="panel">
@@ -1246,6 +1269,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
             <div className="data-row"><span className="data-key">{t("Sex")}</span><span className="data-value">{sexLabel(profile.data?.user.sex)}</span></div>
             <div className="data-row"><span className="data-key">{t("Date of birth")}</span><span className="data-value">{birthLabel(profile.data?.user.dateOfBirth, profile.data?.user.dateOfBirthEstimated)}</span></div>
             <div className="data-row"><span className="data-key">{t("National ID card (CNI)")}</span><span className="data-value">{profile.data?.nationalIdNumber || t("Not provided")}</span></div>
+            <div className="data-row"><span className="data-key">{t("Country of origin")}</span><span className="data-value">{countryName(profile.data?.user.countryOfOrigin)}</span></div>
             <div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{profile.data?.user.contactInfo || t("Not provided")}</span></div>
             <div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(profile.data?.user.createdAt)}</span></div>
           </div>
@@ -1716,7 +1740,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
       if (patient.status === 'PENDING') {
         setPatientId(null);
         setPatientDisplayId(null);
-        setAccessRequestNotice(t("Waiting for the patient’s confirmation. {0} ({1}) approves each doctor first, so you cannot open the booklet yet. You will get a notification when they decide; then enter the CM ID again to open it.", { 0: patient.patientName, 1: patient.patientDisplayId }));
+        setAccessRequestNotice(t("Waiting for the patient’s confirmation. {0} ({1}) must approve your access first, so you cannot open the booklet yet. You will get a notification when they decide; then enter the CM ID again to open it.", { 0: patient.patientName, 1: patient.patientDisplayId }));
         return;
       }
       setPatientId(patient.patientId);
@@ -1890,7 +1914,7 @@ function DoctorView({ user, tab }: { user: User; tab: Tab }) {
         </div>}
       </div></section>
     </>}
-    {tab === 'Profile' && <><Heading eyebrow={t("Clinician account")} title={t("Your profile")} subtitle={t("Your account identity for patients and the Mon carnet care network.")}/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Professional profile")}</h2><p className="panel-caption">{t("Your hospital or clinic is shown in patient access logs.")}</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">{t("Account status")}</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">{t("Credential status")}</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> {t("Certified doctor")}</span>:<span className="tag warning">{t("Manual verification pending")}</span>}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{profile.data?.contactInfo || t("Not provided")}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">{t("Hospital or clinic")}</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder={t("Your hospital or clinic name")} data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">{t("Professional medical number")}</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder={t("License or registration number")} data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?t("Changing this number will remove your certified badge until an administrator verifies it again."):t("An administrator manually checks this number before awarding your certified badge.")}</small></div><LocationFields idPrefix="doctor-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?t("Saving…"):t("Save professional profile")}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your impact")}</h2><p className="panel-caption">{t("Stats from your clinical activity")}</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Patients treated")}</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">{t("Records added")}</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">{t("This month")}</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/><TwoStepCard user={user}/><SignOutOtherDevicesCard/><AccountRightsCard role="DOCTOR"/></>}
+    {tab === 'Profile' && <><Heading eyebrow={t("Clinician account")} title={t("Your profile")} subtitle={t("Your account identity for patients and the Mon carnet care network.")}/><div className="grid dashboard-grid"><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Professional profile")}</h2><p className="panel-caption">{t("Your hospital or clinic is shown in patient access logs.")}</p></div><div className="avatar">{initials(profile.data?.name || user.name)}</div></div><div className="panel-body">{profile.isLoading?<div className="skeleton"/>:profile.error?<ErrorState error={profile.error} retry={()=>profile.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Name")}</span><span className="data-value">{profile.data?.name}</span></div><div className="data-row"><span className="data-key">{t("Email address")}</span><span className="data-value">{profile.data?.email}</span></div><div className="data-row"><span className="data-key">{t("Account status")}</span><span className="data-value"><span className="tag">{profile.data?.status}</span></span></div><div className="data-row"><span className="data-key">{t("Credential status")}</span><span className="data-value">{profile.data?.doctorVerified?<span className="tag certified"><BadgeCheck size={12}/> {t("Certified doctor")}</span>:<span className="tag warning">{t("Manual verification pending")}</span>}</span></div><div className="data-row"><span className="data-key">{t("Member since")}</span><span className="data-value">{dateLabel(profile.data?.createdAt)}</span></div><div className="data-row"><span className="data-key">{t("Country of origin")}</span><span className="data-value">{countryName(profile.data?.countryOfOrigin)}</span></div><div className="data-row"><span className="data-key">{t("Contact")}</span><span className="data-value">{profile.data?.contactInfo || t("Not provided")}</span></div><form onSubmit={saveHospitalProfile} style={{marginTop:16}}><div className="field"><label htmlFor="doctor-hospital">{t("Hospital or clinic")}</label><input id="doctor-hospital" value={hospitalName} onChange={(event)=>setHospitalName(event.target.value)} required maxLength={180} placeholder={t("Your hospital or clinic name")} data-testid="input-doctor-hospital"/></div><div className="field" style={{marginTop:12}}><label htmlFor="doctor-medical-number">{t("Professional medical number")}</label><input id="doctor-medical-number" value={professionalMedicalNumber} onChange={(event)=>setProfessionalMedicalNumber(event.target.value)} required maxLength={120} autoComplete="off" placeholder={t("License or registration number")} data-testid="input-doctor-medical-number"/><small className="field-note">{profile.data?.doctorVerified?t("Changing this number will remove your certified badge until an administrator verifies it again."):t("An administrator manually checks this number before awarding your certified badge.")}</small></div><LocationFields idPrefix="doctor-location" region={locationRegion} arrondissement={locationArrondissement} onRegionChange={setLocationRegion} onArrondissementChange={setLocationArrondissement}/><button className="btn small" type="submit" disabled={savingHospital} data-testid="button-save-doctor-profile">{savingHospital?t("Saving…"):t("Save professional profile")}</button></form></>}</div></section><section className="panel"><div className="panel-head"><div><h2 className="panel-title">{t("Your impact")}</h2><p className="panel-caption">{t("Stats from your clinical activity")}</p></div></div><div className="panel-body">{stats.isLoading?<div className="skeleton"/>:stats.error?<ErrorState error={stats.error} retry={()=>stats.refetch()}/>:<><div className="data-row"><span className="data-key">{t("Patients treated")}</span><span className="data-value">{stats.data?.patientsTreated ?? 0}</span></div><div className="data-row"><span className="data-key">{t("Records added")}</span><span className="data-value">{stats.data?.recordsAdded ?? 0}</span></div><div className="data-row"><span className="data-key">{t("This month")}</span><span className="data-value">{stats.data?.recordsThisMonth ?? 0}</span></div></>}</div></section></div><PasswordChangeCard/><TwoStepCard user={user}/><SignOutOtherDevicesCard/><AccountRightsCard role="DOCTOR"/></>}
     {toast && <div className="toast-message" role="status">{toast}</div>}
   </>;
 }
@@ -1900,7 +1924,7 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
   const [userQuery, setUserQuery] = useState('');
   const qc = useQueryClient();
   const stats = useGetAdminStats();
-  const analytics = useGetAdminAnalytics({ query: { queryKey: getGetAdminAnalyticsQueryKey(), refetchInterval: 60_000 } });
+  const analytics = useGetAdminAnalytics({ query: { queryKey: getGetAdminAnalyticsQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const pending = useGetPendingDoctors();
   const doctorParams = useMemo(()=>({query:doctorQuery.trim().length>=2?doctorQuery.trim():'__'}),[doctorQuery]);
   const userParams = useMemo(()=>({query:userQuery.trim().length>=2?userQuery.trim():'__'}),[userQuery]);
@@ -1921,7 +1945,7 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
     query: {
       queryKey: getGetAdminPasswordResetRequestsQueryKey(),
       enabled: tab === 'Password recovery',
-      refetchInterval: 60_000,
+      refetchInterval: LIVE_REFRESH_MS,
       retry: false,
     },
   });
@@ -2060,7 +2084,7 @@ function securityEventText(event: SecurityEvent): string {
 
 /** Recent security events for administrators: what happened, when, how serious. */
 function SecurityEvents({ active }: { active: boolean }) {
-  const events = useGetAdminSecurityEvents({ query: { enabled: active, queryKey: getGetAdminSecurityEventsQueryKey(), refetchInterval: 60_000 } });
+  const events = useGetAdminSecurityEvents({ query: { enabled: active, queryKey: getGetAdminSecurityEventsQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const [showAll, setShowAll] = useState(false);
   const list: SecurityEvent[] = events.data ?? [];
   const shown = showAll ? list : list.slice(0, 15);
@@ -2094,25 +2118,14 @@ function PossibleDuplicates({ active }: { active: boolean }) {
 
 function InboxView() {
   const qc = useQueryClient();
-  const [inbox, setInbox] = useState<NotificationInboxData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The same polled query as the unread badge, so new notices appear without reloading.
+  const inboxQuery = useGetNotificationInbox({ query: { queryKey: getGetNotificationInboxQueryKey() } });
+  const inbox = (inboxQuery.data ?? null) as NotificationInboxData | null;
+  const loading = inboxQuery.isLoading;
   const [error, setError] = useState('');
   const [markingId, setMarkingId] = useState<number | null>(null);
-  const loadInbox = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const response = await authorizedFetch('/api/notifications');
-      const body = await response.json() as NotificationInboxData & { error?: string };
-      if (!response.ok) throw new Error(body.error || t("Could not load your inbox."));
-      setInbox(body);
-    } catch (cause) {
-      setError(errText(cause));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { void loadInbox(); }, []);
+  const loadError = inboxQuery.error ? errText(inboxQuery.error) : '';
+  const loadInbox = async () => { setError(''); await inboxQuery.refetch(); };
   const markRead = async (notificationId: number) => {
     setMarkingId(notificationId);
     setError('');
@@ -2122,12 +2135,8 @@ function InboxView() {
       });
       const body = await response.json() as NotificationEntry & { error?: string };
       if (!response.ok) throw new Error(body.error || t("Could not mark this notice as read."));
-      setInbox((current) => current ? {
-        ...current,
-        items: current.items.map((item) => item.id === notificationId ? body : item),
-        unreadCount: Math.max(0, current.unreadCount - (current.items.some((item) => item.id === notificationId && !item.readAt) ? 1 : 0)),
-      } : current);
-      qc.invalidateQueries({ queryKey: getGetNotificationInboxQueryKey() });
+      void body;
+      await qc.invalidateQueries({ queryKey: getGetNotificationInboxQueryKey() });
     } catch (cause) {
       setError(errText(cause));
     } finally {
@@ -2136,8 +2145,8 @@ function InboxView() {
   };
   return <>
     <Heading eyebrow={t("In-app messages")} title={t("Notification inbox")} subtitle={t("Notices sent to you by Mon carnet administrators.")} action={<button className="btn secondary" onClick={() => void loadInbox()} disabled={loading}><Activity size={14}/> {t("Refresh")}</button>}/>
-    {loading ? <div className="skeleton"/> : error && !inbox ? <ErrorState error={error} retry={() => void loadInbox()}/> : <>
-      {error && <div className="error-state" role="alert">{error}</div>}
+    {loading ? <div className="skeleton"/> : loadError && !inbox ? <ErrorState error={loadError} retry={() => void loadInbox()}/> : <>
+      {(error || loadError) && <div className="error-state" role="alert">{error || loadError}</div>}
       <section className="panel">
         <div className="panel-head"><div><h2 className="panel-title">{t("Your notices")}</h2><p className="panel-caption">{t("Messages remain in your inbox until your account is removed.")}</p></div><span className="tag">{inbox?.unreadCount ?? 0} {t("unread")}</span></div>
         <div className="panel-body">

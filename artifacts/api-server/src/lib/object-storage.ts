@@ -32,3 +32,13 @@ export const deleteStoredFiles = (objectPaths: string[]) => deleteObjects(object
 export const readStoredFile = (objectPath: string) => downloadObject(attachmentObjectName(objectPath));
 
 export const writeStoredFile = (objectPath: string, data: Buffer, contentType: string) => uploadObject(attachmentObjectName(objectPath), data, contentType);
+
+// Patients' card photos: "photos/<uuid>" in the same private bucket. Only the API reads them.
+const PHOTO_NAME = /^photos\/[0-9a-f-]{36}$/;
+const photoName = (name: string) => {
+  if (!PHOTO_NAME.test(name)) throw new Error("Not a photo name.");
+  return name;
+};
+export const writePhoto = (name: string, data: Buffer, contentType: string) => uploadObject(photoName(name), data, contentType);
+export const readPhoto = (name: string) => downloadObject(photoName(name));
+export const deletePhotos = (names: string[]) => deleteObjects(names.map(photoName));
