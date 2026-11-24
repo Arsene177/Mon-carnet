@@ -9,7 +9,8 @@ One encrypted file (`mon-carnet-backup-<date>.mcbk`) with:
 - the app's tables in the Supabase database (accounts, emergency information, medical records, coded diagnoses, access grants, audit log, notifications), taken from a single consistent snapshot by `pg_dump`;
 - the sign-ins Supabase Auth keeps for those accounts (users with their password hashes, identities and authenticator factors), from the same snapshot. Sessions are not kept: after a restore everyone signs in again;
 - every attached file (scans, lab results) in Supabase Storage that a record points to;
-- a manifest with the row count of every table, the number of sign-ins and a SHA-256 checksum of every attached file, so a restore can prove it is complete.
+- every patient's medical card photo;
+- a manifest with the row count of every table, the number of sign-ins and a SHA-256 checksum of every attached file and photo, so a restore can prove it is complete.
 
 The file is encrypted with AES-256-GCM using a key derived from `BACKUP_ENCRYPTION_KEY`. Without that key a backup cannot be read by anyone, including you. A damaged or altered file is detected and refused.
 
@@ -56,7 +57,7 @@ The file is encrypted with AES-256-GCM using a key derived from `BACKUP_ENCRYPTI
 pnpm --filter @workspace/api-server run backup:verify -- --file backups/mon-carnet-backup-<date>.mcbk
 ```
 
-This decrypts the file, checks every attached file against its checksum and checks that the database dump can be read. It changes nothing.
+This decrypts the file, checks every attached file and photo against its checksum and checks that the database dump can be read. It changes nothing.
 
 ## Restore
 
@@ -70,10 +71,10 @@ Restoring replaces data, so go slowly and write down what you do.
    pnpm --filter @workspace/api-server run backup:restore -- --file backups/mon-carnet-backup-<date>.mcbk --target-database-url "postgresql://…new project's session pooler…" --restore-attachments
    ```
 
-   The target must be a Supabase database. The tool refuses one that already holds Mon carnet data or sign-ins unless you add `--replace-existing-data` (the disease code catalogue the API server fills in does not count), restores the tables and the sign-ins, closes the tables to the public API again, and checks every row count and the number of sign-ins against the backup. With `--restore-attachments` it uploads the files to the new project's private bucket.
+   The target must be a Supabase database. The tool refuses one that already holds Mon carnet data or sign-ins unless you add `--replace-existing-data` (the disease code catalogue the API server fills in does not count), restores the tables and the sign-ins, closes the tables to the public API again, and checks every row count and the number of sign-ins against the backup. With `--restore-attachments` it uploads the files and photos to the new project's private bucket.
 4. **Check the restored data.** Point a test copy of the app at the new project and sign in with a test account (passwords are restored; sessions are not). Open one patient's records and a lab file.
 5. **Switch production to it.** Either change the production `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (and `SUPABASE_JWT_SECRET` if used) to the restored project and publish again, or restore again into the production project with `--replace-existing-data`. A restore with `--replace-existing-data` replaces every sign-in of the target project.
-6. **Files only.** If only attached files were lost, restore with `--restore-attachments` into a copy of the database, with `SUPABASE_URL` pointing at the production project: files are uploaded to the same paths, so records find them again.
+6. **Files only.** If only attached files or photos were lost, restore with `--restore-attachments` into a copy of the database, with `SUPABASE_URL` pointing at the production project: files are uploaded to the same paths, so records find them again.
 7. **Resume service and record the incident** (see `docs/incident-response.md` when it exists): what happened, which backup was used, what data was lost, who was told.
 
 ## Restore drill (every 3 months)
@@ -93,4 +94,4 @@ Restoring replaces data, so go slowly and write down what you do.
 - The backup tool needs `pg_dump` and `pg_restore` of at least the database server's major version (new Supabase projects run PostgreSQL 17; Project Settings > Infrastructure shows it) and `tar`. The Render image (`Dockerfile`) installs the PostgreSQL 17 tools; on your own computer, install PostgreSQL 17 client tools.
 - A backup holds the whole database in one file. That is fine for years at the current size; revisit if the file grows past a few gigabytes.
 - Passwords are kept as the hashes Supabase Auth stores. Authenticator factors are restored with them; if a restored project cannot read them (Supabase encrypts factor secrets with a project key on some setups), reset two-step sign-in for the affected accounts from User search.
-- The automated tests (`pnpm --filter @workspace/api-server run test`) make a backup, check that it is encrypted, refuse a wrong key and a damaged file, and restore it with its sign-ins and attached files into an emptied local Supabase project.
+- The automated tests (`pnpm --filter @workspace/api-server run test`) make a backup, check that it is encrypted, refuse a wrong key and a damaged file, and restore it with its sign-ins, attached files and photos into an emptied local Supabase project.

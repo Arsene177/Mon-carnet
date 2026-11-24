@@ -5,17 +5,10 @@ import express, { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { auditEventsTable, db, usersTable } from "@workspace/db";
 import { requireAuth } from "../lib/medichain-auth";
-import { deletePhotos, readPhoto, writePhoto } from "../lib/object-storage";
+import { deletePhotos, photoContentType as imageType, readPhoto, writePhoto } from "../lib/object-storage";
 
 const router: IRouter = Router();
 const MAX_BYTES = 2 * 1024 * 1024;
-
-/** The image type from the file's first bytes, never from what the browser claims. */
-function imageType(data: Buffer): "image/png" | "image/jpeg" | null {
-  if (data.length > 8 && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
-  if (data.length > 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return "image/jpeg";
-  return null;
-}
 
 async function currentPhoto(userId: number) {
   const [row] = await db.select({ name: usersTable.photoObjectName }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);

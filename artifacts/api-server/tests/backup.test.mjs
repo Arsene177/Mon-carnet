@@ -26,6 +26,9 @@ const marker = `backup-marker-${Date.now()}@test.cm`;
 const attachmentBytes = Buffer.from(`%PDF-1.4 scanned lab result ${Date.now()}`);
 const objectPath = `/objects/uploads/${randomUUID()}`;
 const objectName = objectPath.slice("/objects/".length);
+// A patient's card photo (a 1x1 PNG with a marker appended).
+const photoBytes = Buffer.concat([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"), Buffer.from(`photo-${Date.now()}`)]);
+const photoName = `photos/${randomUUID()}`;
 
 async function storage(method, pathname, body, contentType = "application/json") {
   const response = await fetch(`${SUPABASE_URL}/storage/v1${pathname}`, {
@@ -59,7 +62,7 @@ const count = async (table, where = "true", params = []) => (await sql.query(`se
 /** Leaves the database like a new Supabase project: no app rows, no sign-ins, no stored files. */
 async function emptyProject() {
   await resetDatabase(sql);
-  await storage("DELETE", `/object/${FILE_BUCKET}`, { prefixes: [objectName] });
+  await storage("DELETE", `/object/${FILE_BUCKET}`, { prefixes: [objectName, photoName] });
 }
 
 before(async () => {
@@ -68,8 +71,8 @@ before(async () => {
   // A patient with a sign-in and one attached file, so the backup has something recognisable in it.
   authUserId = await createAuthUser(marker, "Correct-horse-9");
   const { rows: [patient] } = await sql.query(
-    "insert into medichain_users (email, auth_user_id, role, name) values ($1, $2, 'PATIENT', 'Backup Marker') returning id",
-    [marker, authUserId],
+    "insert into medichain_users (email, auth_user_id, role, name, photo_object_name) values ($1, $2, 'PATIENT', 'Backup Marker', $3) returning id",
+    [marker, authUserId, photoName],
   );
   await sql.query(
     "insert into medichain_medical_attachments (patient_id, doctor_id, object_path, file_name, content_type, size, status) values ($1, $1, $2, 'lab.pdf', 'application/pdf', $3, 'READY')",
@@ -78,6 +81,8 @@ before(async () => {
   await storage("POST", "/bucket", { id: FILE_BUCKET, name: FILE_BUCKET, public: false });
   const uploaded = await storage("POST", `/object/${FILE_BUCKET}/${objectName}`, attachmentBytes, "application/pdf");
   assert.equal(uploaded.status, 200, uploaded.body.toString());
+  const photo = await storage("POST", `/object/${FILE_BUCKET}/${photoName}`, photoBytes, "image/png");
+  assert.equal(photo.status, 200, photo.body.toString());
 });
 
 after(async () => {
@@ -90,11 +95,12 @@ describe("backups", () => {
   test("a backup is encrypted: no personal data can be read from the file", async () => {
     const result = await tool(["backup", "--out", workDir, "--upload"]);
     assert.equal(result.code, 0, result.output);
-    assert.match(result.output, /1 sign-ins, 1 attached files/);
+    assert.match(result.output, /1 sign-ins, 1 attached files, 1 photos/);
     const bytes = await readFile(await newestBackup());
     assert.equal(bytes.subarray(0, 5).toString(), "MCBK1");
     assert.equal(bytes.includes(Buffer.from(marker)), false);
     assert.equal(bytes.includes(attachmentBytes), false);
+    assert.equal(bytes.includes(photoBytes), false);
     const uploadedName = result.output.match(/Uploaded to Supabase Storage: [^/]+\/(\S+\.mcbk)/)?.[1];
     assert.ok(uploadedName, result.output);
     const listed = JSON.parse((await storage("POST", `/object/list/${BACKUP_BUCKET}`, { prefix: "", limit: 1000 })).body.toString());
@@ -107,7 +113,7 @@ describe("backups", () => {
     const file = await newestBackup();
     const ok = await tool(["verify", "--file", file]);
     assert.equal(ok.code, 0, ok.output);
-    assert.match(ok.output, /1 attached files/);
+    assert.match(ok.output, /1 attached files, 1 photos/);
     const wrongKey = await tool(["verify", "--file", file], { BACKUP_ENCRYPTION_KEY: "another-key-that-is-long-enough-0123456789" });
     assert.notEqual(wrongKey.code, 0);
     assert.match(wrongKey.output, /could not be decrypted/);
@@ -136,6 +142,9 @@ describe("backups", () => {
     const restored = await storage("GET", `/object/${FILE_BUCKET}/${objectName}`);
     assert.equal(restored.status, 200);
     assert.deepEqual(restored.body, attachmentBytes);
+    const restoredPhoto = await storage("GET", `/object/${FILE_BUCKET}/${photoName}`);
+    assert.equal(restoredPhoto.status, 200);
+    assert.deepEqual(restoredPhoto.body, photoBytes);
     // Still closed to Supabase's public API after the restore.
     assert.equal(await count("pg_tables", "schemaname = 'public' and tablename like 'medichain\\_%' and not rowsecurity"), 0);
   });

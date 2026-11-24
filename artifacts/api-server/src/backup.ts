@@ -29,7 +29,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import pg from "pg";
-import { readStoredFile, writeStoredFile } from "./lib/object-storage";
+import { photoContentType, readPhoto, readStoredFile, writePhoto, writeStoredFile } from "./lib/object-storage";
 import { downloadObject, ensureStorageBucket, uploadObject } from "./lib/supabase";
 import { LOCKDOWN_SQL } from "./lib/lockdown-sql";
 
@@ -51,6 +51,8 @@ type Manifest = {
   tableRowCounts: Record<string, number>;
   authUserCount: number;
   attachments: { objectPath: string; file: string; size: number; sha256: string }[];
+  /** Patients' card photos. Missing in backups made before photos existed. */
+  photos?: { objectName: string; file: string; contentType: string; size: number; sha256: string }[];
   attachmentsSkipped: boolean;
 };
 
@@ -193,6 +195,9 @@ async function unpack(file: string): Promise<{ dir: string; manifest: Manifest }
     const actual = await sha256File(path.join(dir, attachment.file));
     if (actual !== attachment.sha256) throw new Error(`Attached file ${attachment.objectPath} is damaged in this backup.`);
   }
+  for (const photo of manifest.photos ?? []) {
+    if (await sha256File(path.join(dir, photo.file)) !== photo.sha256) throw new Error(`Photo ${photo.objectName} is damaged in this backup.`);
+  }
   return { dir, manifest };
 }
 
@@ -230,6 +235,9 @@ async function backup(options: Record<string, string | boolean>): Promise<void> 
     const attachmentRows = (await client.query<{ object_path: string }>(
       "select object_path from medichain_medical_attachments where status = 'READY' order by id",
     )).rows;
+    const photoRows = (await client.query<{ photo_object_name: string }>(
+      "select photo_object_name from medichain_users where photo_object_name is not null order by id",
+    )).rows;
     const authUsers = await authUserCount(client);
     const pgDumpVersion = (await run("pg_dump", ["--version"])).trim();
     await run("pg_dump", [
@@ -252,6 +260,17 @@ async function backup(options: Record<string, string | boolean>): Promise<void> 
         attachments.push({ objectPath: row.object_path, file, size: (await stat(full)).size, sha256: await sha256File(full) });
       }
     }
+    const photos: NonNullable<Manifest["photos"]> = [];
+    if (photoRows.length > 0 && !skipAttachments) {
+      await mkdir(path.join(work, "photos"));
+      for (const [index, row] of photoRows.entries()) {
+        const file = `photos/${index}`;
+        const full = path.join(work, file);
+        const data = await readPhoto(row.photo_object_name);
+        await writeFile(full, data, { mode: 0o600 });
+        photos.push({ objectName: row.photo_object_name, file, contentType: photoContentType(data) ?? "image/jpeg", size: data.length, sha256: await sha256File(full) });
+      }
+    }
 
     const manifest: Manifest = {
       formatVersion: FORMAT_VERSION,
@@ -260,19 +279,20 @@ async function backup(options: Record<string, string | boolean>): Promise<void> 
       tableRowCounts: tableRowCounts_,
       authUserCount: authUsers,
       attachments,
-      attachmentsSkipped: skipAttachments && attachmentRows.length > 0,
+      photos,
+      attachmentsSkipped: skipAttachments && (attachmentRows.length > 0 || photoRows.length > 0),
     };
     await writeFile(path.join(work, "manifest.json"), JSON.stringify(manifest, null, 2));
     const archive = path.join(work, "backup.tar.gz");
-    await run("tar", ["-czf", archive, "-C", work, "manifest.json", "database.dump", "auth.dump", ...(attachments.length ? ["attachments"] : [])]);
+    await run("tar", ["-czf", archive, "-C", work, "manifest.json", "database.dump", "auth.dump", ...(attachments.length ? ["attachments"] : []), ...(photos.length ? ["photos"] : [])]);
 
     await mkdir(outDir, { recursive: true, mode: 0o700 });
     const name = `mon-carnet-backup-${manifest.createdAt.replace(/[:.]/g, "-")}.mcbk`;
     const target = path.join(outDir, name);
     await encryptFile(archive, target);
     const size = (await stat(target)).size;
-    console.log(`Backup written: ${target} (${(size / 1024 / 1024).toFixed(1)} MB, ${Object.values(tableRowCounts_).reduce((a, b) => a + b, 0)} rows, ${authUsers} sign-ins, ${attachments.length} attached files)`);
-    if (manifest.attachmentsSkipped) console.warn(`Warning: ${attachmentRows.length} attached files were NOT included (--skip-attachments).`);
+    console.log(`Backup written: ${target} (${(size / 1024 / 1024).toFixed(1)} MB, ${Object.values(tableRowCounts_).reduce((a, b) => a + b, 0)} rows, ${authUsers} sign-ins, ${attachments.length} attached files, ${photos.length} photos)`);
+    if (manifest.attachmentsSkipped) console.warn(`Warning: ${attachmentRows.length} attached files and ${photoRows.length} photos were NOT included (--skip-attachments).`);
 
     if (options.upload === true) {
       await ensureStorageBucket(backupBucket(), {});
@@ -301,7 +321,7 @@ async function verify(options: Record<string, string | boolean>): Promise<void> 
     await run("pg_restore", ["--list", path.join(dir, "database.dump")]);
     await run("pg_restore", ["--list", path.join(dir, "auth.dump")]);
     const rows = Object.values(manifest.tableRowCounts).reduce((a, b) => a + b, 0);
-    console.log(`Backup is readable and complete: made ${manifest.createdAt}, ${Object.keys(manifest.tableRowCounts).length} tables, ${rows} rows, ${manifest.authUserCount} sign-ins, ${manifest.attachments.length} attached files${manifest.attachmentsSkipped ? " (attached files were skipped when it was made)" : ""}.`);
+    console.log(`Backup is readable and complete: made ${manifest.createdAt}, ${Object.keys(manifest.tableRowCounts).length} tables, ${rows} rows, ${manifest.authUserCount} sign-ins, ${manifest.attachments.length} attached files, ${(manifest.photos ?? []).length} photos${manifest.attachmentsSkipped ? " (attached files were skipped when it was made)" : ""}.`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -348,16 +368,20 @@ async function restore(options: Record<string, string | boolean>): Promise<void>
       }
       console.log(`Database restored from the backup made ${manifest.createdAt}: row counts match for all ${Object.keys(manifest.tableRowCounts).length} tables, and ${restoredSignIns} sign-ins are back. Everyone signs in again.`);
 
-      if (manifest.attachments.length) {
+      const photos = manifest.photos ?? [];
+      if (manifest.attachments.length || photos.length) {
         if (options["restore-attachments"] !== true) {
-          console.log(`${manifest.attachments.length} attached files are in the backup but were not uploaded (pass --restore-attachments to put them back in Supabase Storage).`);
+          console.log(`${manifest.attachments.length} attached files and ${photos.length} photos are in the backup but were not uploaded (pass --restore-attachments to put them back in Supabase Storage).`);
         } else {
           await ensureStorageBucket();
           const types = new Map((await client.query<{ object_path: string; content_type: string }>("select object_path, content_type from medichain_medical_attachments")).rows.map((row) => [row.object_path, row.content_type]));
           for (const attachment of manifest.attachments) {
             await writeStoredFile(attachment.objectPath, await readFile(path.join(dir, attachment.file)), types.get(attachment.objectPath) ?? "application/pdf");
           }
-          console.log(`${manifest.attachments.length} attached files uploaded to Supabase Storage.`);
+          for (const photo of photos) {
+            await writePhoto(photo.objectName, await readFile(path.join(dir, photo.file)), photo.contentType);
+          }
+          console.log(`${manifest.attachments.length} attached files and ${photos.length} photos uploaded to Supabase Storage.`);
         }
       }
       if (manifest.attachmentsSkipped) console.warn("Warning: this backup was made with --skip-attachments, so attached files are missing.");
