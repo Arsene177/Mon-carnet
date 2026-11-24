@@ -137,10 +137,12 @@ before(async () => {
     env: serverEnv(API_PORT, { WEB_DIST_DIR: webDir }),
     stdio: ["ignore", "ignore", "inherit"],
   });
-  for (let attempt = 0; attempt < 100; attempt++) {
+  // Up to 60 seconds: start-up is slower on shared CI machines.
+  for (let attempt = 0; attempt < 600; attempt++) {
     try { if ((await fetch(`${BASE}/api/healthz`)).ok) break; } catch { /* not up yet */ }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  if (!(await fetch(`${BASE}/api/healthz`).then((response) => response.ok, () => false))) throw new Error("The API server did not start.");
   const patient = await api("POST", "/auth/register", {
     body: { name: "Awa Ngono", email: patientEmail, password: PASSWORD, role: "PATIENT", sex: "FEMALE", dateOfBirth: "1990-04-12", countryOfOrigin: "CM", contactInfo: "+237690000000", acceptedTermsVersion: TERMS, healthDataConsent: true },
   });

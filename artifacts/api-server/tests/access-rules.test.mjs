@@ -142,7 +142,8 @@ before(async () => {
     env: serverEnv(PORT),
     stdio: ["ignore", "ignore", "inherit"],
   });
-  for (let attempt = 0; attempt < 100; attempt++) {
+  // Up to 60 seconds: start-up is slower on shared CI machines.
+  for (let attempt = 0; attempt < 600; attempt++) {
     try { if ((await fetch(`${BASE}/healthz`)).ok) return; } catch { /* not up yet */ }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
