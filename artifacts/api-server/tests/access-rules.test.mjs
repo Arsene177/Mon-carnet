@@ -480,6 +480,19 @@ describe("doctor access to a patient's records", () => {
     assert.equal((await send(patient.token, "GET")).status, 404);
   });
 
+  test("an account without a country of origin can add it once, and never change it", async () => {
+    const doctor = await createStaff("DOCTOR"); // created without one, like accounts from before
+    assert.equal((await api("GET", "/auth/me", { token: doctor.token })).body.countryOfOrigin, null);
+    assert.equal((await api("PUT", "/auth/country-of-origin", { token: doctor.token, body: { countryOfOrigin: "ZZ" } })).status, 400);
+    const saved = await api("PUT", "/auth/country-of-origin", { token: doctor.token, body: { countryOfOrigin: "CM" } });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.countryOfOrigin, "CM");
+    assert.equal((await api("PUT", "/auth/country-of-origin", { token: doctor.token, body: { countryOfOrigin: "FR" } })).status, 409);
+    assert.equal((await api("GET", "/auth/me", { token: doctor.token })).body.countryOfOrigin, "CM");
+    const patient = await registerPatient(); // chose it at sign-up
+    assert.equal((await api("PUT", "/auth/country-of-origin", { token: patient.token, body: { countryOfOrigin: "FR" } })).status, 409);
+  });
+
   test("sign-up asks for a valid country of origin and keeps it", async () => {
     const base = { name: "Jean Mbarga", password: PASSWORD, role: "PATIENT", sex: "MALE", dateOfBirth: "1985-06-01", contactInfo: "+237690000002", acceptedTermsVersion: TERMS_VERSION, healthDataConsent: true };
     assert.equal((await api("POST", "/auth/register", { body: { ...base, email: `${unique("nocountry")}@test.cm` } })).status, 400);

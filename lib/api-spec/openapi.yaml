@@ -200,6 +200,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /auth/country-of-origin:
+    put:
+      operationId: setCountryOfOrigin
+      tags: [auth]
+      description: For accounts created before the country of origin was asked. It can be set once and never changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CountryOfOriginInput"
+      responses:
+        "200":
+          description: Country of origin saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Not a valid country code
+        "409":
+          description: The country of origin is already set and cannot be changed
   /auth/change-password:
     post:
       operationId: changePassword
@@ -1880,6 +1902,11 @@ components:
     Language:
       type: string
       enum: [fr, en]
+    CountryOfOriginInput:
+      type: object
+      required: [countryOfOrigin]
+      properties:
+        countryOfOrigin: { type: string, pattern: "^[A-Z]{2}$" }
     LanguageInput:
       type: object
       required: [language]

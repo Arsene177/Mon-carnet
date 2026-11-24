@@ -940,6 +940,11 @@ export interface PossibleDuplicateGroup {
   patients: PossibleDuplicatePatient[];
 }
 
+export interface CountryOfOriginInput {
+  /** @pattern ^[A-Z]{2}$ */
+  countryOfOrigin: string;
+}
+
 export interface LanguageInput {
   language: Language;
 }

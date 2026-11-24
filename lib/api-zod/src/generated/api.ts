@@ -265,6 +265,43 @@ export const UpdateLanguageResponse = zod.object({
 })
 
 
+/**
+ * For accounts created before the country of origin was asked. It can be set once and never changed.
+ */
+export const setCountryOfOriginBodyCountryOfOriginRegExp = new RegExp('^[A-Z]{2}$');
+
+
+export const SetCountryOfOriginBody = zod.object({
+  "countryOfOrigin": zod.string().regex(setCountryOfOriginBodyCountryOfOriginRegExp)
+})
+
+export const SetCountryOfOriginResponse = zod.object({
+  "countryOfOrigin": zod.string().nullable().describe('ISO 3166-1 alpha-2 code; null for accounts created before it was asked.'),
+  "termsVersion": zod.string().nullable().describe('Version of the privacy policy and terms this account accepted.'),
+  "termsAcceptedAt": zod.coerce.date().nullable(),
+  "healthDataConsentAt": zod.coerce.date().nullable().describe('Patients: when they consented to the processing of their health data.'),
+  "sex": zod.union([zod.enum(['FEMALE', 'MALE']),zod.null()]),
+  "dateOfBirthEstimated": zod.boolean().describe('True when only the birth year is known; dateOfBirth is then 1 January of that year.'),
+  "preferredLanguage": zod.enum(['fr', 'en']),
+  "mfaEnabled": zod.boolean().describe('Two-step sign-in with an authenticator app is on.'),
+  "mfaRequired": zod.boolean().describe('This role must use two-step sign-in (doctors and administrators).'),
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "hospitalName": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationArrondissement": zod.string().nullable(),
+  "professionalMedicalNumber": zod.string().nullable(),
+  "doctorVerified": zod.boolean(),
+  "role": zod.enum(['PATIENT', 'PENDING_DOCTOR', 'DOCTOR', 'ADMIN']),
+  "status": zod.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  "dateOfBirth": zod.coerce.date().nullish(),
+  "contactInfo": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
 export const changePasswordBodyCurrentPasswordMax = 128;
 
 export const changePasswordBodyNewPasswordMin = 8;
