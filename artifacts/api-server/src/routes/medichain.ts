@@ -23,6 +23,8 @@ import {
   UpdatePatientIdentityResponse,
   GetAdminPossibleDuplicatesResponse,
   UpdateLanguageBody,
+  SetCountryOfOriginBody,
+  SetCountryOfOriginResponse,
   UpdateLanguageResponse,
   EmergencyPatientLookupBody,
   EmergencyPatientLookupResponse,
@@ -801,6 +803,31 @@ router.put("/auth/language", requireAuth(), async (req, res): Promise<void> => {
     return;
   }
   res.json(UpdateLanguageResponse.parse(userResponse(user)));
+});
+
+// Accounts created before sign-up asked for it can add their country of origin once.
+router.put("/auth/country-of-origin", requireAuth(), async (req, res): Promise<void> => {
+  const parsed = SetCountryOfOriginBody.safeParse(req.body);
+  if (!parsed.success || !isCountryCode(parsed.data.countryOfOrigin)) {
+    invalidBody(res, "Choose your country of origin.");
+    return;
+  }
+  const [user] = await db
+    .update(usersTable)
+    .set({ countryOfOrigin: parsed.data.countryOfOrigin, updatedAt: new Date() })
+    .where(and(eq(usersTable.id, req.currentUser!.id), isNull(usersTable.countryOfOrigin)))
+    .returning();
+  if (!user) {
+    res.status(409).json({ error: "Your country of origin is already set and cannot be changed." });
+    return;
+  }
+  await db.insert(auditEventsTable).values({
+    actorUserId: user.id,
+    patientId: user.role === "PATIENT" ? user.id : null,
+    action: "COUNTRY_OF_ORIGIN_SET",
+    entityType: "account",
+  });
+  res.json(SetCountryOfOriginResponse.parse(userResponse(user)));
 });
 
 router.get("/auth/me", requireAuth(), async (req, res): Promise<void> => {

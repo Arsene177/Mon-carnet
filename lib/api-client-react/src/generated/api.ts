@@ -45,6 +45,7 @@ import type {
   ChangePasswordInput,
   ConfirmMedicalAttachmentUpload200,
   ConsentInput,
+  CountryOfOriginInput,
   DeletionResolutionInput,
   DiseaseCode,
   DoctorProfileInput,
@@ -997,6 +998,91 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getUpdateLanguageMutationOptions(options));
+    }
+
+export const getSetCountryOfOriginUrl = () => {
+
+
+
+
+  return `/api/auth/country-of-origin`
+}
+
+/**
+ * For accounts created before the country of origin was asked. It can be set once and never changed.
+ */
+export const setCountryOfOrigin = async (countryOfOriginInput: CountryOfOriginInput, options?: Parameters<typeof customFetch>[1]): Promise<User> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<User>(getSetCountryOfOriginUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(countryOfOriginInput)
+  }
+);}
+
+
+
+
+
+export const getSetCountryOfOriginMutationKey = () => ['setCountryOfOrigin'] as const;
+
+export const getSetCountryOfOriginMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setCountryOfOrigin>>, TError,SetCountryOfOriginMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setCountryOfOrigin>>, TError,SetCountryOfOriginMutationVariables, TContext> => {
+
+const mutationKey = getSetCountryOfOriginMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setCountryOfOrigin>>, SetCountryOfOriginMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  setCountryOfOrigin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetCountryOfOriginMutationResult = NonNullable<Awaited<ReturnType<typeof setCountryOfOrigin>>>
+    export type SetCountryOfOriginMutationBody = BodyType<CountryOfOriginInput>
+    export type SetCountryOfOriginMutationError = ErrorType<void>
+    export type SetCountryOfOriginMutationVariables = {data: BodyType<CountryOfOriginInput>}
+
+    export const useSetCountryOfOrigin = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setCountryOfOrigin>>, TError,SetCountryOfOriginMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setCountryOfOrigin>>,
+        TError,
+        SetCountryOfOriginMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetCountryOfOriginMutationOptions(options));
     }
 
 export const getChangePasswordUrl = () => {
