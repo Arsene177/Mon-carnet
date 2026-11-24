@@ -194,11 +194,9 @@ describe("access control and record corrections, clicked through in the browser"
     await doctor.getByTestId("text-access-request-pending").waitFor({ timeout: 15_000 });
     assert.equal(await status(`/doctor/patient/${patientId}/records`, doctorToken), 403);
 
-    // 3. The patient approves it for 7 days.
-    await patient.reload();
-    await tab(patient, "access-control");
+    // 3. The request appears on the patient's open screen without reloading; they approve it for 7 days.
     const approve = patient.locator('[data-testid^="button-approve-request-"]').first();
-    await approve.waitFor({ timeout: 15_000 });
+    await approve.waitFor({ timeout: 30_000 });
     await approve.click();
     await patient.getByTestId("select-approval-duration").selectOption("7");
     const approved = patient.waitForResponse((response) => /\/api\/patient\/access-requests\/\d+\/approve$/.test(response.url()));
@@ -221,8 +219,7 @@ describe("access control and record corrections, clicked through in the browser"
     const found = await problems(doctor, "record correction (1280px, en)");
     assert.deepEqual(found, [], `\n${found.join("\n")}`);
 
-    // 5. The patient, opening the app again, sees the corrected record and its earlier version.
-    await patient.reload();
+    // 5. The patient, without reloading, sees the corrected record and its earlier version.
     await tab(patient, "records");
     await patient.getByTestId(`button-open-record-${record.id}`).click();
     await patient.getByTestId(`button-record-history-${record.id}`).click();
@@ -231,12 +228,18 @@ describe("access control and record corrections, clicked through in the browser"
     assert.equal(await patient.locator('[data-testid^="button-correct-record-"]').count(), 0, "the patient cannot correct records");
 
     // 6. The patient revokes the doctor's access: records close at once.
+    const cmIdBefore = await cmId();
     await patient.keyboard.press("Escape");
     await tab(patient, "access-control");
     const revoked = patient.waitForResponse((response) => response.url().endsWith(`/api/patient/permissions/${doctorRow.id}`));
     await patient.getByTestId(`button-revoke-${doctorRow.id}`).click();
     assert.equal((await revoked).status(), 204);
     assert.equal(await status(`/doctor/patient/${patientId}/records`, doctorToken), 403);
+    // The doctor's open screen changes by itself: no access, wait for the patient's approval.
+    await doctor.getByText("You do not have access to this patient's booklet", { exact: false }).first().waitFor({ timeout: 30_000 });
+    // The CM ID did not change, and the doctor was told.
+    assert.equal(await cmId(), cmIdBefore);
+    assert.ok((await api("GET", "/notifications", { token: doctorToken })).items.some((item) => item.title === "Booklet access removed" || item.title === "Accès au carnet retiré"));
 
     // 7. The patient grants access again by the doctor's email, for 30 days.
     await patient.getByTestId("button-grant-access").click();

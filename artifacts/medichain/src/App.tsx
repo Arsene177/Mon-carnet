@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
-import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
 import {
   Activity, AlertCircle, ArrowRight, BadgeCheck, Bell, BookOpen, CalendarDays, Check,
@@ -56,10 +56,18 @@ function handleSessionEnded(error: unknown) {
   try { sessionStorage.setItem(SESSION_ENDED_NOTICE_KEY, '1'); } catch { /* notice is optional */ }
   window.location.assign('/login');
 }
-const queryClient = new QueryClient({
+// Screens stay current without reloading the page: every query on screen is fetched again every
+// 15 seconds while the tab is visible and when the tab comes back to the front, and every change
+// you make refreshes all data at once.
+const LIVE_REFRESH_MS = 15_000;
+const queryClient: QueryClient = new QueryClient({
+  defaultOptions: { queries: { refetchInterval: LIVE_REFRESH_MS, refetchOnWindowFocus: true, refetchOnReconnect: true } },
   queryCache: new QueryCache({ onError: handleSessionEnded }),
   // A failed sign-in also answers 401; that is a wrong password, not an ended session.
-  mutationCache: new MutationCache({ onError: (error, _variables, _context, mutation) => { if (mutation.options.mutationKey?.[0] !== 'login') handleSessionEnded(error); } }),
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => { if (mutation.options.mutationKey?.[0] !== 'login') handleSessionEnded(error); },
+    onSuccess: () => { void queryClient.invalidateQueries(); },
+  }),
 });
 setAuthTokenGetter(accessToken);
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -375,7 +383,7 @@ function AccountRightsCard({ role }: { role: User['role'] }) {
 /** Administrator decisions on account deletion requests. */
 function DeletionRequestsPanel({ active }: { active: boolean }) {
   const qc = useQueryClient();
-  const requests = useGetAdminDeletionRequests({ query: { enabled: active, queryKey: getGetAdminDeletionRequestsQueryKey(), refetchInterval: 60_000 } });
+  const requests = useGetAdminDeletionRequests({ query: { enabled: active, queryKey: getGetAdminDeletionRequestsQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const resolve = useResolveAdminDeletionRequest();
   const [deciding, setDeciding] = useState<{ request: AdminDeletionRequest; action: 'ERASE' | 'CLOSE' | 'REJECT' } | null>(null);
   const [note, setNote] = useState('');
@@ -837,7 +845,7 @@ function Workspace({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>(user.role === 'ADMIN' ? 'System overview' : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? 'Patients' : 'Overview');
   // Name the current screen in the browser tab, which screen readers announce on change.
   useEffect(() => { document.title = `${tabLabel(tab)} · Mon carnet`; }, [tab, getLanguage()]);
-  const notificationInbox = useGetNotificationInbox({ query: { queryKey: getGetNotificationInboxQueryKey(), refetchInterval: 60_000 } });
+  const notificationInbox = useGetNotificationInbox({ query: { queryKey: getGetNotificationInboxQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const tabs = user.role === 'ADMIN' ? adminTabs : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? doctorTabs : patientTabs;
   const base = user.role === 'ADMIN' ? '/admin' : user.role === 'DOCTOR' || user.role === 'PENDING_DOCTOR' ? '/doctor' : '/patient';
   const [, setLocation] = useLocation();
@@ -1056,7 +1064,7 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const permissions = useGetPatientPermissions();
   const requests = useGetPatientPendingRequests();
   const accessSettings = useGetPatientAccessSettings();
-  const accessRequests = useGetPatientAccessRequests({ query: { queryKey: getGetPatientAccessRequestsQueryKey(), refetchInterval: 30_000 } });
+  const accessRequests = useGetPatientAccessRequests({ query: { queryKey: getGetPatientAccessRequestsQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const updateAccessSettings = useUpdatePatientAccessSettings();
   const approveRequest = useApprovePatientAccessRequest();
   const rejectRequest = useRejectPatientAccessRequest();
@@ -1069,9 +1077,18 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
   const [grantDays, setGrantDays] = useState('30');
   const [locationRegion, setLocationRegion] = useState<string | null>(null);
   const [locationArrondissement, setLocationArrondissement] = useState<string | null>(null);
-  const [accessHistory, setAccessHistory] = useState<AccessHistoryEntry[]>([]);
-  const [accessHistoryLoading, setAccessHistoryLoading] = useState(false);
-  const [accessHistoryError, setAccessHistoryError] = useState('');
+  const accessHistoryQuery = useQuery({
+    queryKey: ['patient-access-history'],
+    enabled: tab === 'Access control',
+    queryFn: async () => {
+      const response = await authorizedFetch('/api/patient/access-history');
+      if (!response.ok) throw new Error(t("Could not load record access history."));
+      return response.json() as Promise<AccessHistoryEntry[]>;
+    },
+  });
+  const accessHistory = accessHistoryQuery.data ?? [];
+  const accessHistoryLoading = accessHistoryQuery.isLoading;
+  const accessHistoryError = accessHistoryQuery.error ? errText(accessHistoryQuery.error) : '';
   const [toast, setToast] = useState('');
   const [bookletPreparing, setBookletPreparing] = useState(false);
   const [bookletExport, setBookletExport] = useState<PatientBookletExport | null>(null);
@@ -1111,23 +1128,6 @@ function PatientView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: 
     setLocationRegion(profile.data?.user.locationRegion ?? null);
     setLocationArrondissement(profile.data?.user.locationArrondissement ?? null);
   }, [profile.data?.user.locationRegion, profile.data?.user.locationArrondissement]);
-  useEffect(() => {
-    if (tab !== 'Access control') return;
-    let active = true;
-    setAccessHistoryLoading(true);
-    setAccessHistoryError('');
-    authorizedFetch('/api/patient/access-history').then(async (response) => {
-      if (!response.ok) throw new Error(t("Could not load record access history."));
-      return response.json() as Promise<AccessHistoryEntry[]>;
-    }).then((entries) => {
-      if (active) setAccessHistory(entries);
-    }).catch((error: unknown) => {
-      if (active) setAccessHistoryError(errText(error));
-    }).finally(() => {
-      if (active) setAccessHistoryLoading(false);
-    });
-    return () => { active = false; };
-  }, [tab]);
   useEffect(() => {
     if (!bookletExport) return;
     const previousTitle = document.title;
@@ -1924,7 +1924,7 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
   const [userQuery, setUserQuery] = useState('');
   const qc = useQueryClient();
   const stats = useGetAdminStats();
-  const analytics = useGetAdminAnalytics({ query: { queryKey: getGetAdminAnalyticsQueryKey(), refetchInterval: 60_000 } });
+  const analytics = useGetAdminAnalytics({ query: { queryKey: getGetAdminAnalyticsQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const pending = useGetPendingDoctors();
   const doctorParams = useMemo(()=>({query:doctorQuery.trim().length>=2?doctorQuery.trim():'__'}),[doctorQuery]);
   const userParams = useMemo(()=>({query:userQuery.trim().length>=2?userQuery.trim():'__'}),[userQuery]);
@@ -1945,7 +1945,7 @@ function AdminView({ user, tab, onTab }: { user: User; tab: Tab; onTab: (tab: Ta
     query: {
       queryKey: getGetAdminPasswordResetRequestsQueryKey(),
       enabled: tab === 'Password recovery',
-      refetchInterval: 60_000,
+      refetchInterval: LIVE_REFRESH_MS,
       retry: false,
     },
   });
@@ -2084,7 +2084,7 @@ function securityEventText(event: SecurityEvent): string {
 
 /** Recent security events for administrators: what happened, when, how serious. */
 function SecurityEvents({ active }: { active: boolean }) {
-  const events = useGetAdminSecurityEvents({ query: { enabled: active, queryKey: getGetAdminSecurityEventsQueryKey(), refetchInterval: 60_000 } });
+  const events = useGetAdminSecurityEvents({ query: { enabled: active, queryKey: getGetAdminSecurityEventsQueryKey(), refetchInterval: LIVE_REFRESH_MS } });
   const [showAll, setShowAll] = useState(false);
   const list: SecurityEvent[] = events.data ?? [];
   const shown = showAll ? list : list.slice(0, 15);
@@ -2118,25 +2118,14 @@ function PossibleDuplicates({ active }: { active: boolean }) {
 
 function InboxView() {
   const qc = useQueryClient();
-  const [inbox, setInbox] = useState<NotificationInboxData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The same polled query as the unread badge, so new notices appear without reloading.
+  const inboxQuery = useGetNotificationInbox({ query: { queryKey: getGetNotificationInboxQueryKey() } });
+  const inbox = (inboxQuery.data ?? null) as NotificationInboxData | null;
+  const loading = inboxQuery.isLoading;
   const [error, setError] = useState('');
   const [markingId, setMarkingId] = useState<number | null>(null);
-  const loadInbox = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const response = await authorizedFetch('/api/notifications');
-      const body = await response.json() as NotificationInboxData & { error?: string };
-      if (!response.ok) throw new Error(body.error || t("Could not load your inbox."));
-      setInbox(body);
-    } catch (cause) {
-      setError(errText(cause));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { void loadInbox(); }, []);
+  const loadError = inboxQuery.error ? errText(inboxQuery.error) : '';
+  const loadInbox = async () => { setError(''); await inboxQuery.refetch(); };
   const markRead = async (notificationId: number) => {
     setMarkingId(notificationId);
     setError('');
@@ -2146,12 +2135,8 @@ function InboxView() {
       });
       const body = await response.json() as NotificationEntry & { error?: string };
       if (!response.ok) throw new Error(body.error || t("Could not mark this notice as read."));
-      setInbox((current) => current ? {
-        ...current,
-        items: current.items.map((item) => item.id === notificationId ? body : item),
-        unreadCount: Math.max(0, current.unreadCount - (current.items.some((item) => item.id === notificationId && !item.readAt) ? 1 : 0)),
-      } : current);
-      qc.invalidateQueries({ queryKey: getGetNotificationInboxQueryKey() });
+      void body;
+      await qc.invalidateQueries({ queryKey: getGetNotificationInboxQueryKey() });
     } catch (cause) {
       setError(errText(cause));
     } finally {
@@ -2160,8 +2145,8 @@ function InboxView() {
   };
   return <>
     <Heading eyebrow={t("In-app messages")} title={t("Notification inbox")} subtitle={t("Notices sent to you by Mon carnet administrators.")} action={<button className="btn secondary" onClick={() => void loadInbox()} disabled={loading}><Activity size={14}/> {t("Refresh")}</button>}/>
-    {loading ? <div className="skeleton"/> : error && !inbox ? <ErrorState error={error} retry={() => void loadInbox()}/> : <>
-      {error && <div className="error-state" role="alert">{error}</div>}
+    {loading ? <div className="skeleton"/> : loadError && !inbox ? <ErrorState error={loadError} retry={() => void loadInbox()}/> : <>
+      {(error || loadError) && <div className="error-state" role="alert">{error || loadError}</div>}
       <section className="panel">
         <div className="panel-head"><div><h2 className="panel-title">{t("Your notices")}</h2><p className="panel-caption">{t("Messages remain in your inbox until your account is removed.")}</p></div><span className="tag">{inbox?.unreadCount ?? 0} {t("unread")}</span></div>
         <div className="panel-body">

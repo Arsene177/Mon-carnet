@@ -744,7 +744,7 @@ export const fr: Record<string, string> = {
   "This patient declined your request recently. Speak with the patient before asking again tomorrow.": "Ce patient a récemment refusé votre demande. Parlez-en avec lui avant de redemander demain.",
   "Enter at least two characters to search.": "Saisissez au moins deux caractères pour lancer la recherche.",
   "Upload a PDF, PNG, or JPEG file up to 10 MB.": "Envoyez un fichier PDF, PNG ou JPEG de 10 Mo maximum.",
-  "Patient access is not currently granted or has expired.": "L’accès au patient n’est pas accordé ou a expiré.",
+  "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval.": "Vous n’avez pas accès au carnet de ce patient. Saisissez son identifiant CM pour envoyer une demande, puis attendez l’accord du patient.",
   "Private file storage is temporarily unavailable.": "Le stockage privé des fichiers est temporairement indisponible.",
   "Invalid patient ID.": "Identifiant patient non valide.",
   "Invalid attachment reference.": "Référence de pièce jointe non valide.",

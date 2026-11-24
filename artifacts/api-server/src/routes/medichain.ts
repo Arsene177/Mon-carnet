@@ -1153,6 +1153,19 @@ router.delete(
       // The CM ID stays the same: a doctor whose access was ended must now ask the patient
       // (see /doctor/patient-access), so the old code cannot reopen the booklet by itself.
       if (revoked.length > 0) {
+        const [doctor] = await tx
+          .select({ preferredLanguage: usersTable.preferredLanguage })
+          .from(usersTable)
+          .where(eq(usersTable.id, parsed.data.doctorId))
+          .limit(1);
+        if (doctor) {
+          await tx.insert(notificationsTable).values({
+            batchId: randomUUID(),
+            senderId: req.currentUser!.id,
+            recipientId: parsed.data.doctorId,
+            ...notificationMessages.accessRevoked(languageOf(doctor.preferredLanguage), req.currentUser!.name),
+          });
+        }
         await tx.insert(auditEventsTable).values({
           actorUserId: req.currentUser!.id,
           patientId: req.currentUser!.id,
@@ -1781,7 +1794,7 @@ router.post(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     await purgeExpiredMedicalAttachments();
@@ -1823,7 +1836,7 @@ router.get(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     await purgeExpiredMedicalAttachments();
@@ -1858,7 +1871,7 @@ router.post(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const [attachment] = await db.select().from(medicalAttachmentsTable).where(and(
@@ -1912,7 +1925,7 @@ router.delete(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const [attachment] = await db.select().from(medicalAttachmentsTable).where(and(
@@ -1952,7 +1965,7 @@ router.get(
       return;
     }
     if (current.role === "DOCTOR" && !(await getActivePermission(patientId, current.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     // The file must be attached to a saved record of this patient. Matching the stored attachment
@@ -2012,7 +2025,7 @@ router.get(
     // Without a grant, doctors use the emergency lookup, which needs the full name and a reason,
     // is rate-limited and tells the patient.
     if (!(await getActivePermission(patient.id, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const [info] = await db
@@ -2055,7 +2068,7 @@ router.get(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const rows = await db
@@ -2120,7 +2133,7 @@ router.post(
       return;
     }
     if (!(await getActivePermission(patientId, req.currentUser!.id))) {
-      res.status(403).json({ error: "Patient access is not currently granted or has expired." });
+      res.status(403).json({ error: "You do not have access to this patient's booklet. Enter their CM ID to send a request, then wait for the patient's approval." });
       return;
     }
     const readyAttachments = attachmentIds.length

@@ -386,8 +386,10 @@ describe("doctor access to a patient's records", () => {
 
     assert.equal((await api("DELETE", `/patient/permissions/${doctor.id}`, { token: patient.token })).status, 204);
     assert.equal((await api("GET", `/doctor/patient/${patient.id}/records`, { token: doctor.token })).status, 403);
-    // The CM ID is permanent, but the removed doctor can only send a request now.
+    // The CM ID is permanent, but the removed doctor is told and can only send a request now.
     assert.equal(await patient.cmId(), oldCmId);
+    const told = await api("GET", "/notifications", { token: doctor.token });
+    assert.ok(told.body.items.some((item) => /retiré|removed/.test(item.title)), "the doctor is told their access was removed");
     const again = await api("POST", "/doctor/patient-access", { token: doctor.token, body: { patientDisplayId: oldCmId } });
     assert.equal(again.status, 200);
     assert.equal(again.body.status, "PENDING");
